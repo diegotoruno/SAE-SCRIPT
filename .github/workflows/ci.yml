@@ -1,0 +1,93 @@
+name: Validate and publish
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: egg-finder-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    name: Compile and regression tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: Build executor bundle
+        run: python3 build.py
+      - name: Compile and test with pinned Luau
+        run: python3 ci_tools.py
+      - name: Save validated bundle
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: egg-finder-${{ github.sha }}
+          path: dist/
+          if-no-files-found: error
+          retention-days: 14
+
+  publish:
+    name: Publish stable and release
+    needs: validate
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Download the tested bundle
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: egg-finder-${{ github.sha }}
+          path: dist
+      - name: Publish only the validated artifact
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SOURCE_SHA: ${{ github.sha }}
+          BUILD_NUMBER: ${{ github.run_number }}
+          REPOSITORY: ${{ github.repository }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd dist
+          sha256sum --check SHA256SUMS
+          cd ..
+          current_main=$(git ls-remote origin refs/heads/main | cut -f1)
+          if [ "$current_main" != "$SOURCE_SHA" ]; then
+            echo "A newer main commit exists; skip this deployment."
+            exit 0
+          fi
+          release_tag="build-${BUILD_NUMBER}-${SOURCE_SHA:0:7}"
+          if git ls-remote --exit-code origin refs/heads/stable >/dev/null 2>&1; then
+            git fetch origin stable
+            git worktree add --detach publish-dir FETCH_HEAD
+          else
+            git worktree add --detach publish-dir HEAD
+            git -C publish-dir switch --orphan stable
+          fi
+          cp dist/chilli_hopper.luau dist/loader.luau dist/version.json dist/SHA256SUMS publish-dir/
+          git -C publish-dir config user.name 'github-actions[bot]'
+          git -C publish-dir config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git -C publish-dir add chilli_hopper.luau loader.luau version.json SHA256SUMS
+          if ! git -C publish-dir diff --cached --quiet; then
+            git -C publish-dir commit -m "Publish ${release_tag} from ${SOURCE_SHA}"
+          fi
+          git -C publish-dir push origin HEAD:refs/heads/stable
+          published_sha=$(git -C publish-dir rev-parse HEAD)
+          if ! gh release view "$release_tag" --repo "$REPOSITORY" >/dev/null 2>&1; then
+            gh release create "$release_tag" --repo "$REPOSITORY" --target "$published_sha" \
+              --title "Egg Finder ${release_tag}" \
+              --notes "Validated source: ${SOURCE_SHA}. Luau compilation and regression tests passed. Roblox UI and live teleports require a separate Potassium smoke test." \
+              dist/chilli_hopper.luau dist/loader.luau dist/version.json dist/SHA256SUMS
+          fi
+          echo "Published ${release_tag} to stable." >> "$GITHUB_STEP_SUMMARY"
