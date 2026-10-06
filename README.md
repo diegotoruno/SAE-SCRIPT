@@ -1,5 +1,7 @@
 # Chilli Egg Finder
 
+[![CI/CD](https://github.com/diegotoruno/SAE-SCRIPT/actions/workflows/ci.yml/badge.svg)](https://github.com/diegotoruno/SAE-SCRIPT/actions/workflows/ci.yml)
+
 Panel de filtros y detector de huevos del mapa para Steal An Egg, integrado con un cargador de Chilli Hub y Server Hop.
 
 ## Cargar
@@ -9,6 +11,38 @@ loadstring(game:HttpGet("https://raw.githubusercontent.com/diegotoruno/SAE-SCRIP
 ```
 
 Para continuar entre servidores, coloca esa linea en el autoexec de tu executor. No hace falta copiar el archivo completo ni instalar otros archivos de este repositorio.
+
+El punto de entrada de `main` carga el script validado de la rama `stable`. Los cambios de desarrollo solo se publican en `stable` despues de pasar CI. Cada publicacion tiene un archivo `version.json`, checksum y una [release](https://github.com/diegotoruno/SAE-SCRIPT/releases) para recuperar versiones anteriores. Una sesion ya abierta sigue usando la version que cargo; los cambios se reciben al ejecutar el cargador de nuevo o al entrar en otro servidor.
+
+## Desarrollo y CI/CD
+
+El codigo mantenido esta en tres archivos:
+
+- `map_egg_search.luau`: filtros, lecturas del mapa y decisiones del detector.
+- `egg_filter_panel.luau`: panel, imagenes, modelos y controles.
+- `hopper_runtime.luau`: arranque de Chilli y coordinacion del Server Hop.
+
+`build.py` integra los tres en `dist/chilli_hopper.luau`. No edites el `chilli_hopper.luau` de la raiz ni la rama `stable`: son puntos de distribucion.
+
+Para mejorar el script, crea una rama `codex/descripcion`, modifica los modulos y abre un pull request hacia `main`. GitHub Actions compila los modulos y el archivo integrado con Luau 0.741, ejecuta 18 pruebas de regresion y guarda el artefacto. Un pull request solo valida; un cambio aprobado en `main` valida y publica automaticamente en `stable`, con una release identificada por numero de ejecucion y commit. Si falla una prueba, `stable` conserva la version anterior. Una ejecucion antigua no reemplaza un commit nuevo de `main`.
+
+Para comprobarlo localmente con Python 3.10 o posterior:
+
+```sh
+python build.py
+python ci_tools.py
+```
+
+La primera comprobacion descarga el CLI oficial de Luau; la version y los SHA256 estan fijados en `ci_tools.py`. No necesita Roblox, Potassium, una cuenta ni claves. Las pruebas cubren el limite exacto de 7B, exclusiones de estados no disponibles, filtros, datos incompletos, persistencia y renovaciones durante los hops. CI no comprueba el aspecto del panel, los cambios de modulos del juego, teleports reales ni el codigo externo de Chilli. Esas partes se verifican con Potassium antes de aceptar cambios relacionados.
+
+El workflow usa `GITHUB_TOKEN` del propio repositorio. La validacion solo tiene lectura; el job de publicacion tiene escritura de contenido para actualizar `stable` y crear releases. No requiere guardar un token personal.
+
+Para volver a una version anterior, restaura el commit de los modulos en `main` y deja pasar CI, o utiliza temporalmente un cargador fijado al tag de una release:
+
+```lua
+-- Sustituye TAG por el tag completo que aparece en Releases.
+loadstring(game:HttpGet("https://raw.githubusercontent.com/diegotoruno/SAE-SCRIPT/TAG/chilli_hopper.luau"))()
+```
 
 ## Busqueda
 

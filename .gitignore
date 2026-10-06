@@ -1,0 +1,13 @@
+dist/
+.tools/
+__pycache__/
+*.pyc
+*.log
+*.zip
+backups/
+references/
+verification/
+chilli_client.json
+chilli_egg_search_config.json
+chilli_egg_panel_ui.json
+server_hop_button*.json
