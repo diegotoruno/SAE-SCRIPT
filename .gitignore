@@ -1,6 +1,7 @@
 dist/
 .tools/
 __pycache__/
+.venv/
 *.pyc
 *.log
 *.zip

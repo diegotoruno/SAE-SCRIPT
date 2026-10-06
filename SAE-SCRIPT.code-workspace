@@ -1,0 +1,41 @@
+{
+  "folders": [{"name": "SAE-SCRIPT", "path": "."}],
+  "settings": {
+    "files.associations": {"*.luau": "luau"},
+    "files.eol": "\n",
+    "files.trimTrailingWhitespace": true,
+    "files.insertFinalNewline": true,
+    "search.exclude": {"**/.tools": true, "**/.venv": true, "**/dist": true},
+    "python.defaultInterpreterPath": "${workspaceFolder}/.venv/Scripts/python.exe"
+  },
+  "extensions": {"recommendations": ["JohnnyMorganz.luau-lsp"]},
+  "tasks": {
+    "version": "2.0.0",
+    "tasks": [
+      {
+        "label": "SAE: Build",
+        "type": "process",
+        "command": "${workspaceFolder}/.venv/Scripts/python.exe",
+        "linux": {"command": "${workspaceFolder}/.venv/bin/python"},
+        "osx": {"command": "${workspaceFolder}/.venv/bin/python"},
+        "args": ["build.py"],
+        "options": {"cwd": "${workspaceFolder}"},
+        "problemMatcher": [],
+        "group": "build"
+      },
+      {
+        "label": "SAE: Verify",
+        "type": "process",
+        "command": "${workspaceFolder}/.venv/Scripts/python.exe",
+        "linux": {"command": "${workspaceFolder}/.venv/bin/python"},
+        "osx": {"command": "${workspaceFolder}/.venv/bin/python"},
+        "args": ["ci_tools.py"],
+        "options": {"cwd": "${workspaceFolder}"},
+        "dependsOn": ["SAE: Build"],
+        "dependsOrder": "sequence",
+        "problemMatcher": [],
+        "group": {"kind": "build", "isDefault": true}
+      }
+    ]
+  }
+}

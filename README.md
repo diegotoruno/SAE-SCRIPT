@@ -4,6 +4,8 @@
 
 Panel de filtros y detector de huevos del mapa para Steal An Egg, integrado con un cargador de Chilli Hub y Server Hop.
 
+Para continuar el desarrollo, abre `SAE-SCRIPT.code-workspace` en Visual Studio Code. Empieza por [DEVELOPMENT.md](DEVELOPMENT.md) y [CONTEXT.md](CONTEXT.md); [ARCHITECTURE.md](ARCHITECTURE.md), [DECISIONS.md](DECISIONS.md), [TESTING.md](TESTING.md) y [WORKLOG.md](WORKLOG.md) conservan el resto del contexto. [AGENTS.md](AGENTS.md) orienta a los asistentes que trabajen en este proyecto.
+
 ## Cargar
 
 ```lua
