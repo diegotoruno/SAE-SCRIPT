@@ -1139,4 +1139,89 @@ test("device expired catalogue cannot reuse servers from the previous arrival", 
     clock(281)
     assert(native.Pick("current", {})[1].id == "two")
 end)
+local function requestFixture(shared, delay)
+    local clock, live, queued = 100, true, {}
+    local env = {now = function() return clock end, clock = function() return clock end,
+        spawn = function(callback) table.insert(queued, {at = clock + (delay or 0), callback = callback}) end,
+        wait = function(seconds)
+            clock += seconds
+            for index = #queued, 1, -1 do
+                if queued[index].at <= clock then local work = table.remove(queued, index); work.callback() end
+            end
+        end}
+    local transport = support.DeviceRequest(env, shared)
+    return transport, env, function() return live end, function() live = false end
+end
+test("account validation waits through the full saved sixty second cooldown", function()
+    local shared = {last = 100, cooldown = 160}
+    local transport, env, alive = requestFixture(shared)
+    local calls, updates = 0, {}
+    local page = transport.Run(function()
+        calls += 1; assert(env.now() >= 160); return {data = {}}, nil, 200
+    end, alive, function(state) table.insert(updates, state) end)
+    assert(page and calls == 1 and not shared.busy)
+    assert(updates[1].kind == "rate_limit" and updates[1].seconds == 60)
+    assert(env.now() >= 160 and env.now() < 161)
+end)
+test("normal spacing reports interval without inventing Roblox rate limiting", function()
+    local shared = {last = 100, cooldown = 0}
+    local transport, env, alive = requestFixture(shared)
+    local state
+    assert(transport.Run(function() assert(env.now() >= 115); return {data = {}}, nil, 200 end, alive,
+        function(value) state = state or value end))
+    assert(state.kind == "interval" and state.seconds == 15)
+    assert(not support.DeviceWaitMessage(state):find("429", 1, true))
+end)
+test("429 retry waits sixty seconds and retains a single request reservation", function()
+    local shared = {last = 0, cooldown = 0}
+    local transport, env, alive = requestFixture(shared)
+    local _, _, status = transport.Run(function() return nil, "rate limited", 429 end, alive)
+    assert(status == 429 and shared.cooldown >= 160 and not shared.busy)
+    local calls = 0
+    local page = transport.Run(function() calls += 1; assert(env.now() >= shared.cooldown); return {data = {}}, nil, 200 end, alive)
+    assert(page and calls == 1 and transport.State().lastHttpStatus == 200)
+end)
+test("pending native HTTP stays locked on timeout until it actually finishes", function()
+    local shared = {last = 0, cooldown = 0}
+    local transport, env, alive = requestFixture(shared, 45)
+    local calls = 0
+    local function send() calls += 1; return {data = {}}, nil, 200 end
+    local page, reason = transport.Run(send, alive)
+    assert(not page and shared.busy and calls == 0 and reason:find("executor", 1, true))
+    page, reason = transport.Run(send, alive)
+    assert(not page and calls == 0 and shared.busy and not reason:find("Roblox respondio HTTP 429", 1, true))
+    env.wait(15)
+    assert(calls == 1 and not shared.busy)
+end)
+test("executor exception and spawn failure release reservation without secret errors", function()
+    local shared = {last = 0, cooldown = 0}
+    local transport, env, alive = requestFixture(shared)
+    local page, reason = transport.Run(function() error("fake-secret") end, alive)
+    assert(not page and not shared.busy and not reason:find("fake-secret", 1, true))
+    shared.last = 0
+    env.spawn = function() error("fake-secret") end
+    page, reason = transport.Run(function() return {} end, alive)
+    assert(not page and not shared.busy and not reason:find("fake-secret", 1, true))
+end)
+test("cancelled initial validation during cooldown sends no credential", function()
+    local shared = {last = 100, cooldown = 160}
+    local transport, _, alive, cancel = requestFixture(shared)
+    local calls = 0
+    local page = transport.Run(function() calls += 1; return {} end, alive, function() cancel() end)
+    assert(not page and calls == 0 and not shared.busy)
+end)
+test("legacy pending request on rerun waits but never clears another reservation", function()
+    local shared = {last = 100, cooldown = 0, busy = true}
+    local transport, _, alive = requestFixture(shared)
+    local calls = 0
+    local page, reason = transport.Run(function() calls += 1; return {} end, alive)
+    assert(not page and shared.busy == true and calls == 0 and reason:find("executor", 1, true))
+end)
+test("completion cannot unlock an unrelated newer reservation", function()
+    local shared = {last = 0, cooldown = 0}
+    local transport, _, alive = requestFixture(shared)
+    local replacement = {started = 110}
+    assert(transport.Run(function() shared.busy = replacement; return {data = {}}, nil, 200 end, alive))
+    assert(shared.busy == replacement)
+end)
 print(string.format("%d regression tests passed", passed))

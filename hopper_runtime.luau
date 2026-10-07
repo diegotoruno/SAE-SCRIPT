@@ -243,6 +243,82 @@ local function createFinderSupport()
         end
         return nil, "No se pudo consultar Roblox. Revisa tu conexion.", status
     end
+    function support.DeviceRequest(env, shared)
+        local transport = {}
+        local function waiting()
+            local now = env.now()
+            if shared.busy then
+                local at = type(shared.busy) == "table" and shared.busy.started or nil
+                shared.pendingSince = shared.pendingSince or env.clock()
+                local elapsed = math.max(0, env.clock() - (at or shared.pendingSince))
+                return {kind = "pending", seconds = math.floor(elapsed)}
+            end
+            shared.pendingSince = nil
+            if now < (shared.cooldown or 0) then
+                return {kind = "rate_limit", seconds = math.ceil(shared.cooldown - now)}
+            end
+            if now < (shared.last or 0) + 15 then
+                return {kind = "interval", seconds = math.ceil(shared.last + 15 - now)}
+            end
+            return {kind = "ready", seconds = 0}
+        end
+        function transport.State()
+            local state = waiting()
+            state.lastHttpStatus = shared.lastHttpStatus
+            return state
+        end
+        function transport.Run(send, alive, progress)
+            -- A previous request plus a real 60s cooldown may exceed 35s.
+            local deadline = env.clock() + 95
+            while alive() do
+                local state = waiting()
+                if state.kind == "ready" then break end
+                if progress then pcall(progress, state) end
+                if state.kind == "pending" and state.seconds >= 30 then
+                    return nil, "El executor no termino la consulta anterior. Reinicia Roblox y ejecuta de nuevo.", nil
+                end
+                if env.clock() >= deadline then return nil, "La cola de consultas sigue ocupada. Reintenta cuando termine." end
+                env.wait(0.2)
+            end
+            if not alive() then return nil, "conexion cancelada" end
+            local token = {started = env.clock()}
+            shared.busy, shared.last = token, env.now()
+            if env.persist then pcall(env.persist, shared.last, shared.cooldown or 0) end
+            local done, page, reason, status = false, nil, nil, nil
+            local spawned = pcall(env.spawn, function()
+                local ok
+                ok, page, reason, status = pcall(send)
+                if not ok then
+                    page, reason, status = nil, "El executor no pudo completar la consulta a Roblox.", nil
+                end
+                if status == 429 then shared.cooldown = env.now() + 60 end
+                shared.lastHttpStatus = status
+                if env.persist then pcall(env.persist, shared.last, shared.cooldown or 0) end
+                -- A late completion releases only its own reservation.
+                if shared.busy == token then shared.busy = false; shared.pendingSince = nil end
+                done = true
+            end)
+            if not spawned then
+                if shared.busy == token then shared.busy = false end
+                return nil, "No se pudo iniciar la consulta en el executor."
+            end
+            deadline = env.clock() + 30
+            while alive() and not done and env.clock() < deadline do env.wait(0.1) end
+            if not alive() then return nil, "conexion cancelada" end
+            if not done then
+                -- Never unlock a native request that may still be running.
+                return nil, "El executor no termino la consulta. Reinicia Roblox si sigue pendiente."
+            end
+            return page, reason, status
+        end
+        return transport
+    end
+    function support.DeviceWaitMessage(state)
+        if state.kind == "rate_limit" then return string.format("Roblox respondio HTTP 429. Reintento en %d s...", state.seconds) end
+        if state.kind == "interval" then return string.format("Espaciando consultas. Continua en %d s...", state.seconds) end
+        if state.kind == "pending" then return string.format("Esperando la consulta anterior del executor (%d s)...", state.seconds) end
+        return "Comprobando la conexion con Roblox..."
+    end
     -- Native v2 paging on the user's device. A partial latency stream never
     -- establishes exhaustion of lower occupancy groups.
     function support.DeviceNative(env)
@@ -1027,46 +1103,32 @@ do
         if type(http) == "table" and type(http.request) == "function" then return http.request end
         return nil
     end
-    local function deviceFetch(orderBy, cursor, candidate)
+    local deviceTransport = support.DeviceRequest({now = os.time, clock = os.clock, wait = task.wait, spawn = task.spawn,
+        persist = function(last, cooldown)
+            writefile(DEVICE_GATE_FILE, HttpService:JSONEncode({last = last, cooldown = cooldown}))
+        end}, deviceGate)
+    local function deviceFetch(orderBy, cursor, candidate, progress)
         local generation = credentialGeneration
         if deviceFatal and not candidate then return nil, deviceFatal end
         local secret = candidate or deviceCookie.Read()
         if not secret then return nil, "Abre Cuenta / Best Ping y pega tu cookie." end
         local send = executorRequest()
         if not send then return nil, "Tu executor no ofrece request con headers." end
-        local deadline = os.clock() + 35
-        while session.alive and os.clock() < deadline do
-            if not deviceGate.busy and os.time() >= math.max(deviceGate.last + 15, deviceGate.cooldown) then break end
-            task.wait(0.2)
-        end
-        if not session.alive or generation ~= credentialGeneration then return nil, "conexion cancelada" end
-        if deviceGate.busy or os.time() < math.max(deviceGate.last + 15, deviceGate.cooldown) then
-            return nil, "Best Ping en pausa; espera el limite de Roblox."
-        end
-        deviceGate.busy, deviceGate.last = true, os.time()
-        pcall(function() writefile(DEVICE_GATE_FILE, HttpService:JSONEncode({last = deviceGate.last, cooldown = deviceGate.cooldown})) end)
-        local done, result, reason = false, nil, nil
-        task.spawn(function()
-            local status
-            result, reason, status = support.CookiePage({send = send,
+        local result, reason, status = deviceTransport.Run(function()
+            return support.CookiePage({send = send,
                 decode = function(raw) return HttpService:JSONDecode(raw) end,
                 encode = function(value) return HttpService:UrlEncode(value) end}, orderBy, cursor, secret)
-            secret = nil
-            if status == 429 then deviceGate.cooldown = os.time() + 60 end
-            if (status == 400 or status == 401 or status == 403 or status == 302)
-                and generation == credentialGeneration then deviceFatal = reason end
-            pcall(function() writefile(DEVICE_GATE_FILE, HttpService:JSONEncode({last = deviceGate.last, cooldown = deviceGate.cooldown})) end)
-            deviceGate.busy, done = false, true
-        end)
-        deadline = os.clock() + 30
-        while session.alive and not done and os.clock() < deadline do task.wait(0.1) end
-        if not session.alive or generation ~= credentialGeneration then return nil, "conexion cancelada" end
-        if not done then return nil, "La consulta tardo demasiado; espera antes de reintentar." end
-        return result, reason
+        end, function()
+            return session.alive and generation == credentialGeneration and (candidate ~= nil or not session.accountConnecting)
+        end, progress)
+        secret = nil
+        if (status == 400 or status == 401 or status == 403 or status == 302)
+            and generation == credentialGeneration then deviceFatal = reason end
+        return result, reason, status
     end
     local function resetDeviceNative()
         deviceNative = support.DeviceNative({now = os.time, fetch = deviceFetch,
-            alive = function() return session and session.alive end})
+            alive = function() return session and session.alive and not session.accountConnecting end})
     end
     resetDeviceNative()
     local function fetchServers(cursor)
@@ -1729,7 +1791,7 @@ do
         GetStatus = function()
             return { active = autoEnabled and session.alive, jobId = game.JobId,
                 serverConnection = {orderBy = serverOrder, transport = connectionConfig.transport or "LocalBridge",
-                    credential = deviceCookie.Status(), native = support.Copy(nativeStatus)},
+                    credential = deviceCookie.Status(), request = deviceTransport.State(), native = support.Copy(nativeStatus)},
                 mode = session.searchMode, cycle = eggSearch.CycleStatus(),
                 config = support.Copy(eggSearch.config), lastScan = eggSearch.lastScan and {
                     match = support.Copy(eggSearch.lastScan.match), info = support.Copy(eggSearch.lastScan.info),
@@ -1807,7 +1869,8 @@ do
             if not session.alive then return end
             uiAccess(); fit(); panel.Visible = true; entry.Visible = false
             local state = deviceCookie.Status()
-            message.Text = state.configured and (state.remembered and "Conectada en este dispositivo." or "Conectada solo en esta sesion.")
+            message.Text = connecting and support.DeviceWaitMessage(deviceTransport.State())
+                or state.configured and (state.remembered and "Conectada en este dispositivo." or "Conectada solo en esta sesion.")
                 or "Pega tu cookie para conectar tu propia cuenta."
         end
         local function hide()
@@ -1830,11 +1893,18 @@ do
             if not executorRequest() then message.Text = "Este executor no ofrece request con headers."; return end
             local candidate = draft; draft = nil
             input:ReleaseFocus(); mask.Text = "Cookie recibida (oculta)"
-            connecting = true; save.Active = false; once.Active = false
+            connecting = true; session.accountConnecting = true; save.Active = false; once.Active = false
             setAuto(false); uiAccess(); message.Text = "Comprobando la conexion con Roblox..."
             task.spawn(function()
                 local generation = credentialGeneration
-                local page, reason = deviceFetch("BestLatency", nil, candidate)
+                local page, reason, status
+                for attempt = 1, 2 do
+                    page, reason, status = deviceFetch("BestLatency", nil, candidate, function(state)
+                        if not session.alive or generation ~= credentialGeneration then return end
+                        uiAccess(); message.Text = support.DeviceWaitMessage(state)
+                    end)
+                    if status ~= 429 or attempt == 2 then break end
+                end
                 if not session.alive or generation ~= credentialGeneration then candidate = nil; return end
                 local ok = false
                 if page then
@@ -1845,21 +1915,25 @@ do
                         if not ok then reason = "No se pudo guardar el modo de conexion. Reintenta." end
                     end
                 end
-                candidate = nil; connecting = false
+                -- Retain a failed attempt only while the form stays open,
+                -- so an interval or cooldown never requires another paste.
+                uiAccess()
+                if not ok and panel.Visible then draft = draft or candidate end
+                candidate = nil; connecting = false; session.accountConnecting = false
                 uiAccess(); save.Active = true; once.Active = true
                 if ok then
                     credentialGeneration += 1; deviceFatal = nil; serverOrder = "BestLatency"; resetDeviceNative()
                     nativeStatus = {state = "connected"}; hide(); setAuto(true)
                 else
                     message.Text = reason or "No se pudo conectar. Pega la cookie y reintenta."
-                    mask.Text = "Toca aqui y pega la cookie completa"
+                    mask.Text = draft and "Cookie recibida (oculta); puedes reintentar" or "Toca aqui y pega la cookie completa"
                 end
             end)
         end
         connect(save.Activated, function() activate(true) end)
         connect(once.Activated, function() activate(false) end)
         connect(forget.Activated, function()
-            credentialGeneration += 1; draft = nil; connecting = false; setAuto(false)
+            credentialGeneration += 1; draft = nil; connecting = false; session.accountConnecting = false; setAuto(false)
             local removed = deviceCookie.Forget()
             deviceFatal = nil; resetDeviceNative()
             -- Leave the selected transport enabled: an absent cookie waits;
@@ -1877,7 +1951,7 @@ do
             local state = deviceCookie.Status()
             return {open = panel.Visible, launcherVisible = entry.Visible, configured = state.configured, remembered = state.remembered}
         end
-        session.DisposeAccount = function() draft = nil end
+        session.DisposeAccount = function() draft = nil; session.accountConnecting = false end
         fit()
         if connectionConfig.transport ~= "LocalBridge" and not deviceCookie.Status().configured
             and connectionConfig.mode ~= "BestLatency" then show()
@@ -1895,6 +1969,7 @@ do
         local now = os.time()
         if serverOrder == "BestLatency" then
             if connectionConfig.transport == "DeviceCookie" then
+                if session.accountConnecting then return nil, "conectando la cuenta; espera la comprobacion" end
                 if nativeRequestBusy then return nil, "consulta Best Ping en curso" end
                 nativeRequestBusy = true
                 local generation = credentialGeneration

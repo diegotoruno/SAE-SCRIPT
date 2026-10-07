@@ -2,6 +2,7 @@
 
 | Decision | Motivo y consecuencia |
 | --- | --- |
+| Separar pausa propia, HTTP 429 y peticion pendiente | Usuario observa pausa al guardar desde Delta. La espera anterior de 35s no cubria cooldown 60s y descartaba el borrador. Prioridad a validacion, contador, un reintento 429 y borrador en memoria mientras formulario abierto. Una peticion colgada sigue bloqueada hasta terminar, sin forzar duplicados. |
 | Cookie propia introducida en Delta/Potassium | Usuario quiere probar iPad como otra persona. Peticion directa al host Roblox desde cada dispositivo; el autor no recibe credenciales. No requiere su PC. |
 | Guardado opcional local por cuenta y sin cifrado | Executor movil no ofrece almacen cifrado verificado. Guardar y usar AUTO informa el alcance; solo sesion no persiste al hop. Borrar elimina/sobrescribe el secreto y apaga AUTO, sin fallback. |
 | Launcher fijo y segunda entrada en Opciones | Cerrar por accidente debe permitir reabrir, independientemente de plegado/arrastre del hopper. |

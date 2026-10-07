@@ -2,6 +2,8 @@
 
 ## Cuenta del usuario en el dispositivo
 
+`DeviceRequest` coordina reservas de peticiones con token compartido, intervalo 15s, cooldown 60s tras 429 y espera de cola hasta 95s. Una peticion nativa que excede 30s no libera la reserva hasta terminar; pcall asegura limpieza ante excepciones. `accountConnecting` detiene consultas de fondo y da prioridad a la validacion inicial. El formulario muestra progreso, reintenta una vez ante 429 y conserva borrador oculto si falla y sigue abierto. `serverConnection.request` permite diagnostico sanitizado; no confundir intervalo/pendiente con 429. Los callbacks de progreso restauran identidad antes de acceder a UI.
+
 `hopper_runtime.luau` agrega helpers testables NormalizeCookie, DeviceCookie, CookiePage y DeviceNative. Transporte `DeviceCookie` consulta v2 desde el executor y conserva la prioridad 1..6/BestLatency con prueba OccupancyAsc. Sin cookie/ante rechazo espera, sin bridge/fallback. Cookie aislada en closure y archivo opcional `sae_account_cookie_<UserId>.json` sin cifrado ni backups; no usa Store. GetStatus solo expone booleanos; API OpenServerAccount/CloseServerAccount/ServerAccountStatus no entrega secretos. Launcher fijo fuera de Holder y acceso desde opciones del panel. Callbacks restauran identidad y pertenecen a la sesion. DisposeAccount elimina borrador; Destroy limpia credencial en memoria y conexiones; el archivo recordado permanece hasta borrado explicito. Gate sanitizado guarda cooldown/ultima consulta entre hops, nunca credenciales. Mantener autoexec de la misma candidata.
 
 ## Seleccion de servidores en pruebas

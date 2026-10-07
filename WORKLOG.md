@@ -1,5 +1,11 @@
 # Estado del trabajo
 
+## 2026-10-07 - Espera al guardar cookie en Delta
+
+- Usuario reporta pausa y confirma trigger Guardar y usar AUTO. Mensaje provenia del gate propio y no confirma 429. Hallado deadline 35s menor que cooldown 60s y perdida de borrador al fallar comprobacion.
+- Implementado DeviceRequest testable con token/reserva, progreso distinguido entre intervalo/429/pendiente y manejo de excepciones. Cola hasta 95s; request nativo que excede 30s mantiene bloqueo hasta terminar, sin duplicados. Guardar suspende prefetch, reintenta una vez ante 429, conserva borrador oculto con formulario abierto y expone solo estado sanitizado.
+- Build/compilacion y 125 regresiones correctos. Ocho casos nuevos prueban cooldown completo/intervalo/reintento/timeout/excepciones/cancelacion/legacy busy/finalizacion tardia. Auth de Delta pendiente, PR #10 mantiene borrador y stable no cambia.
+
 ## 2026-10-07 - Cookie local por usuario y formulario recuperable
 
 - Usuario requiere opcion en Delta/iPad y Potassium, sin acceso del autor a cookies. Implementado transporte directo optativo DeviceCookie, validacion BestLatency antes de guardar, persistencia por UserId solo tras Guardar y usar AUTO, sesion sin guardado y borrar/desconectar. Archivo local sin cifrado explicitado en formulario; nunca API/logs/teleport/bridge/Git.

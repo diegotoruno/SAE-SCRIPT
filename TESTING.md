@@ -1,5 +1,11 @@
 # Pruebas y validacion
 
+## Pausa inicial de Guardar y usar AUTO (2026-10-07)
+
+Usuario observa el mensaje de pausa en Delta al pulsar Guardar y usar AUTO. No hay evidencia de HTTP 429 ni de autenticacion aceptada. Regresion reproducible del codigo: espera de 35s incompatible con cooldown de 60s. Build/compilacion y 125 regresiones pasan (117 anteriores + ocho nuevas): cooldown completo/restaurado, intervalo distinguido de 429, reintento espaciado, request pendiente/timeout sin desbloqueo falso, excepciones/errores al iniciar sin secreto, cancelacion antes de enviar, busy legacy tras reejecucion y finalizacion tardia que no libera otra reserva. Tiempo/scheduler inyectados, sin dormir ni cookies/red/teleports.
+
+Formulario ahora prioriza comprobacion sobre prefetch, muestra contador/motivo y conserva borrador oculto si falla con ventana abierta. Delta debe confirmar la nueva comprobacion inicial y continuidad; no se declara corregida una causa interna del executor ni autenticacion real. Si request nativo sigue colgado, el texto pide reiniciar Roblox en vez de atribuirlo al rate limit.
+
 ## Cuenta propia y reapertura (2026-10-07)
 
 Build/compilacion y 117 regresiones Luau pasan; diez tests Python del bridge siguen pasando. Nueve regresiones nuevas cubren formato de cookie, persistencia explicita por cuenta entre instancias, sesion sin guardado, borrado/fallo de disco, destino fijo Roblox/headers solo BestLatency, errores/redirecciones sin secreto, prioridad de ocupacion/orden nativo, lista parcial, cursor repetido/cancelacion y expiracion del catalogo.
