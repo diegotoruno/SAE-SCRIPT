@@ -2,7 +2,7 @@
 
 ## Espera de carga antes del hop (2026-10-07)
 
-Diez regresiones adicionales usan un reloj inyectado para reproducir llegada con memoria y snapshot vacio temprano, huevos tardios, juego sin cargar, cambios con el mismo conteo o record, replicacion continua, scans frescos repetidos, perdida/error del snapshot, renovacion entre polls, revision del campo, catalogo/ingreso incompleto y exclusiones no Slot. No duermen ni modifican un cliente real.
+Doce regresiones adicionales usan un reloj inyectado: diez reproducen llegada con memoria y snapshot vacio temprano, huevos tardios, juego sin cargar, cambios con el mismo conteo o record, replicacion continua, scans frescos repetidos, perdida/error del snapshot, renovacion entre polls, revision del campo, catalogo/ingreso incompleto y exclusiones no Slot; dos verifican coincidencias superiores y continuidad de la rareza minima sin evitar la espera del destino. No duermen ni modifican un cliente real.
 
 Potassium, cliente conectado de Windows: reejecucion con AUTO, primera decision a los 10,1s; salto automatico real con Common insuficiente despues de 10,1s; llegada con snapshot ausente y otros 10,03s desde la lectura valida (ready a 21,67s desde el autoexec), sin segundo salto. Coincidencia Common real con filtro temporal: AUTO se apago y se conservo el servidor. Renovacion natural: loading durante noche y snapshot pendiente, otros 10,08s tras los datos nuevos y wait en el mismo servidor.
 
@@ -17,7 +17,7 @@ Mapa/juego/scan/panel coinciden en 65 Slot en esa captura; una GUI, sesion anter
 
 Se compilan fuentes, punto de entrada, loader, tests y bundle integrado. El CLI oficial Luau 0.741 se descarga y verifica por SHA256. No se ejecuta el bundle de Roblox en el CLI; se ejecuta solo `ci_tests.luau` con un entorno controlado.
 
-Las 80 regresiones incluyen los 68 casos anteriores del detector, filtros, caches, persistencia y soporte de teleport y 12 casos de rareza minima. Se conservan sufijos y limites exactos, rarezas reales, Slot como unica fuente y rechazo de datos incompletos.
+Las 92 regresiones incluyen los 68 casos anteriores del detector, filtros, caches, persistencia y soporte de teleport, 12 casos de rareza minima y 12 de carga/integracion. Se conservan sufijos y limites exactos, rarezas reales, Slot como unica fuente y rechazo de datos incompletos.
 
 Los 18 casos adicionales prueban huevo robado/ausente tras observar la rareza, persistencia entre instancias, expiracion al inicio de noche y reset durante desconexion, cambios de filtros/rareza/overrides, reloj desconocido/pausado, memoria futura/corrupta, fallos al guardar, snapshots del periodo anterior y reset durante scan, sesiones destruidas, recuperacion por conexion nueva, timeout bloqueado, fallo de cierre de pending y cancelacion antes de enviar. Desconexiones/fallos se simulan con adapters offline; no se fuerzan expulsiones o fallos de red del cliente.
 

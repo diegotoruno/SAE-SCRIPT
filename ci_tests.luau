@@ -667,6 +667,9 @@ test("AUTO calculates higher eggs with the panel closed and invalidates caches",
     local finder, state = minimumFixture()
     state.records = {egg("d", 7e9)}
     local match, info = finder.Scan()
+    assert(not info.ready and match == nil)
+    loadClock += 10
+    match, info = finder.Scan()
     assert(info.ready and match.rarity == "Divine" and state.reads == 1)
     finder.Scan(); assert(state.reads == 1)
     state.records[1].rate = 6999999999
@@ -679,6 +682,9 @@ end)
 test("fresh hop verification recomputes the higher egg exact income", function()
     local finder, state = minimumFixture()
     state.records = {egg("d", 7e9)}
+    local match, info = finder.Scan()
+    assert(not info.ready and match == nil)
+    loadClock += 10
     assert(finder.Scan().rarity == "Divine" and state.reads == 1)
     assert(finder.Scan(true).rarity == "Divine" and state.reads == 2)
 end)
@@ -686,6 +692,9 @@ test("map snapshot includes higher matches and the correct reason", function()
     local finder, state = minimumFixture()
     state.records = {egg("d", 7e9), egg("c", 99e9, "common")}
     local snapshot = finder.MapSnapshot()
+    assert(not snapshot.info.ready and snapshot.match == nil)
+    loadClock += 10
+    snapshot = finder.MapSnapshot()
     assert(snapshot.info.ready and snapshot.match.rarity == "Divine" and #snapshot.rows == 2)
     for _, row in ipairs(snapshot.rows) do
         if row.uid == "d" then assert(row.match and row.reason == "Cumple todos los filtros")
