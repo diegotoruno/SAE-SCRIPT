@@ -20,7 +20,11 @@ No se mantiene el bundle manualmente. `dist/` es generado y esta ignorado por Gi
 
 `Evaluate(records, directory, incomeFor, filters)` no usa Roblox directamente. Normaliza filtros, recorre solo Slot, verifica rareza, nombre literal, mutaciones y categorias exactas, calcula ingresos y ordena coincidencias. Devuelve mejor candidato, conteos y todas las coincidencias.
 
-`Decide(match, info)` devuelve `match`, `loading`, `hop` o `wait`. `Scan()` obtiene snapshot y calcula datos con los modulos reales, evitando la fase de noche y snapshots pendientes. Un fallo de datos espera en vez de saltar sin evidencia.
+`Decide(match, info, cycle)` devuelve `match`, `loading`, `hop` o `wait`. Ademas de la presencia local, conserva una observacion de la rareza seleccionada para continuar cuando falta en otro servidor. `Scan()` obtiene snapshot y calcula datos con los modulos reales, evitando noche y snapshots pendientes. Un fallo de datos espera; si el ciclo cambia durante el scan se descarta esa lectura.
+
+`chilli_egg_search_cycle.json` guarda version, rareza, periodIndex, nextReset, periodSeconds, nightSeconds, seenAt y untilTime. La ventana termina al empezar la noche siguiente (`nextReset - nightSeconds`). Cambio de rareza, periodo u overrides, datos futuros/corruptos o expiracion invalidan esa memoria. Un reloj desconocido/pausado espera; cambiar minimo/especies conserva la observacion de la misma rareza. El guardado usa la persistencia verificada existente y no se repite en cada poll. `GetStatus().searchWindow` devuelve una copia de lo guardado; su existencia no demuestra vigencia ni presencia actual.
+
+La cache de analisis incorpora el ciclo para no trasladar decisiones entre periodos sin senal de renovacion. La informacion de scan incluye el reloj capturado antes de leer los records; Decide rechaza un snapshot del periodo anterior. El panel distingue busqueda vigente sin rareza local de espera inicial.
 
 El runtime coordina AUTO, revisa otra vez antes del teleport y conserva estado entre servidores. Un teleport ya enviado no se puede retirar; la decision nueva se aplica antes del siguiente intento y al llegar al destino.
 
@@ -76,6 +80,8 @@ El soporte del runtime esta entre los marcadores `BEGIN/END TESTABLE SUPPORT` de
 Los guardados verifican un temporal y el archivo final y conservan la version anterior valida en `.bak`. La lectura recupera esa copia si el principal es invalido y conserva una cache en memoria; sus consumidores reciben copias. No se promete rename atomico: se usan readfile/writefile del executor. Si no se puede guardar el estado pendiente, no se envia el teleport. El historial elimina entradas vencidas y limita a 500 las anteriores al nuevo registro.
 
 Cada intento posee conexion de fallo, destino, jugador e ID. Un error inmediato se procesa sin esperar el timeout. Un intento sin confirmar conserva `pending/unconfirmed`; AUTO sigue observando el mapa pero no envia otro salto hasta una llegada confirmada o un clic manual en Server Hop. Reejecutar en el mismo servidor no equivale a llegar al destino. Stop/destruccion limpian conexiones; un teleport ya enviado no se puede retirar. Durante renovaciones se observa ese intento y antes del siguiente se repite la decision con datos nuevos.
+
+Los intentos guardan tambien originConnection. El ID del entorno del cliente permanece durante reejecuciones y cambia al reiniciarse ese entorno. `TeleportDisposition` distingue llegada, reconexion al origen y reejecucion en la misma conexion. Tras reconectar al origen se espera snapshot/reloj antes de cerrar pending; el registro se vuelve a comprobar para no borrar un intento nuevo. Si no se demuestra la conexion nueva se mantiene el bloqueo. Se conserva AUTO y la ventana de busqueda, sin instalar una reconexion ni interceptar expulsiones.
 
 La API agrega `Presets()`, `SavePreset(name, config)`, `LoadPreset(name)`, `DeletePreset(name)`, `Alerts()`, `ConfigureAlerts({notification, sound})` y `TestAlert()`. Los presets guardan filtros exactos, hasta 20 nombres. Cargar devuelve una configuracion validada sin aplicarla; el panel la deja pendiente de Aplicar. Las preferencias viven en `chilli_egg_preferences.json`; notificacion activa y sonido desactivado por defecto. Detalle muestra motivo de exclusion e ingreso sin abreviar.
 

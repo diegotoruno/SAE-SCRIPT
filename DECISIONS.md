@@ -4,7 +4,9 @@
 | --- | --- |
 | Solo huevos libres del mapa | El usuario excluyo bases. Usar FieldEggs/Slot, sin inventarios ni PlotState como fuente de candidatos. |
 | Divine y minimo 7B/s por defecto | Requisito original; el panel permite ajustar los filtros sin alterar la precision de comparacion. |
-| Sin Divine esperar, con Divine insuficiente hop | Flujo final expresado por el usuario. No saltar simplemente porque no haya coincidencia. |
+| Sin Divine ni observacion vigente esperar; Divine insuficiente inicia hops | Una observacion en ese ciclo permite continuar aunque falte en otro servidor por robo/recogida. No inventar presencia actual ni aceptar bases/inventarios como evidencia. |
+| Recordar rareza hasta empezar la noche siguiente | Mitiga huevo ausente y desconexion durante hop sin arrastrar decisiones al ciclo nuevo. Usar reloj y overrides reales. |
+| Recuperar pendiente solo con prueba de llegada/reconexion | JobId diferente o nuevo ID de conexion permiten recuperacion. Reejecutar en la misma conexion no habilita otro salto de AUTO. |
 | Reset durante hop repite el ciclo | Reemplaza el requisito anterior de detenerse totalmente al reset. |
 | Reloj y snapshots del juego | La noche observada dura 10s en un periodo 300s; un temporizador local puede desincronizarse. |
 | Ingreso sin boosts personales | Comparar caracteristicas del egg de forma consistente entre servidores. |
