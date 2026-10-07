@@ -59,7 +59,7 @@ El ingreso previsto incluye escala y mutaciones; excluye bonos personales y boos
 
 ## Panel
 
-**EGG FILTERS** abre el panel. La lista principal muestra exclusivamente huevos actuales del mapa, con imagen o modelo, ingreso, rareza, escala, peso, mutaciones y zona.
+**EGG FILTERS** abre el panel. **Alt izquierdo** alterna abrir/cerrar el panel, tambien cuando estas editando un filtro. La lista principal muestra exclusivamente huevos actuales del mapa, con imagen o modelo, ingreso, rareza, escala, peso, mutaciones y zona.
 
 **Elegir especies** abre un catalogo separado para configurar filtros. **Aplicar filtros** guarda rareza exacta, ingreso minimo por segundo, mutacion, nombre y especies elegidas. El selector de rareza usa solo las rarezas con especies en el catalogo del juego, en orden de su rango real.
 

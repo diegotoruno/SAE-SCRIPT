@@ -55,6 +55,8 @@ Los helpers `uiAccess()`/`access()` elevan la identidad para CoreGui. Funciones 
 
 `getgenv().__CHILLI_HOPPER_SESSION.Destroy()` elimina la sesion anterior, conexiones, loops y panel al volver a ejecutar. El loader de Chilli evita cargarlo dos veces en el mismo servidor. Conservar estos contratos al cambiar la UI o el arranque.
 
+El atajo LeftAlt del panel usa UserInputService.InputBegan y las mismas funciones Open/Close que los botones. Su conexion se registra con `connect` y se desconecta en Destroy para no duplicar alternancias al reejecutar. Respeta el helper de identidad y la persistencia existente; no aplica filtros ni cambia AUTO.
+
 ## CI/CD
 
 La validacion genera el bundle y lo compila, junto con todas las fuentes y cargadores. Ejecuta las pruebas sin Roblox. El artefacto aprobado pasa al job de publicacion: se verifica su checksum y que el commit siga siendo el actual de `main`, luego se hace un push normal a `stable` y se crea una release `build-N-SHA`.
