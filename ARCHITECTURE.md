@@ -63,6 +63,10 @@ Los helpers `uiAccess()`/`access()` elevan la identidad para CoreGui. Funciones 
 
 El atajo LeftAlt del panel usa UserInputService.InputBegan y las mismas funciones Open/Close que los botones. Su conexion se registra con `connect` y se desconecta en Destroy para no duplicar alternancias al reejecutar. Respeta el helper de identidad y la persistencia existente; no aplica filtros ni cambia AUTO.
 
+## Estilo del panel
+
+El estilo del Egg Finder se documenta en `DESIGN.md`: paleta grafito/champan, Gotham, tarjetas de 116px y separacion de 8px. Canvas, posiciones y ventana virtual comparten esas constantes. La respuesta de borde dura 120ms y los tweens se cancelan al destruir el control; seleccion de teclado y datos se actualizan inmediatamente. Se conservan presets, alertas, Alt, detalle de ingreso exacto y reintentos de recursos visuales. El callback de mutaciones restaura identidad despues de LabelOf antes de acceder a CoreGui.
+
 ## CI/CD
 
 La validacion genera el bundle y lo compila, junto con todas las fuentes y cargadores. Ejecuta las pruebas sin Roblox. El artefacto aprobado pasa al job de publicacion: se verifica su checksum y que el commit siga siendo el actual de `main`, luego se hace un push normal a `stable` y se crea una release `build-N-SHA`.

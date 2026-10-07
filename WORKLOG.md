@@ -1,5 +1,14 @@
 # Estado del trabajo
 
+## 2026-10-07 - UI integrada sobre build 21
+
+- Integrado el estilo pendiente del Egg Finder en `codex/ui-integrada`, worktree aislado `verification/ui-publish`, sobre main `ff8ea38`. Solo se modifica el panel y su documentacion; detector y runtime permanecen identicos a build 21, con rareza minima inclusiva y espera de carga.
+- Conservados formatos exactos k/m/b/t/q, Alt, presets, alertas, orden, detalle, cache y virtualizacion. Tarjetas/canvas comparten altura de 116px y separacion de 8px. Color de rareza ajustado a contraste 4.5:1; callbacks restablecen identidad antes de CoreGui.
+- Build y compilacion correctos; 92 regresiones pasan. Candidata final de 170351 bytes, SHA256 `27fed6f3dace4f99a5c7a9c48d9463b9ea0830a77f049ba6350da30481efa10b`.
+- Potassium: revision visual del mapa, catalogo, presets/alertas y modelos al 80%; 15 comprobaciones de API/lifecycle y reejecucion final sin errores de panel. 65 Slot, seis tarjetas renderizadas; extremo de lista correcto y reutilizacion sin recrear tarjetas/modelos en snapshot identico.
+- Restaurados filtros, AUTO, preferencias y archivos de UI/presets/alertas; retirada conexion temporal de escalado. Una GUI, sesion antigua detenida y cero conexiones anteriores; Chilli existente reutilizado segun log. El bundle final queda activo en Windows. Capturas y reporte privados en verification/, fuera de Git.
+- Un auxiliar tuvo un error de identidad al editar un campo despues de GetStatus; se restauro identidad y se repitio correctamente. No se borraron logs ni se simularon inputs. La revision al 80% no equivale a una prueba en iPad; clics/gestos y Alt fisicos no se automatizaron. Pendiente PR/CI/CD y comprobacion de descarga publica.
+
 ## 2026-10-07 - Espera de carga antes de continuar el hop
 
 - Scan exige juego cargado, lectura valida, minimo 10s desde esa lectura y 3s sin cambios Slot/catalogo/revision. La memoria guardada no evita la barrera; renovar, perder datos o fallar ingresos la reinicia. Conserva ingreso exacto, fuentes Slot, filtros y flujo del ciclo.

@@ -3,18 +3,23 @@ local function mountEggFilterPanel(context)
     local search, api, session = context.search, context.api, context.session
     local readJson, writeJson = context.readJson, context.writeJson
     local UIS = game:GetService("UserInputService")
+    local TweenService = game:GetService("TweenService")
     local FILE = "chilli_egg_panel_ui.json"
     local saved = readJson(FILE, {})
-    local panel = { alive = true, open = saved.open ~= false, view = "map", cards = 0 }
+    local panel: { [string]: any } = { alive = true, open = saved.open ~= false, view = "map", cards = 0 }
     local onlyMatches = saved.onlyMatches == true
     local connections = {}
+    -- Paleta compartida: acento para acciones, colores semanticos para estados.
     local C = {
-        bg = Color3.fromRGB(25, 27, 36), card = Color3.fromRGB(40, 43, 55),
-        input = Color3.fromRGB(20, 22, 30), border = Color3.fromRGB(83, 88, 110),
-        white = Color3.fromRGB(247, 249, 255), muted = Color3.fromRGB(171, 180, 201),
-        green = Color3.fromRGB(122, 255, 40), red = Color3.fromRGB(245, 54, 64),
-        cyan = Color3.fromRGB(69, 201, 255), gold = Color3.fromRGB(255, 226, 80),
+        bg = Color3.fromRGB(20, 24, 30), card = Color3.fromRGB(30, 36, 44),
+        input = Color3.fromRGB(16, 20, 26), border = Color3.fromRGB(56, 65, 77),
+        white = Color3.fromRGB(239, 243, 247), muted = Color3.fromRGB(170, 183, 197),
+        green = Color3.fromRGB(147, 215, 191), red = Color3.fromRGB(240, 152, 159),
+        cyan = Color3.fromRGB(174, 206, 229), gold = Color3.fromRGB(224, 197, 149),
+        selected = Color3.fromRGB(38, 53, 53), success = Color3.fromRGB(28, 46, 43),
+        onAccent = Color3.fromRGB(35, 29, 20), onSuccess = Color3.fromRGB(15, 35, 29),
     }
+    local PANEL_WIDTH, PANEL_HEIGHT, ROW_HEIGHT, ROW_GAP = 540, 700, 116, 8
     local function access() if type(setthreadidentity) == "function" then setthreadidentity(8) end end
     access()
     local function make(class, name, parent, properties)
@@ -25,7 +30,7 @@ local function mountEggFilterPanel(context)
         object.Parent = parent
         return object
     end
-    local function corner(object, radius) make("UICorner", "Round", object, { CornerRadius = UDim.new(0, radius or 6) }) end
+    local function corner(object, radius) make("UICorner", "Round", object, { CornerRadius = UDim.new(0, radius or 8) }) end
     local function stroke(object, color, thickness)
         return make("UIStroke", "Border", object, { Color = color or C.border, Thickness = thickness or 1, ApplyStrokeMode = Enum.ApplyStrokeMode.Border })
     end
@@ -33,23 +38,84 @@ local function mountEggFilterPanel(context)
         return make("TextLabel", name, parent, {
             BackgroundTransparency = 1, Position = UDim2.fromOffset(x, y), Size = UDim2.fromOffset(width, height),
             Text = value, TextColor3 = color or C.white, TextSize = size or 14,
-            Font = bold and Enum.Font.FredokaOne or Enum.Font.GothamMedium,
+            Font = bold and Enum.Font.GothamBold or Enum.Font.GothamMedium,
             TextXAlignment = Enum.TextXAlignment.Left, TextTruncate = Enum.TextTruncate.AtEnd,
-            TextStrokeColor3 = Color3.new(), TextStrokeTransparency = bold and 0.35 or 1,
+            TextStrokeTransparency = 1,
         })
+    end
+    -- Solo se anima la respuesta al puntero; listas, ingresos y reloj son inmediatos.
+    -- Estas conexiones pertenecen al objeto, se retiran al destruir tarjetas/popups.
+    local function interaction(object)
+        local border = object:FindFirstChild("Border")
+        local tween
+        local function feedback(transparency, animate)
+            if not panel.alive or not session.alive then return end
+            access()
+            if tween then tween:Cancel(); tween = nil end
+            if animate then
+                tween = TweenService:Create(border, TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { Transparency = transparency })
+                tween:Play()
+            else border.Transparency = transparency end
+        end
+        border.Transparency = 0.45
+        object.MouseEnter:Connect(function() if UIS.MouseEnabled then feedback(0, true) end end)
+        object.MouseLeave:Connect(function() feedback(0.45, true) end)
+        object.SelectionGained:Connect(function() feedback(0, false) end)
+        object.SelectionLost:Connect(function() feedback(0.45, false) end)
+        object.Destroying:Connect(function() access(); if tween then tween:Cancel(); tween = nil end end)
     end
     local function button(name, parent, value, x, y, width, height, color)
         local object = make("TextButton", name, parent, {
             Position = UDim2.fromOffset(x, y), Size = UDim2.fromOffset(width, height),
             BackgroundColor3 = color or C.card, BorderSizePixel = 0, Text = value,
-            TextSize = 15, Font = Enum.Font.FredokaOne, TextColor3 = C.white,
-            TextStrokeTransparency = 0.35, TextStrokeColor3 = Color3.new(), AutoButtonColor = true,
+            TextSize = 12, Font = Enum.Font.GothamMedium, TextColor3 = C.white,
+            TextStrokeTransparency = 1, TextTruncate = Enum.TextTruncate.AtEnd, AutoButtonColor = true,
         })
-        corner(object); stroke(object)
+        corner(object); stroke(object); interaction(object)
         return object
     end
+    local function paint(object, background, foreground, borderColor)
+        access()
+        object.BackgroundColor3 = background
+        object.TextColor3 = foreground or C.white
+        object.Border.Color = borderColor or C.border
+    end
+    -- Geometria nativa: evita depender de glifos que faltan en algunas fuentes.
+    local function line(parent, name, x, y, width, rotation, color, zIndex)
+        return make("Frame", name, parent, { AnchorPoint = Vector2.new(0.5, 0.5),
+            Position = UDim2.fromOffset(x, y), Size = UDim2.fromOffset(width, 1.5),
+            Rotation = rotation or 0, BackgroundColor3 = color or C.muted,
+            BorderSizePixel = 0, ZIndex = zIndex or parent.ZIndex })
+    end
+    local function selectionIcon(parent, selected, x, y, zIndex)
+        local mark = make("Frame", "SelectionMark", parent, { Position = UDim2.fromOffset(x, y),
+            Size = UDim2.fromOffset(24, 24), BackgroundTransparency = 1, ZIndex = zIndex or parent.ZIndex })
+        local short = line(mark, "Short", 8, 12, 6, 0, C.muted, mark.ZIndex)
+        local long = line(mark, "Long", 12, 12, 12, 90, C.muted, mark.ZIndex)
+        local function update(value)
+            access()
+            short.Position = UDim2.fromOffset(value and 8 or 12, value and 13 or 12)
+            short.Size = UDim2.fromOffset(value and 6 or 12, 1.5); short.Rotation = value and 45 or 0
+            long.Position = UDim2.fromOffset(value and 14 or 12, value and 11 or 12)
+            long.Rotation = value and -45 or 90
+            short.BackgroundColor3 = value and C.green or C.muted
+            long.BackgroundColor3 = short.BackgroundColor3
+        end
+        update(selected)
+        return update
+    end
+    local function chevron(object)
+        for index, rotation in ipairs({45, -45}) do
+            local segment = line(object, "Chevron" .. index, 0, 0, 6, rotation, C.muted)
+            segment.Position = UDim2.new(1, index == 1 and -18 or -14, 0.5, 0)
+        end
+        make("UIPadding", "ChevronSpace", object, { PaddingRight = UDim.new(0, 20), PaddingLeft = UDim.new(0, 4) })
+    end
     local function connect(signal, callback)
-        local c = signal:Connect(function(...) access(); callback(...) end)
+        local c = signal:Connect(function(...)
+            if not panel.alive or not session.alive then return end
+            access(); callback(...)
+        end)
         table.insert(connections, c)
         return c
     end
@@ -83,65 +149,72 @@ local function mountEggFilterPanel(context)
     if visual ~= "eggs" and visual ~= "pets" and visual ~= "models" then visual = "eggs" end
     local sortBest, filtersOpen = saved.sortBest ~= false, saved.filtersOpen ~= false
     local root = make("Frame", "EggFilterPanel", context.screenGui, {
-        Size = UDim2.fromOffset(540, 700), Position = UDim2.fromOffset(800, 70),
+        Size = UDim2.fromOffset(PANEL_WIDTH, PANEL_HEIGHT), Position = UDim2.fromOffset(800, 70),
         BackgroundColor3 = C.bg, BorderSizePixel = 0, Visible = panel.open, Active = true,
         ClipsDescendants = true, ZIndex = 10,
     })
-    corner(root, 9); stroke(root, C.border, 2)
+    corner(root, 14); stroke(root, C.border)
     local scale = make("UIScale", "ResponsiveScale", root, { Scale = 1 })
-    local launcher = button("OpenEggFilters", context.screenGui, "EGG FILTERS", 0, 0, 150, 36, C.red)
+    local launcher = button("OpenEggFilters", context.screenGui, "EGG FILTERS", 0, 0, 150, 38, C.card)
+    paint(launcher, C.card, C.gold)
     launcher.AnchorPoint = Vector2.new(1, 0); launcher.Position = UDim2.new(1, -18, 0, 18); launcher.ZIndex = 20
     launcher.Visible = not panel.open
-    local header = make("Frame", "Header", root, { Size = UDim2.new(1, 0, 0, 54), BackgroundColor3 = C.red, BorderSizePixel = 0, Active = true })
-    make("UIGradient", "RedGradient", header, { Rotation = 0, Color = ColorSequence.new(C.red, Color3.fromRGB(165, 27, 50)) })
-    text("Title", header, "Egg Finder", 16, 5, 220, 30, C.white, 28, true)
-    text("Subtitle", header, "Solo huevos del mapa", 18, 34, 230, 15, C.white, 11)
-    local optionsButton = button("Options", header, "Opciones", 238, 10, 105, 34)
-    local auto = button("ToggleSearch", header, "AUTO", 353, 10, 134, 34, C.green)
-    local minimize = button("Minimize", header, "−", 496, 10, 30, 34)
-    local stateTitle = text("SearchState", root, "Conectando detector...", 16, 64, 355, 24, C.white, 19, true)
-    local clock = text("ResetClock", root, "RESET --:--", 386, 64, 138, 24, C.cyan, 17, true)
-    local stateDetail = text("SearchDetail", root, "Divine · mínimo 7B/s", 16, 91, 390, 18, C.muted, 12)
-    local filterToggle = button("ToggleFilters", root, "Filtros −", 428, 93, 96, 24)
-    local filters = make("Frame", "Filters", root, { Position = UDim2.fromOffset(14, 124), Size = UDim2.fromOffset(512, 168), BackgroundColor3 = C.card, BorderSizePixel = 0 })
-    corner(filters); stroke(filters)
-    text("RarityLabel", filters, "RAREZA MÍNIMA", 12, 10, 135, 16, C.muted, 10)
-    text("IncomeLabel", filters, "MÍNIMO /s · k m b t q", 170, 10, 130, 16, C.muted, 10)
-    text("MutationLabel", filters, "MUTACIÓN", 306, 10, 184, 16, C.muted, 10)
-    local rarityButton = button("Rarity", filters, draft.rarity .. " ▾", 12, 31, 144, 34)
+    local header = make("Frame", "Header", root, { Size = UDim2.new(1, 0, 0, 72), BackgroundTransparency = 1, BorderSizePixel = 0, Active = true })
+    text("Title", header, "Egg Finder", 22, 14, 220, 30, C.white, 24, true)
+    text("Subtitle", header, "Solo huevos del mapa", 23, 45, 230, 16, C.muted, 11)
+    make("Frame", "HeaderDivider", root, { Position = UDim2.fromOffset(22, 72), Size = UDim2.new(1, -44, 0, 1), BackgroundColor3 = C.border, BorderSizePixel = 0 })
+    local optionsButton = button("Options", header, "Opciones", 260, 20, 88, 34)
+    local auto = button("ToggleSearch", header, "AUTO", 360, 20, 106, 34, C.card)
+    local minimize = button("Minimize", header, "", 478, 20, 38, 34)
+    line(minimize, "Minus", 19, 17, 12, 0, C.muted)
+    local stateDot = make("Frame", "StateDot", root, { Position = UDim2.fromOffset(22, 97), Size = UDim2.fromOffset(6, 6), BackgroundColor3 = C.muted, BorderSizePixel = 0 })
+    corner(stateDot, 3)
+    local stateTitle = text("SearchState", root, "Conectando detector...", 36, 86, 330, 26, C.white, 15, true)
+    local clock = text("ResetClock", root, "RESET --:--", 376, 86, 140, 26, C.cyan, 12, true)
+    clock.TextXAlignment = Enum.TextXAlignment.Right
+    local stateDetail = text("SearchDetail", root, "Divine+ · mínimo 7B/s", 22, 119, 390, 18, C.muted, 11)
+    local filterToggle = button("ToggleFilters", root, "Filtros −", 430, 117, 86, 28)
+    local filters = make("Frame", "Filters", root, { Position = UDim2.fromOffset(22, 162), Size = UDim2.fromOffset(494, 182), BackgroundTransparency = 1, BorderSizePixel = 0 })
+    text("RarityLabel", filters, "RAREZA MÍNIMA", 0, 2, 135, 18, C.muted, 10)
+    text("IncomeLabel", filters, "MÍNIMO /s · k m b t q", 158, 2, 120, 18, C.muted, 10)
+    text("MutationLabel", filters, "MUTACIÓN", 294, 2, 200, 18, C.muted, 10)
+    local rarityButton = button("Rarity", filters, draft.rarity, 0, 28, 144, 36)
+    chevron(rarityButton)
     local income = make("TextBox", "MinimumIncome", filters, {
-        Position = UDim2.fromOffset(170, 31), Size = UDim2.fromOffset(122, 34),
+        Position = UDim2.fromOffset(158, 28), Size = UDim2.fromOffset(122, 36),
         BackgroundColor3 = C.input, BorderSizePixel = 0, Text = search.FormatMinimum(draft.minIncome),
-        PlaceholderText = "Ej. 7b", Font = Enum.Font.GothamBold, TextSize = 16, TextColor3 = C.green,
+        PlaceholderText = "Ej. 7b", PlaceholderColor3 = C.muted, Font = Enum.Font.GothamBold, TextSize = 17, TextColor3 = C.gold,
         ClearTextOnFocus = false,
     })
     corner(income); stroke(income)
-    local mutationButton = button("Mutation", filters, draft.mutation == "" and "Todas ▾" or draft.mutation .. " ▾", 306, 31, 194, 34)
+    local mutationButton = button("Mutation", filters, draft.mutation == "" and "Todas" or draft.mutation, 294, 28, 200, 36)
+    chevron(mutationButton)
     local nameBox = make("TextBox", "NameFilter", filters, {
-        Position = UDim2.fromOffset(12, 78), Size = UDim2.fromOffset(330, 32), BackgroundColor3 = C.input,
+        Position = UDim2.fromOffset(0, 78), Size = UDim2.fromOffset(322, 34), BackgroundColor3 = C.input,
         BorderSizePixel = 0, Text = draft.nameContains, PlaceholderText = "Buscar / filtrar por nombre...",
         Font = Enum.Font.GothamMedium, TextSize = 13, TextColor3 = C.white, PlaceholderColor3 = C.muted,
         ClearTextOnFocus = false, TextXAlignment = Enum.TextXAlignment.Left,
     })
     corner(nameBox); stroke(nameBox); make("UIPadding", "Padding", nameBox, { PaddingLeft = UDim.new(0, 10) })
-    local clear = button("AllSpecies", filters, "Todas las especies", 354, 78, 146, 32)
-    local selectionLabel = text("Selection", filters, "Todas las especies", 12, 121, 310, 18, C.cyan, 12)
-    local changeLabel = text("Changes", filters, "Filtros guardados", 12, 142, 316, 14, C.muted, 10)
-    local apply = button("ApplyFilters", filters, "Aplicar filtros", 354, 122, 146, 32, C.green)
-    local tabMap = button("MapTab", root, "Mapa", 14, 304, 131, 30)
-    local tabCatalog = button("CatalogTab", root, "Solo filtro: OFF", 153, 304, 126, 30)
-    local visualButton = button("VisualMode", root, "Huevos", 288, 304, 108, 30)
-    local sortButton = button("Sort", root, "Rareza ↓", 404, 304, 122, 30)
+    local clear = button("AllSpecies", filters, "Todas las especies", 336, 78, 158, 34)
+    local selectionLabel = text("Selection", filters, "Todas las especies", 160, 133, 165, 18, C.muted, 10)
+    local changeLabel = text("Changes", filters, "Filtros guardados", 0, 165, 494, 17, C.muted, 10)
+    local apply = button("ApplyFilters", filters, "Aplicar filtros", 336, 126, 158, 34, C.gold)
+    paint(apply, C.gold, C.onAccent, C.gold)
+    local tabMap = button("MapTab", root, "Mapa", 22, 364, 102, 32)
+    local tabCatalog = button("CatalogTab", root, "Solo filtro: OFF", 132, 364, 136, 32)
+    local visualButton = button("VisualMode", root, "Huevos", 276, 364, 108, 32)
+    local sortButton = button("Sort", root, "Rareza ↓", 392, 364, 124, 32)
     local scroll = make("ScrollingFrame", "EggCards", root, {
-        Position = UDim2.fromOffset(14, 344), Size = UDim2.fromOffset(512, 304), BackgroundTransparency = 1,
-        BorderSizePixel = 0, ScrollBarThickness = 5, ScrollBarImageColor3 = C.border,
+        Position = UDim2.fromOffset(20, 408), Size = UDim2.fromOffset(498, 248), BackgroundTransparency = 1,
+        BorderSizePixel = 0, ScrollBarThickness = 3, ScrollBarImageColor3 = C.muted,
         CanvasSize = UDim2.new(), AutomaticCanvasSize = Enum.AutomaticSize.None, ScrollingDirection = Enum.ScrollingDirection.Y,
     })
-
     make("UIPadding", "Padding", scroll, { PaddingTop = UDim.new(0, 2), PaddingLeft = UDim.new(0, 2), PaddingRight = UDim.new(0, 8), PaddingBottom = UDim.new(0, 4) })
-    local foot = text("Hint", root, "Toca una tarjeta para elegir especies; luego aplica los filtros.", 16, 658, 510, 24, C.muted, 11)
-    local chooseSpecies = button("ChooseSpecies", filters, "Elegir especies ▾", 12, 119, 154, 27)
-    selectionLabel.Position = UDim2.fromOffset(174, 121); selectionLabel.Size = UDim2.fromOffset(170, 18)
+    local foot = text("Hint", root, "Toca una tarjeta para elegir especies; luego aplica los filtros.", 22, 668, 494, 16, C.muted, 10)
+    local chooseSpecies = button("ChooseSpecies", filters, "Elegir especies", 0, 126, 148, 34)
+    chooseSpecies.TextSize = 11
+    chevron(chooseSpecies)
     local function save()
         access()
         local ok = writeJson(FILE, { open = panel.open, visual = visual, filtersOpen = filtersOpen,
@@ -153,9 +226,9 @@ local function mountEggFilterPanel(context)
     local function layout()
         access()
         filters.Visible = filtersOpen; filterToggle.Text = filtersOpen and "Filtros −" or "Filtros +"
-        local y = filtersOpen and 304 or 130
+        local y = filtersOpen and 364 or 162
         for _, b in ipairs({tabCatalog, tabMap, visualButton, sortButton}) do b.Position = UDim2.fromOffset(b.Position.X.Offset, y) end
-        scroll.Position = UDim2.fromOffset(14, y + 40); scroll.Size = UDim2.fromOffset(512, 608 - y)
+        scroll.Position = UDim2.fromOffset(20, y + 44); scroll.Size = UDim2.fromOffset(498, 612 - y)
         closePopup(); signature = nil
     end
     local initializedPosition = false
@@ -164,8 +237,8 @@ local function mountEggFilterPanel(context)
         local camera = workspace.CurrentCamera
         if not camera then return end
         local viewport = camera.ViewportSize
-        scale.Scale = math.min(1, (viewport.X - 28) / 540, (viewport.Y - 28) / 700)
-        local width, height = 540 * scale.Scale, 700 * scale.Scale
+        scale.Scale = math.max(0.1, math.min(1, (viewport.X - 28) / PANEL_WIDTH, (viewport.Y - 28) / PANEL_HEIGHT))
+        local width, height = PANEL_WIDTH * scale.Scale, PANEL_HEIGHT * scale.Scale
         if not initializedPosition then
             root.Position = UDim2.fromOffset(tonumber(saved.x) or viewport.X - width - 20, tonumber(saved.y) or math.max(14, (viewport.Y - height) / 2))
             initializedPosition = true
@@ -196,8 +269,8 @@ local function mountEggFilterPanel(context)
         access()
         draft = cloneConfig(config); selection = {}; for _, id in ipairs(draft.categories) do selection[id] = true end
         income.Text = minimumText; nameBox.Text = draft.nameContains
-        rarityButton.Text = draft.rarity .. " ▾"
-        mutationButton.Text = draft.mutation == "" and "Todas ▾" or draft.mutation .. " ▾"
+        rarityButton.Text = draft.rarity
+        mutationButton.Text = draft.mutation == "" and "Todas" or draft.mutation
         local count = #draft.categories
         selectionLabel.Text = count == 0 and "Todas las especies" or string.format("%d especies seleccionadas", count)
         dirty = false; changeLabel.Text = "Filtros guardados"; changeLabel.TextColor3 = C.muted; signature = nil
@@ -233,16 +306,18 @@ local function mountEggFilterPanel(context)
     end
     local function dropdown(anchor, options, select)
         if popup then closePopup(); return end
-        popup = make("Frame", "Dropdown", root, { Position = UDim2.fromOffset(14, 192), Size = UDim2.fromOffset(512, 310), BackgroundColor3 = C.input, BorderSizePixel = 0, ZIndex = 60 })
-        corner(popup); stroke(popup, C.cyan, 2)
-        text("Prompt", popup, anchor == rarityButton and "Elige una rareza mínima" or "Elige una mutación", 12, 5, 440, 24, C.white, 17, true).ZIndex = 61
-        local dismiss = button("Dismiss", popup, "×", 466, 5, 32, 26); dismiss.ZIndex = 62
+        popup = make("Frame", "Dropdown", root, { Position = UDim2.fromOffset(22, 232), Size = UDim2.fromOffset(494, 310), BackgroundColor3 = C.bg, BorderSizePixel = 0, ZIndex = 60 })
+        corner(popup, 12); stroke(popup, C.border)
+        text("Prompt", popup, anchor == rarityButton and "Elige una rareza mínima" or "Elige una mutación", 16, 12, 350, 24, C.white, 16, true).ZIndex = 61
+        local dismiss = button("Dismiss", popup, "Cerrar", 398, 10, 80, 30); dismiss.ZIndex = 62
         dismiss.Activated:Connect(function() access(); closePopup() end)
-        local list = make("ScrollingFrame", "Options", popup, { Position = UDim2.fromOffset(8, 36), Size = UDim2.fromOffset(496, 266), CanvasSize = UDim2.new(), AutomaticCanvasSize = Enum.AutomaticSize.Y, BackgroundTransparency = 1, ScrollBarThickness = 4, BorderSizePixel = 0, ZIndex = 61 })
-        make("UIListLayout", "Layout", list, { Padding = UDim.new(0, 4) })
+        local list = make("ScrollingFrame", "Options", popup, { Position = UDim2.fromOffset(16, 52), Size = UDim2.fromOffset(462, 242), CanvasSize = UDim2.new(), AutomaticCanvasSize = Enum.AutomaticSize.Y, BackgroundTransparency = 1, ScrollBarThickness = 3, ScrollBarImageColor3 = C.muted, BorderSizePixel = 0, ZIndex = 61 })
+        make("UIListLayout", "Layout", list, { Padding = UDim.new(0, 6) })
         for index, item in ipairs(options) do
-            local b = button("Option_" .. index, list, item.label, 0, 0, 482, 30)
+            local b = button("Option_" .. index, list, item.label, 0, 0, 454, 36)
             b.ZIndex = 62; b.LayoutOrder = index
+            local current = anchor == rarityButton and draft.rarity or draft.mutation
+            if item.id == current then paint(b, C.selected, C.green, C.green) end
             b.Activated:Connect(function() access(); select(item.id); closePopup(); markDirty() end)
         end
     end
@@ -255,13 +330,13 @@ local function mountEggFilterPanel(context)
     local function speciesPicker()
         if popup then closePopup(); return end
         if not search.modules then return end
-        popup = make("Frame", "SpeciesPicker", root, { Position = UDim2.fromOffset(14, 132), Size = UDim2.fromOffset(512, 508), BackgroundColor3 = C.input, BorderSizePixel = 0, ZIndex = 60 })
-        corner(popup); stroke(popup, C.cyan, 2)
-        text("Title", popup, "Elegir especies · catálogo", 12, 8, 438, 25, C.white, 21, true).ZIndex = 61
-        text("Hint", popup, "Esto selecciona filtros; no representa huevos del mapa.", 12, 38, 486, 18, C.muted, 11).ZIndex = 61
-        local done = button("Done", popup, "×", 466, 8, 32, 28); done.ZIndex = 62
+        popup = make("Frame", "SpeciesPicker", root, { Position = UDim2.fromOffset(22, 152), Size = UDim2.fromOffset(494, 504), BackgroundColor3 = C.bg, BorderSizePixel = 0, ZIndex = 60 })
+        corner(popup, 12); stroke(popup, C.border)
+        text("Title", popup, "Elegir especies · catálogo", 16, 12, 364, 25, C.white, 18, true).ZIndex = 61
+        text("Hint", popup, "Esto selecciona filtros; no representa huevos del mapa.", 16, 43, 462, 18, C.muted, 11).ZIndex = 61
+        local done = button("Done", popup, "Cerrar", 398, 10, 80, 34); done.ZIndex = 62
         done.Activated:Connect(function() access(); closePopup() end)
-        local list = make("ScrollingFrame", "Species", popup, { Position = UDim2.fromOffset(10, 65), Size = UDim2.fromOffset(492, 432), CanvasSize = UDim2.new(), AutomaticCanvasSize = Enum.AutomaticSize.Y, BackgroundTransparency = 1, ScrollBarThickness = 4, BorderSizePixel = 0, ZIndex = 61 })
+        local list = make("ScrollingFrame", "Species", popup, { Position = UDim2.fromOffset(16, 73), Size = UDim2.fromOffset(462, 415), CanvasSize = UDim2.new(), AutomaticCanvasSize = Enum.AutomaticSize.Y, BackgroundTransparency = 1, ScrollBarThickness = 4, BorderSizePixel = 0, ZIndex = 61 })
         make("UIListLayout", "Layout", list, { Padding = UDim.new(0, 6), SortOrder = Enum.SortOrder.LayoutOrder })
         local options = {}
         for id, catalog in pairs(search.modules.assets.Directory) do
@@ -269,33 +344,45 @@ local function mountEggFilterPanel(context)
         end
         table.sort(options, function(a, b) return a.catalog.DisplayName < b.catalog.DisplayName end)
         for index, option in ipairs(options) do
-            local b = button("Species_" .. option.id, list, "", 0, 0, 480, 64)
+            local b = button("Species_" .. option.id, list, "", 0, 0, 450, 64)
             b.ZIndex = 62; b.LayoutOrder = index
             make("ImageLabel", "EggIcon", b, { Position = UDim2.fromOffset(4, 4), Size = UDim2.fromOffset(56, 56), Image = option.catalog.Egg.Icon, BackgroundTransparency = 1, ScaleType = Enum.ScaleType.Fit, ZIndex = 63 })
-            text("Name", b, option.catalog.DisplayName, 72, 7, 348, 25, C.gold, 18, true).ZIndex = 63
-            text("BaseIncome", b, number(option.catalog.EarningRate) .. "/s base · x1.00", 72, 35, 348, 19, C.muted, 12).ZIndex = 63
-            local check = text("Check", b, selection[option.id] and "✓" or "+", 436, 14, 32, 32, C.cyan, 28, true); check.ZIndex = 63
-            b.BackgroundColor3 = selection[option.id] and Color3.fromRGB(41, 57, 44) or C.card
+            text("Name", b, option.catalog.DisplayName, 72, 7, 328, 25, C.white, 15, true).ZIndex = 63
+            text("BaseIncome", b, number(option.catalog.EarningRate) .. "/s base · x1.00", 72, 35, 328, 19, C.muted, 12).ZIndex = 63
+            local check = selectionIcon(b, selection[option.id], 414, 20, 63)
+            b.BackgroundColor3 = selection[option.id] and C.selected or C.card
             b.Activated:Connect(function()
-                access(); panel.SelectCategory(option.id); check.Text = selection[option.id] and "✓" or "+"
-                b.BackgroundColor3 = selection[option.id] and Color3.fromRGB(41, 57, 44) or C.card
+                access(); panel.SelectCategory(option.id); check(selection[option.id])
+                b.BackgroundColor3 = selection[option.id] and C.selected or C.card
             end)
         end
     end
     panel.OpenSpecies = function() access(); speciesPicker() end
+    local function luminance(color)
+        local function linear(component)
+            return component <= 0.04045 and component / 12.92 or ((component + 0.055) / 1.055) ^ 2.4
+        end
+        return 0.2126 * linear(color.R) + 0.7152 * linear(color.G) + 0.0722 * linear(color.B)
+    end
     local function rarityColor(rarity)
         local color = type(rarity) == "table" and rarity.Color
-        -- Secret usa gris casi negro en el juego; aclararlo conserva la legibilidad.
-        if typeof(color) == "Color3" then return color:Lerp(C.white, 0.25) end
-        return C.gold
+        if typeof(color) ~= "Color3" then return C.gold end
+        -- Preservar el tono oficial; Secret y colores oscuros necesitan mas contraste.
+        local background = math.max(luminance(C.card), luminance(C.selected), luminance(C.success))
+        color = color:Lerp(C.white, 0.25)
+        for _ = 1, 10 do
+            if (luminance(color) + 0.05) / (background + 0.05) >= 4.5 then break end
+            color = color:Lerp(C.white, 0.15)
+        end
+        return color
     end
     local function detail(row)
         access(); closePopup()
         popup = make("Frame", "EggDetail", root, {Position = UDim2.fromOffset(14, 192), Size = UDim2.fromOffset(512, 310),
             BackgroundColor3 = C.input, BorderSizePixel = 0, ZIndex = 60})
-        corner(popup); stroke(popup, C.cyan, 2)
-        text("Title", popup, row.name, 14, 12, 438, 30, C.white, 21, true).ZIndex = 61
-        local dismiss = button("Dismiss", popup, "×", 466, 10, 32, 28); dismiss.ZIndex = 62
+        corner(popup, 12); stroke(popup, C.border)
+        text("Title", popup, row.name, 16, 12, 384, 30, C.white, 18, true).ZIndex = 61
+        local dismiss = button("Dismiss", popup, "Cerrar", 416, 10, 80, 30); dismiss.ZIndex = 62
         dismiss.Activated:Connect(function() access(); closePopup() end)
         local value = row.income and string.format("%.17g", row.income) .. "/s" or "No disponible"
         local content = row.reason .. "\n\nIngreso exacto: " .. value
@@ -306,20 +393,24 @@ local function mountEggFilterPanel(context)
     end
     local function createCard(row)
         local entry = {row = row}
-        local card = make("TextButton", "Card_" .. row.uid, scroll, {Size = UDim2.new(1, -12, 0, 104),
+        local card = make("TextButton", "Card_" .. row.uid, scroll, {Size = UDim2.new(1, -12, 0, ROW_HEIGHT),
             BackgroundColor3 = C.card, BorderSizePixel = 0, Text = "", AutoButtonColor = true})
-        entry.card = card; corner(card, 7); entry.border = stroke(card)
-        entry.box = make("Frame", "Visual", card, {Position = UDim2.fromOffset(8, 8), Size = UDim2.fromOffset(88, 88), BackgroundColor3 = C.input, BorderSizePixel = 0})
-        corner(entry.box)
+        entry.card = card; corner(card, 12); entry.border = stroke(card); interaction(card)
+        entry.box = make("Frame", "Visual", card, {Position = UDim2.fromOffset(10, 12), Size = UDim2.fromOffset(88, 88), BackgroundTransparency = 1, BorderSizePixel = 0})
         entry.image = make("ImageLabel", "EggImage", entry.box, {Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, ScaleType = Enum.ScaleType.Fit})
-        entry.name = text("Name", card, "", 108, 8, 326, 23, C.white, 19, true)
-        entry.name.Size = UDim2.new(1, -166, 0, 23)
-        entry.income = text("Income", card, "", 108, 32, 314, 20, C.green, 17, true)
-        entry.weight = text("SizeWeight", card, "", 108, 54, 312, 18, C.cyan, 13, true)
-        entry.mutations = text("MutationsArea", card, "", 108, 77, 310, 17, C.muted, 11)
-        entry.badge = text("Selected", card, "", 450, 8, 36, 32, C.muted, 28, true); entry.badge.TextXAlignment = Enum.TextXAlignment.Center
-        entry.match = text("Match", card, "", 430, 47, 60, 20, C.gold, 12, true)
-        local more = button("Detail", card, "Detalle", 430, 75, 60, 20); more.TextSize = 10
+        entry.name = text("Name", card, "", 110, 10, 326, 22, C.white, 15, true)
+        entry.name.Size = UDim2.new(1, -156, 0, 22)
+        entry.income = text("Income", card, "", 110, 36, 270, 24, C.white, 20, true)
+        entry.weight = text("SizeWeight", card, "", 110, 64, 270, 18, C.muted, 11)
+        entry.rarity = text("Rarity", card, "", 110, 88, 88, 16, C.gold, 10, true)
+        entry.mutations = text("MutationsArea", card, "", 202, 88, 274, 16, C.muted, 10)
+        entry.mutations.Size = UDim2.new(1, -216, 0, 16)
+        local mark = make("Frame", "Selected", card, {Position = UDim2.new(1, -40, 0, 9), Size = UDim2.fromOffset(24, 24), BackgroundTransparency = 1})
+        entry.select = selectionIcon(mark, false, 0, 0)
+        entry.match = text("Match", card, "", 0, 40, 76, 20, C.muted, 10, true)
+        entry.match.Position = UDim2.new(1, -86, 0, 40); entry.match.TextXAlignment = Enum.TextXAlignment.Right
+        local more = button("Detail", card, "Detalle", 0, 64, 76, 20)
+        more.Position = UDim2.new(1, -86, 0, 64); more.TextSize = 10
         more.Activated:Connect(function() access(); detail(entry.row) end)
         card.Activated:Connect(function() access(); if search.modules.assets.Directory[entry.row.category] then panel.SelectCategory(entry.row.category) end end)
         panel.stats.created += 1
@@ -327,21 +418,23 @@ local function mountEggFilterPanel(context)
     end
     local function updateCard(entry, row, index)
         access(); entry.row = row
-        entry.card.LayoutOrder = index; entry.card.Position = UDim2.fromOffset(2, (index - 1) * 112 + 2)
+        entry.card.LayoutOrder = index; entry.card.Position = UDim2.fromOffset(2, (index - 1) * (ROW_HEIGHT + ROW_GAP) + 2)
         local selected = selection[row.category] == true
         local key = row.key .. tostring(row.match) .. row.reason .. row.mutations
             .. tostring(row.weight) .. tostring(row.eggIcon) .. visual .. tostring(selected)
         if entry.key == key and (visual ~= "models" or entry.viewport or not data.assetModels) then return end
         entry.key = key; panel.stats.updated += 1
         entry.card.Name = "Card_" .. row.uid
-        entry.card.BackgroundColor3 = selected and Color3.fromRGB(41, 57, 44) or C.card
+        entry.card.BackgroundColor3 = row.match and C.success or selected and C.selected or C.card
         entry.border.Color = row.match and C.green or selected and C.cyan or C.border; entry.border.Thickness = row.match and 2 or 1
-        entry.name.Text = row.name; entry.name.TextColor3 = rarityColor(row.catalog and row.catalog.Rarity)
+        entry.name.Text = row.name; entry.name.TextColor3 = C.white
+        entry.rarity.Text = row.rarity; entry.rarity.TextColor3 = rarityColor(row.catalog and row.catalog.Rarity)
         entry.income.Text = (row.income and number(row.income) or "?") .. "/s"
+        entry.income.TextColor3 = row.match and C.green or C.white
         entry.weight.Text = string.format("x%.2f  ·  %s", row.scale or 1, row.weight)
-        entry.mutations.Text = row.rarity .. " · " .. row.mutations .. (row.area and " · " .. tostring(row.area) or "")
-        entry.badge.Text = selected and "✓" or "+"; entry.badge.TextColor3 = selected and C.cyan or C.muted
-        entry.match.Text = row.match and "CUMPLE" or "FUERA"; entry.match.TextColor3 = row.match and C.green or C.gold
+        entry.mutations.Text = row.mutations .. (row.area and " · " .. tostring(row.area) or "")
+        entry.select(selected)
+        entry.match.Text = row.match and "CUMPLE" or "FUERA"; entry.match.TextColor3 = row.match and C.green or C.muted
         local catalog = row.catalog or {}
         entry.image.Image = (visual == "pets" and catalog.Icon or row.eggIcon or (catalog.Egg and catalog.Egg.Icon)) or ""
         entry.image.Visible = true
@@ -422,9 +515,9 @@ local function mountEggFilterPanel(context)
             orderedRows, rowsKey = rows, key
         end
         access(); panel.cards = #orderedRows
-        scroll.CanvasSize = UDim2.fromOffset(0, math.max(0, #orderedRows * 112 + 4))
-        local first = math.max(1, math.floor(scroll.CanvasPosition.Y / math.max(0.1, scale.Scale) / 112) - 1)
-        local last = math.min(#orderedRows, first + math.ceil(scroll.AbsoluteSize.Y / math.max(0.1, scale.Scale) / 112) + 3)
+        scroll.CanvasSize = UDim2.fromOffset(0, math.max(0, #orderedRows * (ROW_HEIGHT + ROW_GAP) + 4))
+        local first = math.max(1, math.floor(scroll.CanvasPosition.Y / math.max(0.1, scale.Scale) / (ROW_HEIGHT + ROW_GAP)) - 1)
+        local last = math.min(#orderedRows, first + math.ceil(scroll.AbsoluteSize.Y / math.max(0.1, scale.Scale) / (ROW_HEIGHT + ROW_GAP)) + 3)
         local visible = {}
         for index = first, last do
             local row = orderedRows[index]; visible[row.uid] = true
@@ -473,9 +566,9 @@ local function mountEggFilterPanel(context)
         access(); closePopup()
         popup = make("Frame", "FinderOptions", root, {Position = UDim2.fromOffset(14, 124), Size = UDim2.fromOffset(512, 524),
             BackgroundColor3 = C.input, BorderSizePixel = 0, ZIndex = 60})
-        corner(popup); stroke(popup, C.cyan, 2)
-        text("Title", popup, "Presets y alertas", 12, 8, 438, 30, C.white, 21, true).ZIndex = 61
-        local dismiss = button("Dismiss", popup, "×", 466, 8, 32, 28); dismiss.ZIndex = 62
+        corner(popup, 12); stroke(popup, C.border)
+        text("Title", popup, "Presets y alertas", 16, 8, 384, 30, C.white, 18, true).ZIndex = 61
+        local dismiss = button("Dismiss", popup, "Cerrar", 416, 8, 80, 30); dismiss.ZIndex = 62
         dismiss.Activated:Connect(function() access(); closePopup() end)
         local message = text("Message", popup, "Cargar un preset deja cambios pendientes de aplicar.", 12, 45, 486, 34, C.muted, 12)
         message.TextWrapped = true; message.ZIndex = 61
@@ -483,7 +576,8 @@ local function mountEggFilterPanel(context)
             Text = "", PlaceholderText = "Nombre del preset", ClearTextOnFocus = false, Font = Enum.Font.GothamMedium,
             TextSize = 14, TextColor3 = C.white, BackgroundColor3 = C.card, BorderSizePixel = 0, ZIndex = 62})
         corner(name)
-        local savePreset = button("SavePreset", popup, "Guardar filtros", 324, 86, 174, 32, C.green); savePreset.ZIndex = 62
+        local savePreset = button("SavePreset", popup, "Guardar filtros", 324, 86, 174, 32, C.gold); savePreset.ZIndex = 62
+        paint(savePreset, C.gold, C.onAccent, C.gold)
         local list = make("ScrollingFrame", "Presets", popup, {Position = UDim2.fromOffset(12, 130), Size = UDim2.fromOffset(486, 240),
             AutomaticCanvasSize = Enum.AutomaticSize.Y, CanvasSize = UDim2.new(), BackgroundTransparency = 1,
             ScrollBarThickness = 4, BorderSizePixel = 0, ZIndex = 61})
@@ -547,6 +641,10 @@ local function mountEggFilterPanel(context)
         access()
         if minimum ~= draft.minIncome then markDirty() end
     end)
+    for _, field in ipairs({income, nameBox}) do
+        connect(field.Focused, function() field.Border.Color = C.gold; field.Border.Thickness = 1.5 end)
+        connect(field.FocusLost, function() field.Border.Color = C.border; field.Border.Thickness = 1 end)
+    end
     connect(nameBox:GetPropertyChangedSignal("Text"), function()
         if nameBox.Text ~= draft.nameContains then markDirty() end
     end)
@@ -558,14 +656,18 @@ local function mountEggFilterPanel(context)
     connect(rarityButton.Activated, function()
         if not search.modules then return end
         local options = search.RarityOptions()
-        dropdown(rarityButton, options, function(id) draft.rarity = id; rarityButton.Text = id .. " ▾"; selection = {} end)
+        dropdown(rarityButton, options, function(id) draft.rarity = id; rarityButton.Text = id; selection = {} end)
     end)
     connect(mutationButton.Activated, function()
         if not data then return end
         local options = {}; for id in pairs(data.mutations.IdSet) do table.insert(options, { id = id, label = data.mutations.LabelOf(id) }) end
         table.sort(options, function(a, b) return a.label < b.label end)
         table.insert(options, 1, { id = "", label = "Todas las mutaciones" })
-        dropdown(mutationButton, options, function(id) draft.mutation = id; mutationButton.Text = id == "" and "Todas ▾" or data.mutations.LabelOf(id) .. " ▾" end)
+        dropdown(mutationButton, options, function(id)
+            draft.mutation = id
+            local label = id == "" and "Todas" or data.mutations.LabelOf(id)
+            access(); mutationButton.Text = label
+        end)
     end)
     local dragging, dragStart, original
     connect(header.InputBegan, function(input)
@@ -605,12 +707,12 @@ local function mountEggFilterPanel(context)
             access()
             if not dirty and not sameConfig(draft, status.config) then setDraft(status.config) end
             auto.Text = status.active and "AUTO: ON" or "AUTO: OFF"
-            auto.BackgroundColor3 = status.active and C.green or C.red
+            paint(auto, status.active and C.green or C.card, status.active and C.onSuccess or C.muted, status.active and C.green or C.border)
             visualButton.Text = visual == "eggs" and "Huevos" or visual == "pets" and "Criaturas" or "Modelos 3D"
             sortButton.Text = sortBest and "Rareza ↓" or "Nombre A–Z"
             tabCatalog.Text = onlyMatches and "Solo filtro: ON" or "Solo filtro: OFF"
-            tabCatalog.BackgroundColor3 = onlyMatches and Color3.fromRGB(58, 74, 100) or C.card
-            tabMap.BackgroundColor3 = not onlyMatches and Color3.fromRGB(58, 74, 100) or C.card
+            paint(tabCatalog, onlyMatches and C.selected or C.card, onlyMatches and C.green or C.muted, onlyMatches and C.green or C.border)
+            paint(tabMap, not onlyMatches and C.selected or C.card, not onlyMatches and C.green or C.muted, not onlyMatches and C.green or C.border)
             foot.Text = "Alt izquierdo: abrir/cerrar · CUMPLE usa los filtros guardados."
             local cycle = status.cycle
             local info = status.lastScan and status.lastScan.info or {}
@@ -618,6 +720,7 @@ local function mountEggFilterPanel(context)
             local titles = { wait = "Esperando huevos nuevos", hop = "Buscando otro servidor", loading = "Esperando renovación / datos", match = "Objetivo encontrado", stopped = "Búsqueda detenida" }
             stateTitle.Text = titles[status.mode] or "Escaneando mapa"
             stateTitle.TextColor3 = status.mode == "match" and C.green or C.white
+            stateDot.BackgroundColor3 = status.mode == "match" and C.green or status.mode == "hop" and C.gold or status.active and C.cyan or C.muted
             stateDetail.Text = string.format("%s+ · ≥ %s/s · mapa %d · rareza mínima %d", status.config.rarity, number(status.config.minIncome), info.count or 0, info.rarityCount or 0)
             if status.mode == "hop" and info.continuingCycle then
                 stateDetail.Text = status.config.rarity .. "+ observado en este ciclo · no está aquí; sigo buscando"

@@ -49,6 +49,8 @@ Los cambios pendientes se aplican antes de encender AUTO. Un minimo invalido imp
 
 ## Integracion y distribucion
 
+El panel incorpora el estilo grafito/champan documentado en `DESIGN.md`: cabecera sobria, Gotham sin contorno, estado y filtros separados, tarjetas con filas distintas para nombre, ingreso, peso y rareza/mutaciones. Mantiene formatos k/m/b/t/q, presets, alertas, detalle exacto, orden por rareza e ingreso, Alt izquierdo y virtualizacion. El estilo no cambia el detector ni el flujo AUTO.
+
 Chilli se carga desde `https://raw.githubusercontent.com/tienkhanh1/spicy/main/Chilli.lua`, que redirige a un cargador protegido. Se mantuvo esa integracion y no se decodifico Chilli.
 
 El usuario pidio GitHub para usar un cargador corto y autorizo expresamente hacer publico `diegotoruno/SAE-SCRIPT`. La linea instalada en autoexec conserva la URL de `main/chilli_hopper.luau`. Ese archivo sirve como puente hacia el bundle aprobado en `stable`. CI publica `stable` solo despues de compilacion y regresiones.
