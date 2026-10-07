@@ -9,11 +9,79 @@ local function createMapEggSearch(readJson, writeJson)
         for _, connection in ipairs(connections) do connection:Disconnect() end
         table.clear(connections)
     end
+    local units = { k = 1e3, m = 1e6, b = 1e9, t = 1e12, q = 1e15 }
+    function search.ParseMinimum(value)
+        local minimum = value
+        if type(value) == "string" then
+            local input = string.lower(value):match("^%s*(.-)%s*$"):gsub(",", ".")
+            local amount, suffix = input:match("^(.-)%s*([kmbtq])$")
+            amount = amount or input
+            -- Validate before calling the game's permissive parser: punctuation
+            -- must not silently turn an invalid threshold into another number.
+            local mantissa, exponent = amount:match("^(.-)[eE]([%+%-]?%d+)$")
+            mantissa = mantissa or amount
+            if not (mantissa:match("^%+?%d+%.?%d*$") or mantissa:match("^%+?%.%d+$")) then return nil end
+            local normalized = mantissa .. (exponent and "e" .. exponent or "") .. (suffix or "")
+            if search.modules and search.modules.numbers then
+                local ok, result = pcall(search.modules.numbers.Parse, normalized)
+                minimum = ok and result or nil
+            else
+                -- Offline equivalent for saved config and pure CI regressions.
+                minimum = tonumber(amount)
+                if minimum and suffix then minimum *= units[suffix] end
+            end
+        end
+        if type(minimum) ~= "number" or minimum ~= minimum or minimum <= 0 or minimum >= math.huge then return nil end
+        return minimum
+    end
+    function search.FormatMinimum(value)
+        -- Only abbreviate when parsing the text restores the exact threshold.
+        for _, suffix in ipairs({ "q", "t", "b", "m", "k" }) do
+            if value >= units[suffix] then
+                for precision = 1, 17 do
+                    local text = string.format("%." .. precision .. "g", value / units[suffix]) .. suffix
+                    if search.ParseMinimum(text) == value then return text end
+                end
+            end
+        end
+        return string.format("%.17g", value)
+    end
+    local function rarityId(rarity)
+        return type(rarity) == "table" and rarity._id or rarity
+    end
+    function search.RarityOptions(directory, rarities)
+        if directory == nil then
+            local modules = search.modules
+            if not modules then return {} end
+            directory, rarities = modules.assets.Directory, modules.rarities.Rarities
+        end
+        local options, seen = {}, {}
+        for _, catalog in pairs(directory) do
+            local id = rarityId(catalog.Rarity)
+            local rarity = rarities[id]
+            if type(id) == "string" and type(rarity) == "table"
+                and type(rarity.Rank) == "number" and not seen[id] then
+                seen[id] = true
+                table.insert(options, { id = id, label = rarity.DisplayName or id, rank = rarity.Rank })
+            end
+        end
+        table.sort(options, function(a, b)
+            if a.rank ~= b.rank then return a.rank < b.rank end
+            return a.id < b.id
+        end)
+        return options
+    end
+    local function canonicalRarity(value, options)
+        for _, option in ipairs(options) do
+            if string.lower(option.id) == string.lower(value) then return option.id end
+        end
+        error("Rareza no disponible en el catalogo del juego: " .. value)
+    end
     local function normalize(config)
         assert(type(config) == "table", "Los filtros deben ser una tabla")
-        local minimum = config.minIncome == nil and 7000000000 or tonumber(config.minIncome)
+        local minimum = search.ParseMinimum(config.minIncome == nil and 7000000000 or config.minIncome)
         assert(type(minimum) == "number" and minimum == minimum and minimum > 0 and minimum < math.huge,
-            "minIncome debe ser un numero positivo y finito")
+            "Minimo invalido: usa 500k, 25m, 7b, 1t, 1q o un numero positivo")
         local rarity = config.rarity or "Divine"
         assert(type(rarity) == "string" and rarity ~= "", "rarity debe ser texto")
         local name = config.nameContains or ""
@@ -34,25 +102,32 @@ local function createMapEggSearch(readJson, writeJson)
     search.config = ok and config or normalize({})
 
     function search.Configure(patch)
+        assert(search.modules, "Espera a que cargue el catalogo del juego para aplicar filtros")
         local nextConfig = table.clone(search.config)
         for key, value in pairs(patch) do
             assert(nextConfig[key] ~= nil, "Filtro desconocido: " .. tostring(key))
             nextConfig[key] = value
         end
         nextConfig = normalize(nextConfig)
+        nextConfig.rarity = canonicalRarity(nextConfig.rarity, search.RarityOptions())
         assert(writeJson(CONFIG_FILE, nextConfig), "No se pudieron guardar los filtros")
         search.config = nextConfig
         return table.clone(nextConfig)
     end
 
     function search.Summary()
-        return string.format("%s >= %.2fB/s", search.config.rarity,
-            search.config.minIncome / 1000000000)
+        return string.format("%s >= %s/s", search.config.rarity, search.FormatMinimum(search.config.minIncome))
     end
 
     -- Funcion pura: tambien permite verificar los filtros sin teleports.
     function search.Evaluate(records, directory, incomeFor, filters)
         filters = normalize(filters or search.config)
+        local available = {}
+        for _, catalog in pairs(directory) do
+            local id = rarityId(catalog.Rarity)
+            if type(id) == "string" then table.insert(available, {id = id}) end
+        end
+        filters.rarity = canonicalRarity(filters.rarity, available)
         local found = {}
         local info = { count = 0, rarityCount = 0, eligible = 0, errors = 0 }
         local categorySet = {}
@@ -64,7 +139,7 @@ local function createMapEggSearch(readJson, writeJson)
                 info.count += 1
                 local catalog = directory[egg.AssetCategory]
                 local rarity = catalog and catalog.Rarity
-                local tier = type(rarity) == "table" and rarity._id or rarity
+                local tier = rarityId(rarity)
                 if not catalog or type(tier) ~= "string" then
                     info.errors += 1
                 elseif string.lower(tier) == string.lower(filters.rarity) then
@@ -134,6 +209,7 @@ local function createMapEggSearch(readJson, writeJson)
             end
             return {
                 assets = module(data, "Assets"), eggs = module(client, "EggState"),
+                rarities = module(data, "Rarity"), numbers = module(shared:WaitForChild("Utils", 30), "Numbers"),
                 records = module(util, "EggRecords"), earnings = module(util, "AssetEarnings"),
                 cycle = module(util, "AreaEggCycle"),
             }
@@ -141,6 +217,8 @@ local function createMapEggSearch(readJson, writeJson)
         if search.disposed then return end
         if loaded then
             search.modules = modules
+            -- Validate persisted IDs after the real catalog arrives. An obsolete
+            -- selection waits for correction instead of making hop decisions.
             table.insert(connections, modules.eggs.FieldRefreshed:Connect(function()
                 search.fieldRevision += 1
                 if not modules.cycle.IsNightPhase(workspace:GetServerTimeNow()) then

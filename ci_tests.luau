@@ -15,6 +15,12 @@ local catalog = {
     other = {DisplayName = "Common Alpha", Rarity = "Common"},
     divine2 = {DisplayName = "Divine Beta", Rarity = "Divine"},
 }
+local rarities = {
+    Common = {_id = "Common", DisplayName = "Common", Rank = 1},
+    Divine = {_id = "Divine", DisplayName = "Divine", Rank = 10},
+    Transcendent = {_id = "Transcendent", DisplayName = "Transcendent", Rank = 10},
+}
+search.modules = {assets = {Directory = catalog}, rarities = {Rarities = rarities}}
 local function egg(uid, rate, category, state, mutations)
     return {Uid = uid, rate = rate, AssetCategory = category or "divine",
             State = state or "Slot", Mutations = mutations or {}, AreaId = "forest"}
@@ -67,6 +73,56 @@ test("bad minimum cannot alter saved configuration", function()
     end
     assert(search.config.minIncome == 7e9)
 end)
+test("minimum supports game suffixes and raw per-second values", function()
+    for input, expected in pairs({["500k"] = 5e5, ["25M"] = 25e6, ["7b"] = 7e9,
+        [" 7.5 B "] = 7.5e9, ["7,5b"] = 7.5e9, ["1t"] = 1e12,
+        ["1Q"] = 1e15, ["7000000000"] = 7e9, ["7"] = 7, ["7e9"] = 7e9}) do
+        assert(search.ParseMinimum(input) == expected, input)
+    end
+    assert(search.Configure({minIncome = "7b"}).minIncome == 7e9)
+    assert(saved["chilli_egg_search_config.json"].minIncome == 7e9)
+end)
+test("malformed or overflowing minimum never saves", function()
+    for _, input in ipairs({"", " ", "7bb", "7/s", "7..5b", "1,2,3m", "7b!", "-7b", "0k", "1e999b", "inf", "nan"}) do
+        assert(search.ParseMinimum(input) == nil, input)
+        assert(not pcall(search.Configure, {minIncome = input}), input)
+    end
+    assert(search.config.minIncome == 7e9)
+end)
+test("editing a formatted minimum preserves exact boundary", function()
+    for _, minimum in ipairs({7e9, 6999999999, 7000000001, 500000, 25e6, 1.1e9, 1234567890.12345, 0.125, 1e15}) do
+        assert(search.ParseMinimum(search.FormatMinimum(minimum)) == minimum)
+    end
+    assert(search.FormatMinimum(7e9) == "7b")
+    assert(evaluate({egg("a", 6999999999)}, {minIncome = "7b"}) == nil)
+    assert(evaluate({egg("a", 7e9)}, {minIncome = "7b"}) ~= nil)
+    assert(evaluate({egg("a", 500000, "other")}, {rarity = "Common", minIncome = "500k"}) ~= nil)
+end)
+test("rarity options use only species catalog and real ranks", function()
+    local options = search.RarityOptions()
+    assert(#options == 2 and options[1].id == "Common" and options[2].id == "Divine")
+    assert(options[2].rank == 10)
+    local extended = table.clone(catalog)
+    extended.new = {Rarity = "Transcendent"}
+    local added = search.RarityOptions(extended, rarities)
+    assert(#added == 3 and added[2].id == "Divine" and added[3].id == "Transcendent")
+end)
+test("rarity rejects unused aliases and numeric scales", function()
+    for _, rarity in ipairs({"Transcendent", "Imaginary", "10", 10}) do
+        assert(not pcall(search.Configure, {rarity = rarity}))
+    end
+    assert(search.Configure({rarity = "divine"}).rarity == "Divine")
+    assert(evaluate({egg("a", 7e9, "other")}) == nil)
+end)
+test("configuration waits for game catalog", function()
+    local pending = factory(function() return {} end, function() error("must not save") end)
+    assert(not pcall(pending.Configure, {minIncome = "7b"}))
+    assert(#pending.RarityOptions() == 0)
+end)
+test("saved numeric thresholds retain units on reload", function()
+    local restored = factory(function() return {minIncome = 7e9} end, function() return true end)
+    assert(restored.config.minIncome == 7e9 and restored.FormatMinimum(restored.config.minIncome) == "7b")
+end)
 test("configuration deduplicates and persists exact species", function()
     local config = search.Configure({categories = {"divine2", "divine", "divine2"}})
     assert(#config.categories == 2 and config.categories[1] == "divine")
@@ -79,6 +135,7 @@ local records, night, hasSnapshot = {}, false, true
 local rateCalls = 0
 search.modules = {
     assets = {Directory = catalog},
+    rarities = {Rarities = rarities},
     eggs = {HasFieldSnapshot = function() return hasSnapshot end,
             ReadFieldEggs = function() return {Records = records} end},
     records = {ToAssetItemData = function(record) return record end},
@@ -112,8 +169,15 @@ test("malformed snapshot fails closed", function()
     search.modules.eggs.ReadFieldEggs = function() return {} end
     assert(scanDecision() == "loading")
 end)
+test("obsolete saved rarity waits rather than hopping", function()
+    search.modules.eggs.ReadFieldEggs = function() return {Records = {egg("a", 6e9)}} end
+    search.config.rarity = "RemovedRarity"
+    assert(scanDecision() == "loading")
+    search.config.rarity = "Divine"
+end)
 test("unwritable filters do not silently apply", function()
     local failed = factory(function() return {} end, function() return false end)
+    failed.modules = {assets = {Directory = catalog}, rarities = {Rarities = rarities}}
     assert(not pcall(failed.Configure, {minIncome = 8e9}))
     assert(failed.config.minIncome == 7e9)
 end)

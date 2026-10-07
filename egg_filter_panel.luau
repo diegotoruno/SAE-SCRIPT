@@ -102,13 +102,13 @@ local function mountEggFilterPanel(context)
     local filters = make("Frame", "Filters", root, { Position = UDim2.fromOffset(14, 124), Size = UDim2.fromOffset(512, 168), BackgroundColor3 = C.card, BorderSizePixel = 0 })
     corner(filters); stroke(filters)
     text("RarityLabel", filters, "RAREZA", 12, 10, 135, 16, C.muted, 10)
-    text("IncomeLabel", filters, "MÍNIMO (B/s)", 170, 10, 120, 16, C.muted, 10)
+    text("IncomeLabel", filters, "MÍNIMO /s · k m b t q", 170, 10, 130, 16, C.muted, 10)
     text("MutationLabel", filters, "MUTACIÓN", 306, 10, 184, 16, C.muted, 10)
     local rarityButton = button("Rarity", filters, draft.rarity .. " ▾", 12, 31, 144, 34)
     local income = make("TextBox", "MinimumIncome", filters, {
         Position = UDim2.fromOffset(170, 31), Size = UDim2.fromOffset(122, 34),
-        BackgroundColor3 = C.input, BorderSizePixel = 0, Text = tostring(draft.minIncome / 1e9),
-        PlaceholderText = "7", Font = Enum.Font.GothamBold, TextSize = 18, TextColor3 = C.green,
+        BackgroundColor3 = C.input, BorderSizePixel = 0, Text = search.FormatMinimum(draft.minIncome),
+        PlaceholderText = "Ej. 7b", Font = Enum.Font.GothamBold, TextSize = 16, TextColor3 = C.green,
         ClearTextOnFocus = false,
     })
     corner(income); stroke(income)
@@ -178,9 +178,10 @@ local function mountEggFilterPanel(context)
         changeLabel.Text = "Cambios sin aplicar"; changeLabel.TextColor3 = C.gold
     end
     local function setDraft(config)
+        local minimumText = search.FormatMinimum(config.minIncome)
         access()
         draft = cloneConfig(config); selection = {}; for _, id in ipairs(draft.categories) do selection[id] = true end
-        income.Text = tostring(draft.minIncome / 1e9); nameBox.Text = draft.nameContains
+        income.Text = minimumText; nameBox.Text = draft.nameContains
         rarityButton.Text = draft.rarity .. " ▾"
         mutationButton.Text = draft.mutation == "" and "Todas ▾" or draft.mutation .. " ▾"
         local count = #draft.categories
@@ -189,11 +190,12 @@ local function mountEggFilterPanel(context)
     end
     function panel.Apply()
         access()
-        local minimum = tonumber((income.Text:gsub(",", ".")))
-        if not minimum or minimum ~= minimum or minimum <= 0 or minimum == math.huge then
-            changeLabel.Text = "Escribe un mínimo válido, por ejemplo 7 o 7.5"; changeLabel.TextColor3 = C.red; return false
+        local minimum = search.ParseMinimum(income.Text)
+        access()
+        if not minimum then
+            changeLabel.Text = "Mínimo inválido: usa 500k, 25m o 7.5b"; changeLabel.TextColor3 = C.red; return false
         end
-        local patch = { rarity = draft.rarity, minIncome = minimum * 1e9, mutation = draft.mutation,
+        local patch = { rarity = draft.rarity, minIncome = minimum, mutation = draft.mutation,
             nameContains = nameBox.Text, categories = selectionList() }
         local ok, config = pcall(api.Configure, patch)
         access()
@@ -383,7 +385,9 @@ local function mountEggFilterPanel(context)
     connect(apply.Activated, panel.Apply)
     connect(clear.Activated, function() selection = {}; markDirty() end)
     connect(income:GetPropertyChangedSignal("Text"), function()
-        if income.Text ~= tostring(draft.minIncome / 1e9) then markDirty() end
+        local minimum = search.ParseMinimum(income.Text)
+        access()
+        if minimum ~= draft.minIncome then markDirty() end
     end)
     connect(nameBox:GetPropertyChangedSignal("Text"), function()
         if nameBox.Text ~= draft.nameContains then markDirty() end
@@ -394,9 +398,8 @@ local function mountEggFilterPanel(context)
     connect(sortButton.Activated, function() sortBest = not sortBest; sortButton.Text = sortBest and "Ingreso ↓" or "Nombre A–Z"; signature = nil; save() end)
     connect(visualButton.Activated, function() panel.SetVisual(visual == "eggs" and "pets" or visual == "pets" and "models" or "eggs") end)
     connect(rarityButton.Activated, function()
-        if not data then return end
-        local options = {}; for id, rarity in pairs(data.rarities.Rarities) do table.insert(options, { id = id, label = rarity.DisplayName .. " · " .. id, rank = rarity.Rank }) end
-        table.sort(options, function(a, b) if a.rank ~= b.rank then return a.rank > b.rank end return a.id < b.id end)
+        if not search.modules then return end
+        local options = search.RarityOptions()
         dropdown(rarityButton, options, function(id) draft.rarity = id; rarityButton.Text = id .. " ▾"; selection = {} end)
     end)
     connect(mutationButton.Activated, function()
@@ -426,7 +429,7 @@ local function mountEggFilterPanel(context)
         access()
         local ok, result = pcall(function()
             local R = game:GetService("ReplicatedStorage")
-            return { rarities = require(R.Data.Rarity), mutations = require(R.Shared.Modules.Mutations), assetModels = require(R.Shared.Modules.AssetModels) }
+            return { mutations = require(R.Shared.Modules.Mutations), assetModels = require(R.Shared.Modules.AssetModels) }
         end)
         access()
         if ok then data = result else changeLabel.Text = "No cargaron recursos visuales"; warn("[EggPanel] " .. tostring(result)) end

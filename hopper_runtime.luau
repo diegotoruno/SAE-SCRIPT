@@ -1149,11 +1149,11 @@ do
         writeJson("chilli_egg_search_match.json", match)
         setBusy(false)
         setLabel("MATCH")
-        setStatus(string.format("%s · %.2fB/s · %s", match.name,
-            match.income / 1000000000, match.area or "mapa"), COLORS.green)
+        setStatus(string.format("%s · %s/s · %s", match.name,
+            eggSearch.FormatMinimum(match.income), match.area or "mapa"), COLORS.green)
         notify("Egg " .. eggSearch.config.rarity .. " encontrado", string.format(
-            "%s · %.2fB/s · %s. Objetivo encontrado; Chilli puede continuar.",
-            match.name, match.income / 1000000000, match.area or "mapa"), 15)
+            "%s · %s/s · %s. Objetivo encontrado; Chilli puede continuar.",
+            match.name, eggSearch.FormatMinimum(match.income), match.area or "mapa"), 15)
         print("[EggSearch] MATCH " .. HttpService:JSONEncode(match))
     end
     local function verifyMapBeforeHop()
@@ -1167,6 +1167,7 @@ do
         Configure = function(filters) return eggSearch.Configure(filters) end,
         Scan = function() return eggSearch.Scan() end,
         CycleStatus = function() return eggSearch.CycleStatus() end,
+        RarityOptions = function() return eggSearch.RarityOptions() end,
         Start = function()
             assert(session.alive, "Esta sesion ya termino")
             setAuto(true)
