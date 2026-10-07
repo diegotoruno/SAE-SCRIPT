@@ -23,3 +23,11 @@
 La referencia a un minimo 7B corresponde a ingreso por segundo, no precio de compra, dinero del jugador ni valor de venta. Mostrar este significado en cualquier control nuevo.
 
 No asumir que Chilli realizo una accion solo porque el detector encontro match. El detector queda en el servidor y deja continuar la configuracion actual de Chilli.
+
+## Robustez y opciones del finder
+
+- Un teleport sin confirmar no habilita un segundo salto automatico. Conserva su estado hasta llegar o hasta un reintento manual explicito.
+- Las caches no sustituyen la comprobacion fresca antes de cada teleport. Estado, mutacion base, configuracion y renovaciones invalidan los resultados pertinentes.
+- Presets cargados quedan pendientes; no cambian AUTO ni los filtros efectivos por si solos. Guardan numeros exactos, sin etiquetas redondeadas.
+- Las alertas son configurables; se conservan MATCH y apagado de AUTO aunque se desactiven notificacion y sonido.
+- Un recurso 3D opcional no bloquea el panel. Se usa imagen y se reintenta sin atribuir acciones al codigo protegido de Chilli.

@@ -181,4 +181,167 @@ test("unwritable filters do not silently apply", function()
     assert(not pcall(failed.Configure, {minIncome = 8e9}))
     assert(failed.config.minIncome == 7e9)
 end)
+local support = require("./.tools/runtime_support")()
+test("same snapshot shares income reads; fresh hop scan recalculates", function()
+    search.modules.eggs.ReadFieldEggs = function() return {Records = records} end
+    records = {egg("cache", 8e9)}; rateCalls = 0
+    assert(scanDecision() == "match"); local calls = rateCalls
+    assert(scanDecision() == "match" and rateCalls == calls)
+    assert(search.Scan(true).income == 8e9 and rateCalls == calls + 1)
+    records[1].rate = 6e9; assert(scanDecision() == "hop" and rateCalls == calls + 2)
+end)
+test("base mutation and availability invalidate cached income", function()
+    records = {egg("mutation", 8e9)}; search.Scan(); local calls = rateCalls
+    records[1].BaseMutation = "Golden"; search.Scan(); assert(rateCalls == calls + 1)
+    records[1].State = "Claimed"; assert(scanDecision() == "wait" and #search.lastScan.rows == 0)
+end)
+test("loading clears old matches and counts", function()
+    records = {egg("stale", 8e9)}; assert(scanDecision() == "match")
+    hasSnapshot = false; assert(scanDecision() == "loading")
+    assert(search.lastScan.match == nil and #search.lastScan.rows == 0)
+    hasSnapshot = true
+end)
+test("display explains exact boundary and base mutation", function()
+    local record = egg("boundary", 6999999999)
+    assert(search.Explain(record, catalog.divine, record.rate) == "Ingreso inferior al mínimo")
+    record.BaseMutation = "Golden"
+    assert(search.Explain(record, catalog.divine, 7e9, {rarity = "Divine", minIncome = 7e9,
+        nameContains = "", mutation = "golden", categories = {}}) == "Cumple todos los filtros")
+end)
+test("preset validation cannot change live filters or accept removed species", function()
+    local validated = search.Validate({rarity = "divine", minIncome = "8b", categories = {"divine"}})
+    assert(validated.rarity == "Divine" and validated.minIncome == 8e9 and search.config.minIncome == 7e9)
+    assert(not pcall(search.Validate, {categories = {"removed"}}))
+end)
+test("store verifies writes, copies values and recovers backup", function()
+    local disk, encoded, serial = {}, {}, 0
+    local io = {read = function(path) assert(disk[path]); return disk[path] end,
+        write = function(path, raw) disk[path] = raw end,
+        encode = function(value) serial += 1; local key = tostring(serial); encoded[key] = support.Copy(value); return key end,
+        decode = function(raw) assert(encoded[raw]); return support.Copy(encoded[raw]) end}
+    local store = support.Store(io)
+    assert(store.Write("config", {value = 7})); assert(store.Write("config", {value = 8}))
+    local copy = store.Read("config"); copy.value = 99; assert(store.Read("config").value == 8)
+    disk.config = "broken"; assert(support.Store(io).Read("config").value == 7)
+    io.write = function(path, raw) if path:find("tmp", 1, true) then error("disk full") end; disk[path] = raw end
+    assert(not store.Write("config", {value = 9})); assert(store.Read("config").value == 8)
+end)
+test("visited history expires and stays bounded", function()
+    local result = support.PruneVisited({expired = 1, recent = 95, newer = 99, future = 101, invalid = "bad"}, 100, 10, 1)
+    assert(result.newer == 99 and result.expired == nil and result.recent == nil and result.future == nil)
+end)
+test("paging finds candidates beyond visited first page and deduplicates", function()
+    local calls = 0
+    local result = support.Pages(function(cursor)
+        calls += 1
+        if not cursor then return {data = {{id = "visited"}}, nextPageCursor = "second"} end
+        assert(cursor == "second"); return {data = {{id = "new"}, {id = "new"}}, nextPageCursor = nil}
+    end, function(server) return server.id ~= "visited" end, function() return true end, 8, 5)
+    assert(calls == 2 and #result == 1 and result[1].id == "new")
+end)
+test("paging rejects results from cancelled sessions and repeated cursors", function()
+    local alive = true
+    assert(support.Pages(function() alive = false; return {data = {{id = "new"}}} end,
+        function() return true end, function() return alive end, 8, 5) == nil)
+    local calls = 0
+    support.Pages(function() calls += 1; return {data = {}, nextPageCursor = "same"} end,
+        function() return true end, function() return true end, 8, 5)
+    assert(calls == 2)
+end)
+local function fakeAttempt(overrides)
+    local clock, connected, disconnected, sent = 0, nil, 0, 0
+    local states, alive, job = {}, true, "origin"
+    local env = {alive = function() return alive end, clock = function() return clock end,
+        time = function() return 100 end, job = function() return job end, player = "me", place = 1,
+        id = "attempt", timeout = 1, automatic = true,
+        save = function(state) table.insert(states, state); return true end,
+        send = function() sent += 1 end,
+        connect = function(callback) connected = callback; return {Disconnect = function() disconnected += 1 end} end,
+        wait = function(seconds) clock += seconds end}
+    for key, value in pairs(overrides or {}) do env[key] = value end
+    return support.Attempt(env), {env = env, states = states, callback = function(...) connected(...) end,
+        cancel = function() alive = false end, move = function() job = "destination" end,
+        sent = function() return sent end, disconnected = function() return disconnected end}
+end
+test("immediate teleport exception fails without waiting", function()
+    local attempt, fake = fakeAttempt({send = function() error("immediate failure") end})
+    local state, reason = attempt.Run("target")
+    assert(state == "failed" and reason:find("immediate failure", 1, true))
+    assert(fake.states[2].pending == false and fake.disconnected() == 1)
+end)
+test("unrelated teleport failures are ignored; timeout remains pending", function()
+    local attempt, fake = fakeAttempt()
+    fake.env.send = function()
+        fake.callback("other", "failed", "wrong player", 1)
+        fake.callback("me", "failed", "wrong target", 1, {ServerInstanceId = "other"})
+        fake.callback("me", "failed", "wrong place", 2)
+    end
+    assert(attempt.Run("target") == "unconfirmed")
+    local last = fake.states[#fake.states]; assert(last.pending and last.unconfirmed)
+    assert(fake.disconnected() == 1)
+end)
+test("own teleport failure closes pending state", function()
+    local attempt, fake = fakeAttempt()
+    fake.env.send = function() fake.callback("me", "GameFull", "full", 1, {ServerInstanceId = "target"}) end
+    assert(attempt.Run("target") == "failed" and fake.states[2].pending == false)
+end)
+test("cancellation cleans connection and cannot overwrite persisted pending", function()
+    local attempt, fake = fakeAttempt()
+    fake.env.wait = function() fake.cancel() end
+    assert(attempt.Run("target") == "cancelled")
+    assert(#fake.states == 1 and fake.states[1].pending and fake.states[1].unconfirmed and fake.disconnected() == 1)
+end)
+test("arrival ends attempt without another teleport", function()
+    local attempt, fake = fakeAttempt()
+    fake.env.wait = fake.move
+    assert(attempt.Run("target") == "moved" and fake.sent() == 1 and fake.disconnected() == 1)
+end)
+test("failed persistence prevents sending teleport", function()
+    local attempt, fake = fakeAttempt({save = function() return false end})
+    assert(attempt.Run("target") == "storage" and fake.sent() == 0 and fake.disconnected() == 0)
+end)
+test("rerun cannot treat pending same-server teleport as arrival", function()
+    local state = {pending = true, unconfirmed = true, origin = "origin", target = "destination"}
+    assert(not support.Arrived(state, "origin") and support.Arrived(state, "destination"))
+    assert(not support.Arrived({pending = true, target = "destination"}, "origin"))
+end)
+test("closed-panel AUTO avoids income calculations for unrelated rarities", function()
+    records = {egg("common", 8e9, "other")}; local calls = rateCalls
+    assert(scanDecision() == "wait" and rateCalls == calls)
+    search.Scan(false, true); assert(rateCalls == calls + 1 and search.lastScan.rows[1].income == 8e9)
+end)
+test("AUTO and panel reuse filter analysis until snapshot or config changes", function()
+    records = {egg("shared", 8e9)}; search.Scan()
+    local analyses = search.stats.analyses
+    search.Scan(false, true); search.Scan()
+    assert(search.stats.analyses == analyses)
+    records[1].rate = 6e9; search.Scan(); assert(search.stats.analyses == analyses + 1)
+    search.Configure({minIncome = 5e9}); assert(scanDecision() == "match" and search.stats.analyses == analyses + 2)
+    search.Configure({minIncome = 7e9})
+end)
+test("module initialization retries transient failure and disposes subscriptions", function()
+    local scheduled, attempts, waits, disconnected = nil, 0, 0, 0
+    local signal = {Connect = function() return {Disconnect = function() disconnected += 1 end} end}
+    local parent = {}
+    function parent:WaitForChild(name)
+        if table.find({"Data", "Client", "Shared", "Utils", "Util"}, name) then return parent end
+        return {name = name}
+    end
+    local oldEnv = getfenv(factory)
+    setfenv(factory, setmetatable({game = {GetService = function() return parent end},
+        task = {spawn = function(callback) scheduled = callback end, wait = function() waits += 1 end},
+        require = function(source)
+            if source.name == "Assets" then
+                attempts += 1; if attempts == 1 then error("transient module failure") end
+                return {Directory = catalog}
+            elseif source.name == "EggState" then return {FieldRefreshed = signal, ResetCountdown = signal, RarityRevealed = signal}
+            elseif source.name == "Rarity" then return {Rarities = rarities}
+            else return {} end
+        end}, {__index = oldEnv}))
+    local retrying = factory(function() return {} end, function() return true end)
+    setfenv(factory, oldEnv)
+    scheduled()
+    assert(attempts == 2 and waits == 1 and retrying.error == nil and retrying.modules)
+    retrying.Dispose(); assert(disconnected == 3)
+end)
 print(string.format("%d regression tests passed", passed))

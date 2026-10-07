@@ -26,7 +26,7 @@ El codigo mantenido esta en tres archivos:
 
 `build.py` integra los tres en `dist/chilli_hopper.luau`. No edites el `chilli_hopper.luau` de la raiz ni la rama `stable`: son puntos de distribucion.
 
-Para mejorar el script, crea una rama `codex/descripcion`, modifica los modulos y abre un pull request hacia `main`. GitHub Actions compila los modulos y el archivo integrado con Luau 0.741, ejecuta 26 pruebas de regresion y guarda el artefacto. Un pull request solo valida; un cambio aprobado en `main` valida y publica automaticamente en `stable`, con una release identificada por numero de ejecucion y commit. Si falla una prueba, `stable` conserva la version anterior. Una ejecucion antigua no reemplaza un commit nuevo de `main`.
+Para mejorar el script, crea una rama `codex/descripcion`, modifica los modulos y abre un pull request hacia `main`. GitHub Actions compila los modulos y el archivo integrado con Luau 0.741, ejecuta las pruebas de regresion y guarda el artefacto. Un pull request solo valida; un cambio aprobado en `main` valida y publica automaticamente en `stable`, con una release identificada por numero de ejecucion y commit. Si falla una prueba, `stable` conserva la version anterior. Una ejecucion antigua no reemplaza un commit nuevo de `main`.
 
 Para comprobarlo localmente con Python 3.10 o posterior:
 
@@ -66,6 +66,10 @@ El ingreso previsto incluye escala y mutaciones; excluye bonos personales y boos
 El minimo acepta `500k`, `25m`, `7b`, `7.5b`, `1t` o `1q`, tambien en mayusculas. Puedes usar coma decimal (`7,5b`). Sin sufijo, el valor son unidades por segundo: `7` significa 7/s. La configuracion anterior de 7B conserva su valor y aparece como `7b`; editar y volver a aplicar conserva el limite exacto.
 
 **Solo filtro** muestra los spawns actuales que cumplen los filtros guardados. **Rareza ↓** muestra primero la mejor rareza usando el rango real del juego; dentro de cada rareza, primero el mayor ingreso. El boton alterna con **Nombre A–Z** y conserva la preferencia. Este orden se aplica a huevos, criaturas y modelos 3D. Puedes cambiar la vista visual, arrastrar el panel y plegar los filtros.
+
+**Detalle** explica por que un huevo cumple o queda fuera y muestra el ingreso exacto, sin redondear. **Opciones** permite guardar, cargar y borrar presets, activar notificaciones o sonido y probar la alerta. Un preset cargado queda pendiente de **Aplicar filtros**; no inicia ni detiene AUTO. La lista crea solo tarjetas cercanas a la vista y reutiliza sus instancias.
+
+Si un teleport queda sin confirmar, AUTO sigue revisando el mapa pero no envia otro salto. **Server Hop** permite reintentarlo manualmente. Los modulos que fallen al cargar se reintentan y los modelos ausentes usan imagen. Los archivos guardados conservan una copia `.bak` para recuperacion.
 
 ## API
 

@@ -58,3 +58,9 @@ La cuenta de GitHub tiene sesion en el navegador. La credencial Git local probad
 `UniversalSynSaveInstance` se reviso como referencia de inspeccion, pero no se ejecuto. No es dependencia de runtime ni de CI. Las referencias de modulos del juego se conservaron fuera del repo publico.
 
 No se ha verificado un spawn real que cumpla Divine >=7B. El umbral, exclusiones y flujo se verificaron con snapshots simulados y con lecturas/renovaciones reales del cliente; ve `TESTING.md` para los limites de esa evidencia.
+
+## Mejoras de rendimiento y estabilidad
+
+El finder comparte analisis e ingresos por snapshot/UID y fuerza lectura/cálculo antes del teleport. La lista del mapa renderiza la ventana visible con margen, conserva tarjetas por UID y ofrece Detalle con ingreso exacto y motivo. Los recursos visuales opcionales y modulos tardios se reintentan.
+
+Opciones agrega presets de filtros (cargar deja cambios pendientes) y notificacion/sonido configurables. Persistencia verificada con backup y cache, historial acotado y paginacion de servidores. Un salto sin confirmar pausa nuevos saltos de AUTO hasta llegar o reintentar manualmente; no confundir una reejecucion en el origen con una llegada. Se mantiene el flujo Divine/snapshot/Slot acordado.

@@ -69,7 +69,10 @@ local function mountEggFilterPanel(context)
         local list = {}; for id, selected in pairs(selection) do if selected then table.insert(list, id) end end
         table.sort(list); return list
     end
-    local dirty, signature, popup, data = false, nil, nil, nil
+    local dirty, signature, popup, data = false, nil, nil, {}
+    local entries, metadata, orderedRows, rowsKey = {}, {}, {}, nil
+    local renderScheduled = false
+    panel.stats = {created = 0, updated = 0, modelsCreated = 0, rendered = 0, lastMs = 0}
     local function sameConfig(a, b)
         if a.rarity ~= b.rarity or a.minIncome ~= b.minIncome or a.mutation ~= b.mutation or a.nameContains ~= b.nameContains then return false end
         if #(a.categories or {}) ~= #(b.categories or {}) then return false end
@@ -93,6 +96,7 @@ local function mountEggFilterPanel(context)
     make("UIGradient", "RedGradient", header, { Rotation = 0, Color = ColorSequence.new(C.red, Color3.fromRGB(165, 27, 50)) })
     text("Title", header, "Egg Finder", 16, 5, 220, 30, C.white, 28, true)
     text("Subtitle", header, "Solo huevos del mapa", 18, 34, 230, 15, C.white, 11)
+    local optionsButton = button("Options", header, "Opciones", 238, 10, 105, 34)
     local auto = button("ToggleSearch", header, "AUTO", 353, 10, 134, 34, C.green)
     local minimize = button("Minimize", header, "−", 496, 10, 30, 34)
     local stateTitle = text("SearchState", root, "Conectando detector...", 16, 64, 355, 24, C.white, 19, true)
@@ -131,18 +135,19 @@ local function mountEggFilterPanel(context)
     local scroll = make("ScrollingFrame", "EggCards", root, {
         Position = UDim2.fromOffset(14, 344), Size = UDim2.fromOffset(512, 304), BackgroundTransparency = 1,
         BorderSizePixel = 0, ScrollBarThickness = 5, ScrollBarImageColor3 = C.border,
-        CanvasSize = UDim2.new(), AutomaticCanvasSize = Enum.AutomaticSize.Y, ScrollingDirection = Enum.ScrollingDirection.Y,
+        CanvasSize = UDim2.new(), AutomaticCanvasSize = Enum.AutomaticSize.None, ScrollingDirection = Enum.ScrollingDirection.Y,
     })
-    make("UIListLayout", "Layout", scroll, { Padding = UDim.new(0, 8), SortOrder = Enum.SortOrder.LayoutOrder })
+
     make("UIPadding", "Padding", scroll, { PaddingTop = UDim.new(0, 2), PaddingLeft = UDim.new(0, 2), PaddingRight = UDim.new(0, 8), PaddingBottom = UDim.new(0, 4) })
     local foot = text("Hint", root, "Toca una tarjeta para elegir especies; luego aplica los filtros.", 16, 658, 510, 24, C.muted, 11)
     local chooseSpecies = button("ChooseSpecies", filters, "Elegir especies ▾", 12, 119, 154, 27)
     selectionLabel.Position = UDim2.fromOffset(174, 121); selectionLabel.Size = UDim2.fromOffset(170, 18)
     local function save()
         access()
-        writeJson(FILE, { open = panel.open, visual = visual, filtersOpen = filtersOpen,
+        local ok = writeJson(FILE, { open = panel.open, visual = visual, filtersOpen = filtersOpen,
             view = "map", onlyMatches = onlyMatches, sortBest = sortBest,
             x = root.Position.X.Offset, y = root.Position.Y.Offset })
+        if not ok then panel.error = "No se pudo guardar la posición / vista"; warn("[EggPanel] " .. panel.error) end
     end
     local function closePopup() if popup then popup:Destroy(); popup = nil end end
     local function layout()
@@ -168,8 +173,17 @@ local function mountEggFilterPanel(context)
         root.Position = UDim2.fromOffset(math.clamp(root.Position.X.Offset, 8, math.max(8, viewport.X - width - 8)),
             math.clamp(root.Position.Y.Offset, 8, math.max(8, viewport.Y - height - 8)))
     end
-    function panel.Open() access(); panel.open = true; root.Visible = true; launcher.Visible = false; signature = nil; fit(); save() end
-    function panel.Close() access(); panel.open = false; root.Visible = false; launcher.Visible = true; closePopup(); save() end
+    function panel.Open()
+        access(); panel.open = true; root.Visible = true; launcher.Visible = false; signature = nil; fit(); save()
+        if panel.Refresh then task.defer(function() if panel.alive and session.alive then panel.Refresh() end end) end
+    end
+    function panel.Close()
+        access(); panel.open = false; root.Visible = false; launcher.Visible = true; closePopup()
+        for _, entry in pairs(entries) do
+            if entry.viewport then entry.viewport:Destroy(); entry.viewport = nil; entry.key = nil end
+        end
+        save()
+    end
     local function markDirty()
         access()
         dirty = true; signature = nil
@@ -211,6 +225,12 @@ local function mountEggFilterPanel(context)
         access(); assert(mode == "eggs" or mode == "pets" or mode == "models")
         visual = mode; signature = nil; save()
     end
+    function panel.SetSortBest(value)
+        access(); sortBest = value == true; signature = nil; save()
+    end
+    function panel.SetOnlyMatches(value)
+        access(); onlyMatches = value == true; signature = nil; save()
+    end
     local function dropdown(anchor, options, select)
         if popup then closePopup(); return end
         popup = make("Frame", "Dropdown", root, { Position = UDim2.fromOffset(14, 192), Size = UDim2.fromOffset(512, 310), BackgroundColor3 = C.input, BorderSizePixel = 0, ZIndex = 60 })
@@ -228,7 +248,9 @@ local function mountEggFilterPanel(context)
     end
     local function cleanupCards()
         access()
-        for _, child in ipairs(scroll:GetChildren()) do if child:IsA("GuiObject") then child:Destroy() end end
+        for _, entry in pairs(entries) do entry.card:Destroy() end
+        table.clear(entries); table.clear(metadata); orderedRows = {}; rowsKey = nil
+        local empty = scroll:FindFirstChild("Empty"); if empty then empty:Destroy() end
     end
     local function speciesPicker()
         if popup then closePopup(); return end
@@ -262,115 +284,243 @@ local function mountEggFilterPanel(context)
     end
     panel.OpenSpecies = function() access(); speciesPicker() end
     local function rarityColor(rarity)
-        local color = rarity and rarity.Color
+        local color = type(rarity) == "table" and rarity.Color
         -- Secret usa gris casi negro en el juego; aclararlo conserva la legibilidad.
         if typeof(color) == "Color3" then return color:Lerp(C.white, 0.25) end
         return C.gold
     end
-    local function buildCards()
-        local modules = search.modules
-        if not modules or not data then return end
-        local rows, fingerprint = {}, { "map", visual, tostring(onlyMatches), tostring(sortBest), table.concat(selectionList(), ",") }
-        access()
-        local firstVisible = math.max(1, math.floor(scroll.CanvasPosition.Y / 112))
-        local lastVisible = firstVisible + math.ceil(scroll.AbsoluteSize.Y / math.max(0.1, scale.Scale) / 112) + 2
-        if visual == "models" then table.insert(fingerprint, tostring(firstVisible) .. ":" .. tostring(lastVisible)) end
-        do
-            local cycle = search.CycleStatus()
-            if search.resetting or (cycle and cycle.night) or not modules.eggs.HasFieldSnapshot() then
-                table.insert(fingerprint, "reset")
-            else
-                local matches = {}
-                local _, _, all = search.Scan(); for _, m in ipairs(all or {}) do matches[m.uid] = true end
-                for _, egg in pairs(modules.eggs.ReadFieldEggs().Records) do
-                    local catalog = modules.assets.Directory[egg.AssetCategory]
-                    if egg.State == "Slot" and catalog and (not onlyMatches or matches[egg.Uid]) then
-                        local ok, rate = pcall(function() return modules.earnings.MutationOnlyRatePerSecond(modules.records.ToAssetItemData(egg)) end)
-                        local weightOk, weight = pcall(modules.records.WeightLabel, egg)
-                        local iconOk, icon = pcall(modules.records.EggIcon, egg)
-                        local rarity = modules.rarities.Rarities[catalog.Rarity._id]
-                        local labels = {}; for _, id in ipairs(egg.Mutations or {}) do table.insert(labels, data.mutations.LabelOf(id)) end
-                        table.insert(rows, { uid = egg.Uid, category = egg.AssetCategory, catalog = catalog,
-                            rarityRank = rarity and rarity.Rank or 0,
-                            income = ok and rate or nil, scale = egg.AssetScale, weight = weightOk and weight or "peso no disponible",
-                            mutations = #labels > 0 and table.concat(labels, " + ") or "Sin mutaciones",
-                            area = egg.AreaId, match = matches[egg.Uid], eggIcon = iconOk and icon or nil })
-                    end
-                end
-            end
-        end
-        table.sort(rows, function(a, b)
-            if sortBest and a.rarityRank ~= b.rarityRank then return a.rarityRank > b.rarityRank end
-            if sortBest and (a.income or 0) ~= (b.income or 0) then return (a.income or 0) > (b.income or 0) end
-            if a.category ~= b.category then return a.category < b.category end
-            return tostring(a.uid) < tostring(b.uid)
-        end)
-        for _, row in ipairs(rows) do table.insert(fingerprint, table.concat({row.uid or row.category, tostring(row.rarityRank), tostring(row.income), tostring(row.scale), row.mutations, tostring(row.match)}, ":")) end
-        local key = table.concat(fingerprint, "|")
-        if key == signature then return end
-        signature = key; cleanupCards(); panel.cards = #rows
-        if #rows == 0 then
-            local cycle = search.CycleStatus()
-            local message = onlyMatches and "Ningún huevo actual cumple los filtros guardados.\nEsperando la próxima renovación." or "No hay spawns disponibles en el mapa."
-            if panel.view == "map" and (search.resetting or (cycle and cycle.night)) then message = "Renovando huevos...\nEsperando los nuevos spawns." end
-            local empty = text("Empty", scroll, message, 0, 0, 494, 130, C.muted, 16)
-            empty.TextWrapped = true; empty.TextXAlignment = Enum.TextXAlignment.Center
-            return
-        end
-        for index, row in ipairs(rows) do
-            local selected = selection[row.category] == true
-            local card = make("TextButton", "Card_" .. (row.uid or row.category), scroll, {
-                Size = UDim2.new(1, -2, 0, 104), BackgroundColor3 = selected and Color3.fromRGB(41, 57, 44) or C.card,
-                BorderSizePixel = 0, Text = "", AutoButtonColor = true, LayoutOrder = index,
-            })
-            corner(card, 7); stroke(card, row.match and C.green or selected and C.cyan or C.border, row.match and 2 or 1)
-            local box = make("Frame", "Visual", card, { Position = UDim2.fromOffset(8, 8), Size = UDim2.fromOffset(88, 88), BackgroundColor3 = C.input, BorderSizePixel = 0 })
-            corner(box)
-            local icon = visual == "pets" and row.catalog.Icon or row.eggIcon or row.catalog.Egg.Icon
-            local image = make("ImageLabel", "EggImage", box, { Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, Image = icon or "", ScaleType = Enum.ScaleType.Fit })
-            if visual == "models" and index >= firstVisible and index <= lastVisible then
-                local ok, model = pcall(function()
-                    local originalModel = data.assetModels.GetAssetModelIfReplicated(row.category)
-                    if not originalModel then return nil end
-                    access()
-                    local viewport = make("ViewportFrame", "AssetViewport", box, {
-                        Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1,
-                        Ambient = Color3.fromRGB(210, 210, 230), LightColor = C.white,
-                        LightDirection = Vector3.new(-1, -1, -1),
-                    })
-                    local world = make("WorldModel", "PreviewWorld", viewport)
-                    local rig = originalModel:Clone()
-                    for _, child in ipairs(rig:GetDescendants()) do
-                        if child:IsA("LuaSourceContainer") or child:IsA("Sound") then child:Destroy()
-                        elseif child:IsA("BasePart") then child.Anchored = true; child.CanCollide = false end
-                    end
-                    rig.Parent = world; rig:PivotTo(CFrame.new())
-                    local bounds, size = rig:GetBoundingBox()
-                    local distance = math.max(0.1, size.X, size.Y, size.Z) * 1.8
-                    local camera = make("Camera", "PreviewCamera", viewport, {
-                        FieldOfView = 35, CFrame = CFrame.lookAt(bounds.Position + Vector3.new(distance * 0.8, distance * 0.45, distance), bounds.Position),
-                    })
-                    viewport.CurrentCamera = camera
-                    return rig
-                end)
-                access()
-                image.Visible = not (ok and model ~= nil)
-            end
-            local name = text("Name", card, row.catalog.DisplayName or row.category, 108, 8, 326, 23, rarityColor(row.catalog.Rarity), 19, true)
-            name.Size = UDim2.new(1, -166, 0, 23)
-            text("Income", card, (row.income and number(row.income) or "?") .. "/s", 108, 32, 314, 20, C.green, 17, true)
-            text("SizeWeight", card, string.format("x%.2f  ·  %s", row.scale or 1, row.weight), 108, 54, 320, 18, C.cyan, 13, true)
-            text("MutationsArea", card, row.catalog.Rarity._id .. " · " .. row.mutations .. (row.area and " · " .. row.area or ""), 108, 77, 355, 17, C.muted, 11)
-            local badge = text("Selected", card, selected and "✓" or "+", 450, 8, 36, 32, selected and C.cyan or C.muted, 28, true)
-            badge.TextXAlignment = Enum.TextXAlignment.Center
-            if panel.view == "map" then text("Match", card, row.match and "CUMPLE" or "FUERA", 430, 47, 60, 20, row.match and C.green or C.gold, 12, true) end
-            card.Activated:Connect(function() access(); panel.SelectCategory(row.category) end)
-        end
+    local function detail(row)
+        access(); closePopup()
+        popup = make("Frame", "EggDetail", root, {Position = UDim2.fromOffset(14, 192), Size = UDim2.fromOffset(512, 310),
+            BackgroundColor3 = C.input, BorderSizePixel = 0, ZIndex = 60})
+        corner(popup); stroke(popup, C.cyan, 2)
+        text("Title", popup, row.name, 14, 12, 438, 30, C.white, 21, true).ZIndex = 61
+        local dismiss = button("Dismiss", popup, "×", 466, 10, 32, 28); dismiss.ZIndex = 62
+        dismiss.Activated:Connect(function() access(); closePopup() end)
+        local value = row.income and string.format("%.17g", row.income) .. "/s" or "No disponible"
+        local content = row.reason .. "\n\nIngreso exacto: " .. value
+            .. "\nMínimo guardado: " .. string.format("%.17g", search.config.minIncome) .. "/s"
+            .. "\n" .. row.rarity .. " · " .. row.mutations .. "\nZona: " .. tostring(row.area or "No disponible")
+        local body = text("Explanation", popup, content, 14, 55, 478, 230, C.white, 15)
+        body.TextWrapped = true; body.TextTruncate = Enum.TextTruncate.None; body.TextYAlignment = Enum.TextYAlignment.Top; body.ZIndex = 61
     end
+    local function createCard(row)
+        local entry = {row = row}
+        local card = make("TextButton", "Card_" .. row.uid, scroll, {Size = UDim2.new(1, -12, 0, 104),
+            BackgroundColor3 = C.card, BorderSizePixel = 0, Text = "", AutoButtonColor = true})
+        entry.card = card; corner(card, 7); entry.border = stroke(card)
+        entry.box = make("Frame", "Visual", card, {Position = UDim2.fromOffset(8, 8), Size = UDim2.fromOffset(88, 88), BackgroundColor3 = C.input, BorderSizePixel = 0})
+        corner(entry.box)
+        entry.image = make("ImageLabel", "EggImage", entry.box, {Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, ScaleType = Enum.ScaleType.Fit})
+        entry.name = text("Name", card, "", 108, 8, 326, 23, C.white, 19, true)
+        entry.name.Size = UDim2.new(1, -166, 0, 23)
+        entry.income = text("Income", card, "", 108, 32, 314, 20, C.green, 17, true)
+        entry.weight = text("SizeWeight", card, "", 108, 54, 312, 18, C.cyan, 13, true)
+        entry.mutations = text("MutationsArea", card, "", 108, 77, 310, 17, C.muted, 11)
+        entry.badge = text("Selected", card, "", 450, 8, 36, 32, C.muted, 28, true); entry.badge.TextXAlignment = Enum.TextXAlignment.Center
+        entry.match = text("Match", card, "", 430, 47, 60, 20, C.gold, 12, true)
+        local more = button("Detail", card, "Detalle", 430, 75, 60, 20); more.TextSize = 10
+        more.Activated:Connect(function() access(); detail(entry.row) end)
+        card.Activated:Connect(function() access(); if search.modules.assets.Directory[entry.row.category] then panel.SelectCategory(entry.row.category) end end)
+        panel.stats.created += 1
+        return entry
+    end
+    local function updateCard(entry, row, index)
+        access(); entry.row = row
+        entry.card.LayoutOrder = index; entry.card.Position = UDim2.fromOffset(2, (index - 1) * 112 + 2)
+        local selected = selection[row.category] == true
+        local key = row.key .. tostring(row.match) .. row.reason .. row.mutations
+            .. tostring(row.weight) .. tostring(row.eggIcon) .. visual .. tostring(selected)
+        if entry.key == key and (visual ~= "models" or entry.viewport or not data.assetModels) then return end
+        entry.key = key; panel.stats.updated += 1
+        entry.card.Name = "Card_" .. row.uid
+        entry.card.BackgroundColor3 = selected and Color3.fromRGB(41, 57, 44) or C.card
+        entry.border.Color = row.match and C.green or selected and C.cyan or C.border; entry.border.Thickness = row.match and 2 or 1
+        entry.name.Text = row.name; entry.name.TextColor3 = rarityColor(row.catalog and row.catalog.Rarity)
+        entry.income.Text = (row.income and number(row.income) or "?") .. "/s"
+        entry.weight.Text = string.format("x%.2f  ·  %s", row.scale or 1, row.weight)
+        entry.mutations.Text = row.rarity .. " · " .. row.mutations .. (row.area and " · " .. tostring(row.area) or "")
+        entry.badge.Text = selected and "✓" or "+"; entry.badge.TextColor3 = selected and C.cyan or C.muted
+        entry.match.Text = row.match and "CUMPLE" or "FUERA"; entry.match.TextColor3 = row.match and C.green or C.gold
+        local catalog = row.catalog or {}
+        entry.image.Image = (visual == "pets" and catalog.Icon or row.eggIcon or (catalog.Egg and catalog.Egg.Icon)) or ""
+        entry.image.Visible = true
+        local modelKey = visual .. row.category .. tostring(row.scale) .. tostring(data.assetModels)
+        if entry.modelKey ~= modelKey then
+            if entry.viewport then entry.viewport:Destroy(); entry.viewport = nil end
+            entry.modelKey = modelKey
+        end
+        if visual == "models" and data.assetModels and not entry.viewport then
+            local ok, err = pcall(function()
+                local original = data.assetModels.GetAssetModelIfReplicated(row.category)
+                if not original then return end
+                access()
+                local viewport = make("ViewportFrame", "AssetViewport", entry.box, {Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1,
+                    Ambient = Color3.fromRGB(210, 210, 230), LightColor = C.white, LightDirection = Vector3.new(-1, -1, -1)})
+                entry.viewport = viewport
+                local world = make("WorldModel", "PreviewWorld", viewport)
+                local rig = original:Clone()
+                for _, child in ipairs(rig:GetDescendants()) do
+                    if child:IsA("LuaSourceContainer") or child:IsA("Sound") then child:Destroy()
+                    elseif child:IsA("BasePart") then child.Anchored = true; child.CanCollide = false end
+                end
+                rig.Parent = world; rig:PivotTo(CFrame.new())
+                local bounds, size = rig:GetBoundingBox(); local distance = math.max(0.1, size.X, size.Y, size.Z) * 1.8
+                local camera = make("Camera", "PreviewCamera", viewport, {FieldOfView = 35,
+                    CFrame = CFrame.lookAt(bounds.Position + Vector3.new(distance * 0.8, distance * 0.45, distance), bounds.Position)})
+                viewport.CurrentCamera = camera; panel.stats.modelsCreated += 1
+            end)
+            access()
+            if not ok then if entry.viewport then entry.viewport:Destroy(); entry.viewport = nil end; warn("[EggPanel] Modelo: " .. tostring(err)) end
+        end
+        access(); entry.image.Visible = entry.viewport == nil
+    end
+    local function buildCards()
+        if not panel.open or not panel.alive then return end
+        local started = os.clock()
+        local snapshot = search.MapSnapshot()
+        local modules = search.modules
+        local rows, active, fingerprints = {}, {}, {tostring(sortBest), tostring(onlyMatches), search.RecordKey(search.config)}
+        for _, item in ipairs(snapshot.rows or {}) do
+            active[item.uid] = true
+            if not onlyMatches or item.match then
+                local row = metadata[item.uid]
+                if not row or row.key ~= item.key or row.labelModule ~= data.mutations then
+                    local egg, catalog = item.egg, item.catalog
+                    local rarity = catalog and catalog.Rarity
+                    local rarityId = type(rarity) == "table" and rarity._id or rarity
+                    local rank = modules.rarities.Rarities[rarityId]
+                    local weightOk, weight = pcall(modules.records.WeightLabel, egg)
+                    local iconOk, icon = pcall(modules.records.EggIcon, egg)
+                    local labels, seen = {}, {}
+                    local function mutation(id)
+                        if not id or seen[id] then return end; seen[id] = true
+                        local ok, label = pcall(function() return data.mutations and data.mutations.LabelOf(id) or id end)
+                        table.insert(labels, ok and tostring(label) or tostring(id))
+                    end
+                    mutation(egg.BaseMutation); for _, id in ipairs(egg.Mutations or {}) do mutation(id) end
+                    row = {uid = item.uid, key = item.key, category = tostring(egg.AssetCategory or "Desconocida"), catalog = catalog,
+                        name = tostring(catalog and catalog.DisplayName or egg.AssetCategory or "Desconocida"), rarity = tostring(rarityId or "Desconocida"),
+                        rarityRank = rank and rank.Rank or 0, income = item.income, scale = egg.AssetScale,
+                        weight = weightOk and weight or "peso no disponible", eggIcon = iconOk and icon or nil,
+                        mutations = #labels > 0 and table.concat(labels, " + ") or "Sin mutaciones", area = egg.AreaId, labelModule = data.mutations}
+                    metadata[item.uid] = row
+                end
+                row.income, row.match, row.reason = item.income, item.match, item.reason
+                table.insert(rows, row); table.insert(fingerprints, row.uid .. row.key .. tostring(row.income) .. tostring(row.match))
+            end
+        end
+        for id in pairs(metadata) do if not active[id] then metadata[id] = nil end end
+        local key = table.concat(fingerprints, "|")
+        if key ~= rowsKey then
+            table.sort(rows, function(a,b)
+                if sortBest and a.rarityRank ~= b.rarityRank then return a.rarityRank > b.rarityRank end
+                if sortBest and (a.income or 0) ~= (b.income or 0) then return (a.income or 0) > (b.income or 0) end
+                if a.category ~= b.category then return a.category < b.category end
+                return a.uid < b.uid
+            end)
+            orderedRows, rowsKey = rows, key
+        end
+        access(); panel.cards = #orderedRows
+        scroll.CanvasSize = UDim2.fromOffset(0, math.max(0, #orderedRows * 112 + 4))
+        local first = math.max(1, math.floor(scroll.CanvasPosition.Y / math.max(0.1, scale.Scale) / 112) - 1)
+        local last = math.min(#orderedRows, first + math.ceil(scroll.AbsoluteSize.Y / math.max(0.1, scale.Scale) / 112) + 3)
+        local visible = {}
+        for index = first, last do
+            local row = orderedRows[index]; visible[row.uid] = true
+            local entry = entries[row.uid]
+            if not entry then entry = createCard(row); entries[row.uid] = entry end
+            updateCard(entry, row, index)
+        end
+        local rendered = 0
+        for id, entry in pairs(entries) do
+            if not visible[id] then entry.card:Destroy(); entries[id] = nil else rendered += 1 end
+        end
+        panel.stats.rendered = rendered
+        local empty = scroll:FindFirstChild("Empty")
+        if #orderedRows == 0 then
+            if not empty then empty = text("Empty", scroll, "", 0, 0, 494, 130, C.muted, 16); empty.TextWrapped = true; empty.TextXAlignment = Enum.TextXAlignment.Center end
+            empty.Text = not snapshot.info.ready and (snapshot.info.reason or "Esperando datos del mapa")
+                or onlyMatches and "Ningún huevo actual cumple los filtros guardados.\nEsperando la próxima renovación." or "No hay spawns disponibles en el mapa."
+        elseif empty then empty:Destroy() end
+        panel.stats.lastMs = (os.clock() - started) * 1000
+    end
+    local function scheduleRender()
+        if renderScheduled or not panel.open then return end
+        renderScheduled = true
+        task.defer(function()
+            renderScheduled = false
+            if panel.alive and session.alive then
+                local ok, err = pcall(buildCards); if not ok then panel.error = tostring(err); warn("[EggPanel] " .. tostring(err)) end
+            end
+        end)
+    end
+    panel.Refresh = buildCards
+    connect(scroll:GetPropertyChangedSignal("CanvasPosition"), scheduleRender)
+    function panel.LoadPreset(name)
+        local config = api.LoadPreset(name)
+        access(); setDraft(config); markDirty(); closePopup()
+        return config
+    end
+    function panel.SavePreset(name)
+        access()
+        local minimum = search.ParseMinimum(income.Text)
+        assert(minimum, "Mínimo inválido: usa 500k, 25m o 7.5b")
+        return api.SavePreset(name, {rarity = draft.rarity, minIncome = minimum, mutation = draft.mutation,
+            nameContains = nameBox.Text, categories = selectionList()})
+    end
+    function panel.OpenOptions()
+        access(); closePopup()
+        popup = make("Frame", "FinderOptions", root, {Position = UDim2.fromOffset(14, 124), Size = UDim2.fromOffset(512, 524),
+            BackgroundColor3 = C.input, BorderSizePixel = 0, ZIndex = 60})
+        corner(popup); stroke(popup, C.cyan, 2)
+        text("Title", popup, "Presets y alertas", 12, 8, 438, 30, C.white, 21, true).ZIndex = 61
+        local dismiss = button("Dismiss", popup, "×", 466, 8, 32, 28); dismiss.ZIndex = 62
+        dismiss.Activated:Connect(function() access(); closePopup() end)
+        local message = text("Message", popup, "Cargar un preset deja cambios pendientes de aplicar.", 12, 45, 486, 34, C.muted, 12)
+        message.TextWrapped = true; message.ZIndex = 61
+        local name = make("TextBox", "PresetName", popup, {Position = UDim2.fromOffset(12, 86), Size = UDim2.fromOffset(300, 32),
+            Text = "", PlaceholderText = "Nombre del preset", ClearTextOnFocus = false, Font = Enum.Font.GothamMedium,
+            TextSize = 14, TextColor3 = C.white, BackgroundColor3 = C.card, BorderSizePixel = 0, ZIndex = 62})
+        corner(name)
+        local savePreset = button("SavePreset", popup, "Guardar filtros", 324, 86, 174, 32, C.green); savePreset.ZIndex = 62
+        local list = make("ScrollingFrame", "Presets", popup, {Position = UDim2.fromOffset(12, 130), Size = UDim2.fromOffset(486, 240),
+            AutomaticCanvasSize = Enum.AutomaticSize.Y, CanvasSize = UDim2.new(), BackgroundTransparency = 1,
+            ScrollBarThickness = 4, BorderSizePixel = 0, ZIndex = 61})
+        make("UIListLayout", "Layout", list, {Padding = UDim.new(0, 6)})
+        local function result(callback)
+            local ok, err = pcall(callback); access()
+            if not ok and popup then message.Text = tostring(err); message.TextColor3 = C.red end
+            return ok
+        end
+        for index, preset in ipairs(api.Presets()) do
+            local row = make("Frame", "Preset_" .. index, list, {Size = UDim2.new(1, -6, 0, 46), BackgroundColor3 = C.card, BorderSizePixel = 0, ZIndex = 62})
+            text("Name", row, preset.name, 8, 5, 280, 18, C.white, 14).ZIndex = 63
+            local minimum = tonumber(preset.config.minIncome)
+            local summary = minimum and minimum > 0 and minimum < math.huge and search.FormatMinimum(minimum) or "inválido"
+            text("Summary", row, tostring(preset.config.rarity or "Sin rareza") .. " · ≥ " .. summary .. "/s", 8, 24, 280, 16, C.muted, 11).ZIndex = 63
+            local load = button("Load", row, "Cargar", 290, 8, 82, 30); load.ZIndex = 63
+            local delete = button("Delete", row, "Borrar", 380, 8, 86, 30); delete.ZIndex = 63
+            load.Activated:Connect(function() access(); result(function() panel.LoadPreset(preset.name) end) end)
+            delete.Activated:Connect(function() access(); if result(function() api.DeletePreset(preset.name) end) then panel.OpenOptions() end end)
+        end
+        if #api.Presets() == 0 then text("Empty", list, "Todavía no hay presets. Guarda los filtros de arriba.", 4, 10, 470, 40, C.muted, 13).ZIndex = 62 end
+        savePreset.Activated:Connect(function() access(); if result(function() panel.SavePreset(name.Text) end) then panel.OpenOptions() end end)
+        local settings = api.Alerts()
+        local notification = button("Notification", popup, "Notificación: " .. (settings.notification and "ON" or "OFF"), 12, 390, 234, 34); notification.ZIndex = 62
+        local sound = button("Sound", popup, "Sonido: " .. (settings.sound and "ON" or "OFF"), 258, 390, 240, 34); sound.ZIndex = 62
+        notification.Activated:Connect(function() access(); if result(function() api.ConfigureAlerts({notification = not settings.notification}) end) then panel.OpenOptions() end end)
+        sound.Activated:Connect(function() access(); if result(function() api.ConfigureAlerts({sound = not settings.sound}) end) then panel.OpenOptions() end end)
+        local test = button("TestAlert", popup, "Probar alerta", 12, 436, 486, 34); test.ZIndex = 62
+        test.Activated:Connect(function() access(); result(api.TestAlert) end)
+        text("AlertHint", popup, "Las alertas se emiten al encontrar un objetivo; AUTO se detiene.", 12, 482, 486, 30, C.muted, 11).ZIndex = 61
+    end
+    connect(optionsButton.Activated, panel.OpenOptions)
     function panel.GetStatus()
         access(); return { open = panel.open, view = "map", onlyMatches = onlyMatches, cards = panel.cards, dirty = dirty, error = panel.error,
-            selected = selectionList(), visual = visual, position = {x = root.AbsolutePosition.X, y = root.AbsolutePosition.Y},
-            size = {x = root.AbsoluteSize.X, y = root.AbsoluteSize.Y}, scale = scale.Scale }
+            selected = selectionList(), visual = visual, sortBest = sortBest, position = {x = root.AbsolutePosition.X, y = root.AbsolutePosition.Y},
+            size = {x = root.AbsoluteSize.X, y = root.AbsoluteSize.Y}, scale = scale.Scale,
+            stats = table.clone(panel.stats), resources = {mutations = data.mutations ~= nil, models = data.assetModels ~= nil} }
     end
     function panel.Destroy()
         if not panel.alive then return end
@@ -435,14 +585,21 @@ local function mountEggFilterPanel(context)
     layout(); fit(); setDraft(search.config)
     task.spawn(function()
         access()
-        local ok, result = pcall(function()
-            local R = game:GetService("ReplicatedStorage")
-            return { mutations = require(R.Shared.Modules.Mutations), assetModels = require(R.Shared.Modules.AssetModels) }
-        end)
-        access()
-        if ok then data = result else changeLabel.Text = "No cargaron recursos visuales"; warn("[EggPanel] " .. tostring(result)) end
+        local nextResourceRetry = 0
         while panel.alive and session.alive do
+            if os.clock() >= nextResourceRetry and (not data.mutations or not data.assetModels) then
+                nextResourceRetry = os.clock() + 5
+                local shared = game:GetService("ReplicatedStorage"):FindFirstChild("Shared")
+                local modules = shared and shared:FindFirstChild("Modules")
+                for key, name in pairs({mutations = "Mutations", assetModels = "AssetModels"}) do
+                    if not data[key] then
+                        local source = modules and modules:FindFirstChild(name)
+                        if source then local ok, value = pcall(require, source); if ok then data[key] = value end end
+                    end
+                end
+            end
             local updated, problem = pcall(function()
+            if not panel.open then return end
             access()
             local status = api.GetStatus()
             access()
@@ -462,6 +619,7 @@ local function mountEggFilterPanel(context)
             stateTitle.Text = titles[status.mode] or "Escaneando mapa"
             stateTitle.TextColor3 = status.mode == "match" and C.green or C.white
             stateDetail.Text = string.format("%s · ≥ %s/s · %d en mapa · %d de esa rareza", status.config.rarity, number(status.config.minIncome), info.count or 0, info.rarityCount or 0)
+            if status.mode == "loading" and info.reason then stateDetail.Text = info.reason end
             if cycle then
                 local seconds = math.ceil(cycle.secondsUntilReset)
                 clock.Text = cycle.night and "RENOVANDO" or string.format("RESET %d:%02d", math.floor(seconds / 60), seconds % 60)

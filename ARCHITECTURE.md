@@ -64,3 +64,19 @@ La validacion genera el bundle y lo compila, junto con todas las fuentes y carga
 Las acciones y Luau se fijan por commit/version y checksum. El job de PR solo tiene lectura; el de publicacion requiere `contents: write` mediante `GITHUB_TOKEN`. Las ejecuciones obsoletas se cancelan por grupo de concurrencia. No se necesita token personal para CI.
 
 Una actualizacion de Chilli o de los modulos del juego ocurre fuera de este repositorio. CI no la detecta por si sola; las pruebas reales con Potassium siguen siendo necesarias para esas dependencias.
+
+## Rendimiento, recuperacion y opciones
+
+`Scan(fresh)` conserva ingresos por UID y firma de los datos replicados. Comparte el analisis de filtros mientras no cambien records, revision, modulos o configuracion. AUTO no calcula ingresos de otras rarezas con el panel cerrado. `Scan(true)` antes de cada teleport fuerza el calculo exacto. `MapSnapshot()` proporciona al panel filas y coincidencias del mismo snapshot, con ingresos para las tarjetas. Noche y ausencia de snapshot invalidan las caches y el ultimo resultado visible.
+
+El panel conserva metadatos por UID y crea solo las tarjetas de la ventana visible con margen. Actualiza instancias existentes; los modelos pertenecen a esas tarjetas y se destruyen al salir de la ventana o cerrar el panel. Mutaciones y modelos cargan por separado con reintentos; sus fallos no impiden usar imagenes. `PanelStatus().stats` y `GetStatus().stats` permiten observar creaciones, actualizaciones, analisis e ingresos calculados.
+
+El soporte del runtime esta entre los marcadores `BEGIN/END TESTABLE SUPPORT` de `hopper_runtime.luau`. `ci_tools.py` extrae esas mismas funciones a `.tools/runtime_support.luau` para ejecutar casos de almacenamiento, paginacion y teleport con dependencias simuladas, sin ejecutar Roblox ni Chilli.
+
+Los guardados verifican un temporal y el archivo final y conservan la version anterior valida en `.bak`. La lectura recupera esa copia si el principal es invalido y conserva una cache en memoria; sus consumidores reciben copias. No se promete rename atomico: se usan readfile/writefile del executor. Si no se puede guardar el estado pendiente, no se envia el teleport. El historial elimina entradas vencidas y limita a 500 las anteriores al nuevo registro.
+
+Cada intento posee conexion de fallo, destino, jugador e ID. Un error inmediato se procesa sin esperar el timeout. Un intento sin confirmar conserva `pending/unconfirmed`; AUTO sigue observando el mapa pero no envia otro salto hasta una llegada confirmada o un clic manual en Server Hop. Reejecutar en el mismo servidor no equivale a llegar al destino. Stop/destruccion limpian conexiones; un teleport ya enviado no se puede retirar. Durante renovaciones se observa ese intento y antes del siguiente se repite la decision con datos nuevos.
+
+La API agrega `Presets()`, `SavePreset(name, config)`, `LoadPreset(name)`, `DeletePreset(name)`, `Alerts()`, `ConfigureAlerts({notification, sound})` y `TestAlert()`. Los presets guardan filtros exactos, hasta 20 nombres. Cargar devuelve una configuracion validada sin aplicarla; el panel la deja pendiente de Aplicar. Las preferencias viven en `chilli_egg_preferences.json`; notificacion activa y sonido desactivado por defecto. Detalle muestra motivo de exclusion e ingreso sin abreviar.
+
+Las consultas HTTP comparten una reserva entre sesiones, tienen espera acotada y descartan resultados de sesiones terminadas. Si el executor no puede cancelar un request que sigue vivo, la reserva se mantiene hasta que regrese para evitar consultas superpuestas. La busqueda recorre hasta cinco paginas; termina al conseguir al menos ocho candidatos, acabar el cursor o repetirlo.

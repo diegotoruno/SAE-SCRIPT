@@ -39,3 +39,12 @@ Las pruebas de UI, reset real y hop mencionadas en `TESTING.md` son evidencia pr
 - Potassium verifico SendKeyEvent de LeftAlt: abrir/cerrar, persistencia, cerrar selector de especies, campo de minimo enfocado y ayuda sin recorte. RightAlt no alterna el panel.
 - Al reejecutar, comprobadas destruccion de la instancia anterior y una alternancia por evento. Durante esta comprobacion tambien se recargo la version publica anterior; por eso la candidata debe distribuirse por CI/CD para conservar el atajo en las siguientes ejecuciones.
 - Filtros conservados y AUTO activo al terminar la comprobacion; apertura cerrada como estaba.
+
+## 2026-10-06 · Mejoras integrales del finder (validacion en curso)
+
+- Implementados estados de teleport con persistencia previa, fallo inmediato, filtro de evento por jugador/destino y bloqueo automatico de intentos sin confirmar. Cancelacion de sesiones/conexiones y descarte de resultados antiguos; comprobacion fresca antes de cada intento.
+- Detector comparte analisis por snapshot/configuracion e ingresos por UID; invalida durante renovacion y no calcula otras rarezas con el panel cerrado. Panel usa el mismo snapshot, conserva tarjetas visibles por UID y libera modelos al cerrar; recursos opcionales con reintentos.
+- Agregados paginacion de servidores, reserva compartida para HTTP, timeout de observacion, persistencia verificada con backup/cache, historial acotado, Detalle con ingreso exacto/motivo, presets pendientes de aplicar y alertas configurables.
+- Build y compilacion de fuentes/bundle correctos; 45 regresiones locales pasan, incluidas simulaciones de fallo/cancelacion/timeout/paginacion/backup y recuperacion de modulos. Diff sin errores de whitespace.
+- Referencia previa del cliente: snapshot listo de 65 Slot, 30 llamadas Scan en 3,95 ms y 782 descendientes en EggCards. Son datos de esa sesion, no una garantia de FPS ni comparacion final; la primera medicion durante noche se descarto.
+- Se cargo una candidata inicial, pero los saltos manuales del usuario interrumpieron la validacion del panel y restauraron la version publica anterior. A solicitud del usuario se espera antes de continuar las pruebas del cliente. Pendientes: suite real UI/persistencia/atajo/reejecucion, renovacion/teleport real, comparacion final, PR/CI y publicacion.

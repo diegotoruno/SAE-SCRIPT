@@ -9,7 +9,7 @@
 
 Se compilan fuentes, punto de entrada, loader, tests y bundle integrado. El CLI oficial Luau 0.741 se descarga y verifica por SHA256. No se ejecuta el bundle de Roblox en el CLI; se ejecuta solo `ci_tests.luau` con un entorno controlado.
 
-Las 26 regresiones cubren: mapa vacio, solo Common, Divine justo bajo 7B, limite exacto, mejor candidato, estados no disponibles, mutacion base, nombre literal, especies exactas, ingreso invalido, catalogo desconocido, minimo invalido, deduplicacion/persistencia, noche, snapshot pendiente, ciclo de renovacion entre hops, snapshot malformado y error al guardar. Los casos nuevos verifican sufijos k/m/b/t/q, numeros sin sufijo por segundo, formatos invalidos/overflow, edicion sin redondear el umbral, opciones de rareza derivadas del catalogo y sus rangos, rechazo de IDs auxiliares y rangos numericos, configuracion antes de cargar datos, compatibilidad de valores guardados y rarezas obsoletas que deben esperar.
+Las 45 regresiones cubren: mapa vacio, solo Common, Divine justo bajo 7B, limite exacto, mejor candidato, estados no disponibles, mutacion base, nombre literal, especies exactas, ingreso invalido, catalogo desconocido, minimo invalido, deduplicacion/persistencia, noche, snapshot pendiente, ciclo de renovacion entre hops, snapshot malformado y error al guardar. Los casos nuevos verifican sufijos k/m/b/t/q, numeros sin sufijo por segundo, formatos invalidos/overflow, edicion sin redondear el umbral, opciones de rareza derivadas del catalogo y sus rangos, rechazo de IDs auxiliares y rangos numericos, configuracion antes de cargar datos, compatibilidad de valores guardados y rarezas obsoletas que deben esperar.
 
 Al cambiar una decision o filtro, ampliar las regresiones con el caso que fallo. No agregar tests que se limiten a comparar lineas de codigo.
 
@@ -38,3 +38,11 @@ El panel se verifico contra 65 Uids del mapa en una captura del cliente, con sel
 El cargador publico anterior se descargo anonimamente, coincidio por hash con el archivo publicado y ejecuto Chilli, detector y panel con una sola GUI. No se ha visto un spawn real Divine >=7B durante estas verificaciones.
 
 CI valida el codigo propio y las decisiones simuladas. No prueba el render de Roblox, modulos que cambien en el juego, ingresos reales de un huevo al eclosionar, teleports ni el codigo externo de Chilli.
+
+## Robustez, caches y opciones
+
+CI agrega ingresos compartidos, recalculo fresco, invalidacion por mutacion/estado/renovacion, borrado de resultados viejos, motivos de exclusion, presets sin aplicar, recuperacion de backup, fallos de guardado, historial acotado, paginas/cursor repetido, resultados de sesiones canceladas, exception inmediata de teleport, fallos ajenos, timeout pendiente, cancelacion/conexion, llegada, persistencia obligatoria y reintento de modulos.
+
+En Potassium verificar: total de filas igual a Uids Slot; instancias cercanas a la vista limitadas; mismas tarjetas tras un refresh sin cambios; scroll hasta el final y con UIScale menor que uno; orden de rareza/ingreso; Detalle exacto; modelos visibles sin recrearse al refrescar y destruidos al cerrar; recursos ausentes con imagen; presets guardar/cargar/borrar sin modificar filtros efectivos ni AUTO antes de aplicar; alertas y sonido de prueba; persistencia y una sola GUI/atajo/conexiones tras reejecutar.
+
+Para hopper comprobar teleport real y restauracion por autoexec. Los fallos y timeouts se simulan con adapters para no forzar averias del cliente. Medir creaciones/caches y tiempos en snapshots listos; una medicion durante noche no sirve como referencia de rendimiento. Conservar y restaurar filtros, AUTO, visual, apertura y preferencias al terminar.
