@@ -37,7 +37,7 @@ Filtros: rareza exacta, minimo de ingreso por segundo, mutacion, nombre y varias
 
 El minimo acepta `k`, `m`, `b`, `t` y `q`, sin distinguir mayusculas, con decimal punto o coma: `500k`, `25m`, `7.5b`. Usa `Shared.Utils.Numbers.Parse` del juego tras validar el formato; un numero sin sufijo son unidades por segundo (`7` = 7/s). Los valores guardados y comparados siguen siendo numericos exactos; el campo abrevia solo si el texto conserva el mismo umbral al parsearlo. La configuracion previa de 7.000.000.000 sigue mostrando `7b`.
 
-Lista vacia de especies acepta todas. `Solo filtro` limita los spawns visibles a coincidencias. La tarjeta muestra ingreso, escala, peso, mutaciones y zona, con imagen oficial del huevo, imagen de la criatura o modelo 3D replicado. Se pueden ordenar las tarjetas por ingreso o nombre.
+Lista vacia de especies acepta todas. `Solo filtro` limita los spawns visibles a coincidencias. La tarjeta muestra ingreso, escala, peso, mutaciones y zona, con imagen oficial del huevo, imagen de la criatura o modelo 3D replicado. El orden principal es mejor rareza primero (Rank descendente del juego), con ingreso descendente dentro de cada rareza; se conserva la alternativa de ordenar por nombre. Aplica a huevos, criaturas y modelos 3D. La preferencia existente `sortBest` ahora representa este orden por rareza.
 
 Los cambios pendientes se aplican antes de encender AUTO. Un minimo invalido impide guardar e iniciar. El panel se arrastra, minimiza y reabre con `EGG FILTERS`; los controles de filtros se pueden plegar. Posicion, visual, orden y apertura se conservan en `chilli_egg_panel_ui.json`. Los modelos se crean solo para tarjetas visibles y usan imagen cuando falta el modelo.
 

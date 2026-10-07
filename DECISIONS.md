@@ -11,6 +11,7 @@
 | Catalogo separado de la lista Mapa | Elegir especies es configuracion; las tarjetas del mapa deben ser spawns reales. |
 | Recursos visuales replicados | Usar imagenes/modelos del juego; no hardcodear una lista de assets que se quede obsoleta. |
 | Rarezas usadas por el catalogo, ordenadas por Rank | Excluir IDs auxiliares sin especies; mantener seleccion exacta y no inventar una escala 0-7. |
+| Tarjetas por mejor rareza primero | Usar Rank descendente del juego y desempatar por ingreso descendente; conservar Nombre A-Z como alternativa. |
 | Minimo con k/m/b/t/q y numero sin sufijo por segundo | Usar el parser del juego con validacion previa y conservar el umbral numerico exacto al editar y persistir. |
 | Modelos visibles y fallback a imagen | Reducir coste de render y funcionar cuando falta un modelo. |
 | Integracion externa con Chilli | Mantener su cargador y evitar modificar fuentes protegidas no disponibles. |
