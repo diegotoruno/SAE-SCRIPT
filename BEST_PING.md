@@ -4,7 +4,7 @@ El hopper puede usar el orden nativo `BestLatency` de Roblox v2. Primero intenta
 
 ## Cuenta propia en Delta / Potassium
 
-La candidata incluye un formulario dentro de Roblox. En un dispositivo nuevo se abre al cargar. Tras cerrarlo, el boton fijo **CUENTA / BEST PING** de la esquina inferior izquierda lo reabre, independiente del plegado y la posicion del hopper. Tambien esta en **Egg Filters > Opciones > Cuenta / Best Ping**.
+El script incluye un formulario dentro de Roblox. En un dispositivo nuevo se abre al cargar. Tras cerrarlo, el boton fijo **CUENTA / BEST PING** de la esquina inferior izquierda lo reabre, independiente del plegado y la posicion del hopper. Tambien esta en **Egg Filters > Opciones > Cuenta / Best Ping**.
 
 Pega el valor completo de `.ROBLOSECURITY` en el campo oculto. **Guardar y usar AUTO** comprueba una consulta BestLatency, guarda la cookie solo en el workspace local del executor y activa AUTO con los filtros actuales. **Solo esta sesion** no conserva la cookie al reejecutar o cambiar de servidor; al llegar habra que pegarla otra vez. Las decisiones de huevos, rareza minima e ingresos exactos no cambian.
 
@@ -22,9 +22,15 @@ El executor debe ofrecer `request`, `http_request`, `syn.request` o `http.reques
 
 Al conectar, el formulario muestra el contador y distingue el intervalo propio de 15s, HTTP 429 con espera de 60s y una consulta pendiente del executor. La comprobacion inicial tiene prioridad sobre consultas de fondo y reintenta una vez ante 429; conserva el valor oculto para reintentar mientras la ventana siga abierta. Una espera legitima de 60s no expira a los 35s. Si el executor no termina una peticion en 30s, se conserva el bloqueo para evitar peticiones duplicadas y se indica reiniciar Roblox si sigue pendiente. Reejecutar el script no libera por la fuerza una peticion nativa anterior. `GetStatus().serverConnection.request` expone solo kind/seconds/lastHttpStatus, sin secretos.
 
-Para continuar entre hops, **la misma candidata debe estar en autoexec** del dispositivo. El cargador habitual de main/stable aun no incorpora esta funcion. Verificacion local: 117 regresiones Luau y diez pruebas Python; formulario montado/reabierto y limpiado en Potassium con almacenamiento simulado, sin cookies reales ni teleports. Autenticacion y persistencia real desde Delta/iPad pendientes de la prueba del usuario.
+Para continuar entre hops, **el cargador comun debe estar en autoexec** del dispositivo:
 
-El preview actualizable usa `https://raw.githubusercontent.com/diegotoruno/SAE-SCRIPT/refs/heads/codex/cookie-ipad-preview/preview/chilli_hopper.luau`. Un cargador que apunta a un SHA como `e0f669...` queda fijado a esa version; requiere cambiar una sola vez a la rama para recibir futuras actualizaciones al ejecutarse de nuevo. La cookie local ya guardada se conserva al cambiar de cargador. Un script ya ejecutado no se actualiza automaticamente.
+```lua
+loadstring(game:HttpGet("https://raw.githubusercontent.com/diegotoruno/SAE-SCRIPT/main/chilli_hopper.luau"))()
+```
+
+`main` apunta al bundle validado que CI publica en `stable`. Todos reciben esa version al ejecutar de nuevo; las sesiones ya abiertas conservan la que cargaron. Las cookies y configuraciones permanecen locales. Compilacion y 125 regresiones Luau, mas diez pruebas Python, correctas. Potassium comprobo montaje/reapertura/limpieza con almacenamiento simulado. El usuario confirma **CUENTA · GUARDADA** en Delta/iPad; eso indica comprobacion aceptada y escritura/relectura local terminadas. Continuidad real de DeviceCookie entre hops y respeto de Redirect=false siguen pendientes de evidencia.
+
+Los previews anteriores eran pruebas y pueden quedar atrasados. Un cargador que apunta a un SHA como `e0f669...` queda fijado a esa version. Sustituir esos cargadores y el de `codex/cookie-ipad-preview` por `main` una sola vez para unificar la distribucion. La cookie local ya guardada se conserva al cambiar de cargador. Un script ya ejecutado no se actualiza automaticamente.
 
 ## Proceso de PC (alternativa existente)
 

@@ -1,5 +1,10 @@
 # Estado del trabajo
 
+## 2026-10-07 - Distribucion comun solicitada
+
+- Usuario reporta CUENTA GUARDADA en Delta/iPad y autoriza actualizar main/chilli_hopper.luau para todos. Conserva una sola version de distribucion con cookies/filtros locales; requiere cambiar previews antiguos a main una sola vez.
+- Codigo 7658660 aprobado por CI 37601500836: compilacion/125 regresiones Luau/diez tests Python. Documentacion actualizada para uso comun, feedback real reportado y limites de evidencia. Se prepara PR #10 para integrar y publicar mediante CI, sin modificar stable directamente ni divulgar credenciales.
+
 ## 2026-10-07 - Guardado visible y preview actualizable
 
 - Usuario pregunta como saber si se guardo y confirma cargador con SHA e0f669..., que no puede cambiar. Documentado preview de rama actualizable con sustitucion unica del cargador; no requiere cambiar cookie ya persistida.
