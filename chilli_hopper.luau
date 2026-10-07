@@ -1458,7 +1458,7 @@ local function createFinderSupport()
                 and playing == math.floor(playing) then
                 table.insert(pool, {id = server.id, playing = playing,
                     ping = tonumber(server.ping) or -1, fps = tonumber(server.fps) or 0,
-                    sourceRank = index})
+                    sourceRank = index, observedAt = tonumber(server.observedAt)})
             end
         end
         table.sort(pool, function(a, b)
@@ -1673,7 +1673,10 @@ local function createFinderSupport()
                 return nil, "No se pudo iniciar la consulta en el executor."
             end
             deadline = env.clock() + 30
-            while alive() and not done and env.clock() < deadline do env.wait(0.1) end
+            while alive() and not done and env.clock() < deadline do
+                if progress then pcall(progress, {kind = "request", seconds = math.floor(env.clock() - token.started)}) end
+                env.wait(0.1)
+            end
             if not alive() then return nil, "conexion cancelada" end
             if not done then
                 -- Never unlock a native request that may still be running.
@@ -1687,43 +1690,121 @@ local function createFinderSupport()
         if state.kind == "rate_limit" then return string.format("Roblox respondio HTTP 429. Reintento en %d s...", state.seconds) end
         if state.kind == "interval" then return string.format("Espaciando consultas. Continua en %d s...", state.seconds) end
         if state.kind == "pending" then return string.format("Esperando la consulta anterior del executor (%d s)...", state.seconds) end
+        if state.kind == "request" then return string.format("Consultando Roblox (%d s)...", state.seconds) end
         return "Comprobando la conexion con Roblox..."
+    end
+    function support.NativeProgressMessage(state)
+        local text = state.phase == "occupancy" and string.format("Best Ping: revisando ocupacion, pagina %d", state.page or 1)
+            or string.format("Best Ping: %d/7, pagina %d (%d servidores revisados)", state.occupancy or 1, state.page or 1, state.servers or 0)
+        if state.wait then text ..= " | " .. support.DeviceWaitMessage(state.wait) end
+        return text
+    end
+    -- A fresh one-player reserve is already the minimum eligible occupancy.
+    -- Larger groups still require a new OccupancyAsc proof before a hop.
+    function support.PreloadedNativePool(data, now, current, visited, transport)
+        if type(data) ~= "table" or data.orderBy ~= "BestLatency" or data.transport ~= transport
+            or data.occupancy ~= 1 or type(data.servers) ~= "table" then return nil end
+        local pool, seen = {}, {}
+        for _, row in ipairs(data.servers) do
+            if type(row) ~= "table" or row.playing ~= 1 or type(row.id) ~= "string" then return nil end
+            local age = now - (tonumber(row.observedAt) or 0)
+            if age >= 0 and age <= 180 and row.id ~= current and not visited[row.id] and not seen[row.id] then
+                seen[row.id] = true; table.insert(pool, row)
+            end
+        end
+        return #pool > 0 and support.RankServers(pool, "BestLatency") or nil
     end
     -- Native v2 paging on the user's device. A partial latency stream never
     -- establishes exhaustion of lower occupancy groups.
     function support.DeviceNative(env)
-        local rows, cursors, cursor, rank, started, complete = {}, {}, nil, 0, env.now(), false
+        local rows, cursors, cursor, rank, pages, complete = {}, {}, nil, 0, 0, false
         local native = {}
-        function native.Pick(current, visited)
-            if not env.alive() then return nil, "sesion terminada" end
+        local function resetStream()
+            rows, cursors, cursor, rank, pages, complete = {}, {}, nil, 0, 0, false
+        end
+        local function saveStream()
             local now = env.now()
-            if now - started > 180 then rows, cursors, cursor, rank, started, complete = {}, {}, nil, 0, now, false end
+            for id, row in pairs(rows) do
+                if now - row.observedAt > 180 or now < row.observedAt then rows[id] = nil end
+            end
+            if env.save then pcall(env.save, {schema = 1, updatedAt = now, rows = support.Copy(rows),
+                cursors = support.Copy(cursors), cursor = cursor, rank = rank, pages = pages, complete = complete}) end
+        end
+        function native.Restore(value)
+            if type(value) ~= "table" or value.schema ~= 1 or type(value.rows) ~= "table" or type(value.cursors) ~= "table"
+                or type(value.updatedAt) ~= "number" or value.updatedAt ~= value.updatedAt
+                or env.now() - value.updatedAt < 0 or env.now() - value.updatedAt > 180
+                or type(value.rank) ~= "number" or value.rank < 0 or value.rank > 200000 or value.rank ~= math.floor(value.rank)
+                or type(value.pages) ~= "number" or value.pages < 0 or value.pages > 2000 or value.pages ~= math.floor(value.pages)
+                or type(value.complete) ~= "boolean" or (value.cursor ~= nil and (type(value.cursor) ~= "string" or #value.cursor > 4096))
+                then return false end
+            local count = 0
+            for id, row in pairs(value.rows) do
+                count += 1
+                if count > 2000 or type(id) ~= "string" or #id > 128 or type(row) ~= "table" or row.id ~= id
+                    or type(row.playing) ~= "number" or row.playing < 1 or row.playing > 6 or row.playing ~= math.floor(row.playing)
+                    or type(row.nativeRank) ~= "number" or row.nativeRank < 1 or row.nativeRank > value.rank
+                    or row.nativeRank ~= math.floor(row.nativeRank) or type(row.observedAt) ~= "number"
+                    or row.observedAt ~= row.observedAt or row.observedAt > env.now() then return false end
+            end
+            count = 0
+            for key, seen in pairs(value.cursors) do
+                count += 1
+                if count > 2000 or type(key) ~= "string" or #key > 4096 or seen ~= true then return false end
+            end
+            if value.cursor and not value.cursors[value.cursor] then return false end
+            rows, cursors, cursor, rank, pages, complete = support.Copy(value.rows), support.Copy(value.cursors), value.cursor,
+                value.rank, value.pages, value.complete
+            return true
+        end
+        local function observe(page)
+            pages += 1
+            for _, row in ipairs(page.data) do
+                rank += 1
+                if type(row) == "table" and type(row.id) == "string" and row.maxPlayers == 7
+                    and type(row.playing) == "number" and row.playing == math.floor(row.playing)
+                    and row.playing >= 1 and row.playing <= 6 then
+                    rows[row.id] = {id = row.id, playing = row.playing,
+                        nativeRank = rows[row.id] and rows[row.id].nativeRank or rank, observedAt = env.now()}
+                end
+            end
+            cursor = page.nextPageCursor
+            if cursor == nil or cursor == "" then cursor = nil; complete = true
+            elseif type(cursor) ~= "string" or cursors[cursor] then
+                resetStream(); saveStream(); return false
+            else cursors[cursor] = true end
+            saveStream()
+            return true
+        end
+        function native.Seed(page)
+            resetStream()
+            if type(page) ~= "table" or type(page.data) ~= "table" or not observe(page) then return false end
+            local ones = {}
+            for _, row in pairs(rows) do if row.playing == 1 then table.insert(ones, row) end end
+            table.sort(ones, function(a,b) return a.nativeRank < b.nativeRank end)
+            if #ones > 0 and env.publish then pcall(env.publish, support.RankServers(ones, "BestLatency")) end
+            return true
+        end
+        function native.Pick(current, visited, continuing, wanted)
+            wanted = wanted or 1
+            local function alive() return env.alive() and (not continuing or continuing()) end
+            if not alive() then return nil, "busqueda cancelada" end
+            local now = env.now()
+            -- Expire individual observations without restarting an unfinished
+            -- cursor. At 15s/request a valid candidate may be many minutes away.
+            for id, row in pairs(rows) do
+                if now - row.observedAt > 180 or now < row.observedAt then rows[id] = nil end
+            end
             local function eligible(row)
                 return row.id ~= current and not visited[row.id]
             end
             local lowest, proofAt, proofCursor, proofSeen, previous = nil, nil, nil, {}, 0
-            for _ = 1, 5 do
-                local page, err = env.fetch("OccupancyAsc", proofCursor)
-                if not env.alive() then return nil, "sesion terminada" end
-                if not page or type(page.data) ~= "table" then return nil, err or "respuesta de ocupacion invalida" end
-                for _, row in ipairs(page.data) do
-                    local count = type(row) == "table" and row.playing
-                    if type(count) ~= "number" or count ~= math.floor(count) or count < previous or count > 7 then
-                        return nil, "orden de ocupacion invalido"
-                    end
-                    previous = count
-                    if not lowest and count >= 1 and count <= 6 and row.maxPlayers == 7
-                        and type(row.id) == "string" and eligible(row) then lowest = count end
-                end
-                if lowest then proofAt = env.now(); break end
-                proofCursor = page.nextPageCursor
-                if proofCursor == nil or proofCursor == "" then return nil, "no hay servidores disponibles" end
-                if type(proofCursor) ~= "string" or proofSeen[proofCursor] then return nil, "cursor de ocupacion invalido" end
-                proofSeen[proofCursor] = true
+            local function progress(phase, page)
+                if env.progress then pcall(env.progress, {state = "searching", phase = phase, page = page,
+                    pages = pages, servers = rank, occupancy = lowest}) end
             end
-            if not lowest then return nil, "lista parcial; revisando ocupaciones menores" end
             local function group()
-                if env.now() - proofAt > 90 then return nil end
+                if not lowest or (lowest > 1 and env.now() - proofAt > 90) then return nil end
                 local accepted = {}
                 for _, row in pairs(rows) do
                     if row.playing == lowest and eligible(row) and env.now() - row.observedAt <= 180 then table.insert(accepted, row) end
@@ -1731,31 +1812,59 @@ local function createFinderSupport()
                 table.sort(accepted, function(a, b) return a.nativeRank < b.nativeRank end)
                 return #accepted > 0 and support.RankServers(accepted, "BestLatency") or nil
             end
+            -- Known fresh 1/7 rows need no occupancy query. During prefetch,
+            -- keep paging past a short group until the reserve is filled.
+            lowest, proofAt = 1, now
             local cached = group()
-            if cached then return cached end
-            if complete then return nil, "renovando lista Best Ping" end
-            for _ = 1, 5 do
-                local page, err = env.fetch("BestLatency", cursor)
-                if not env.alive() then return nil, "sesion terminada" end
-                if not page or type(page.data) ~= "table" then return nil, err or "respuesta Best Ping invalida" end
-                for _, row in ipairs(page.data) do
-                    rank += 1
-                    if type(row) == "table" and type(row.id) == "string" and row.maxPlayers == 7
-                        and type(row.playing) == "number" and row.playing == math.floor(row.playing)
-                        and row.playing >= 1 and row.playing <= 6 then
-                        rows[row.id] = {id = row.id, playing = row.playing,
-                            nativeRank = rows[row.id] and rows[row.id].nativeRank or rank, observedAt = env.now()}
+            if cached and #cached >= wanted then return cached end
+            if not cached then
+                lowest, proofAt = nil, nil
+                for proofPage = 1, 5 do
+                    progress("occupancy", proofPage)
+                    local page, err = env.fetch("OccupancyAsc", proofCursor, alive)
+                    if not alive() then return nil, "busqueda cancelada" end
+                    if not page or type(page.data) ~= "table" then return nil, err or "respuesta de ocupacion invalida" end
+                    for _, row in ipairs(page.data) do
+                        local count = type(row) == "table" and row.playing
+                        if type(count) ~= "number" or count ~= math.floor(count) or count < previous or count > 7 then
+                            return nil, "orden de ocupacion invalido"
+                        end
+                        previous = count
+                        if not lowest and count >= 1 and count <= 6 and row.maxPlayers == 7
+                            and type(row.id) == "string" and eligible(row) then lowest = count end
                     end
+                    if lowest then proofAt = env.now(); break end
+                    proofCursor = page.nextPageCursor
+                    if proofCursor == nil or proofCursor == "" then return nil, "no hay servidores disponibles" end
+                    if type(proofCursor) ~= "string" or proofSeen[proofCursor] then return nil, "cursor de ocupacion invalido" end
+                    proofSeen[proofCursor] = true
                 end
-                cursor = page.nextPageCursor
-                if cursor == nil or cursor == "" then complete = true
-                elseif type(cursor) ~= "string" or cursors[cursor] then return nil, "cursor Best Ping invalido"
-                else cursors[cursor] = true end
+                if not lowest then return nil, "lista parcial; revisando ocupaciones menores" end
+            end
+            cached = group()
+            if cached and (#cached >= wanted or lowest > 1 or complete) then return cached end
+            -- Once exhausted, start a new stream if its cached group is gone.
+            if complete then resetStream() end
+            for _ = 1, 5 do
+                progress("latency", pages + 1)
+                local page, err, status = env.fetch("BestLatency", cursor, alive)
+                if not alive() then return nil, "busqueda cancelada" end
+                if not page and status == 400 and cursor then
+                    resetStream(); saveStream(); return nil, "cursor Best Ping vencido; renovando lista"
+                end
+                if not page or type(page.data) ~= "table" then return nil, err or "respuesta Best Ping invalida" end
+                if not observe(page) then return nil, "cursor Best Ping invalido; se renovara la lista" end
+                progress("latency", pages)
                 local found = group()
-                if found then return found end
+                if found then
+                    if env.publish then pcall(env.publish, found) end
+                    if #found >= wanted or lowest > 1 then return found end
+                end
                 if complete then break end
             end
-            return nil, "lista parcial; buscando Best Ping en la ocupacion menor"
+            local found = group()
+            if found then return found end
+            return nil, string.format("lista parcial: %d paginas revisadas; continuando Best Ping en %d/7", pages, lowest)
         end
         return native
     end
@@ -2374,6 +2483,7 @@ do
     local connectionConfig = readJson(CONNECTION_FILE, {})
     local serverOrder = connectionConfig.mode == "BestLatency" and "BestLatency" or "LegacyPing"
     local nativeStatus = nil
+    local reserveStatus
     local nativeRequestBusy = false
     local deviceCookie = support.DeviceCookie({
         read = function(path) return readfile(path) end,
@@ -2477,7 +2587,7 @@ do
         persist = function(last, cooldown)
             writefile(DEVICE_GATE_FILE, HttpService:JSONEncode({last = last, cooldown = cooldown}))
         end}, deviceGate)
-    local function deviceFetch(orderBy, cursor, candidate, progress)
+    local function deviceFetch(orderBy, cursor, candidate, progress, continuing)
         local generation = credentialGeneration
         if deviceFatal and not candidate then return nil, deviceFatal end
         local secret = candidate or deviceCookie.Read()
@@ -2490,15 +2600,34 @@ do
                 encode = function(value) return HttpService:UrlEncode(value) end}, orderBy, cursor, secret)
         end, function()
             return session.alive and generation == credentialGeneration and (candidate ~= nil or not session.accountConnecting)
+                and (not continuing or continuing())
         end, progress)
         secret = nil
-        if (status == 400 or status == 401 or status == 403 or status == 302)
+        if ((status == 400 and not cursor) or status == 401 or status == 403 or status == 302)
             and generation == credentialGeneration then deviceFatal = reason end
         return result, reason, status
     end
-    local function resetDeviceNative()
-        deviceNative = support.DeviceNative({now = os.time, fetch = deviceFetch,
+    local reportNativeProgress, saveNativePool
+    local DEVICE_STREAM_FILE = "server_hop_button_native_" .. tostring(Players.LocalPlayer.UserId) .. ".json"
+    local function publishNativeProgress(state)
+        nativeStatus = state
+        if reportNativeProgress then reportNativeProgress(state) end
+    end
+    local function resetDeviceNative(seed, clear)
+        if clear then writeJson(DEVICE_STREAM_FILE, {}) end
+        deviceNative = support.DeviceNative({now = os.time,
+            save = function(state) writeJson(DEVICE_STREAM_FILE, state) end,
+            progress = publishNativeProgress,
+            publish = function(pool) if saveNativePool and session.alive then saveNativePool(pool) end end,
+            fetch = function(orderBy, cursor, continuing)
+                return deviceFetch(orderBy, cursor, nil, function(waitState)
+                    local state = support.Copy(nativeStatus or {})
+                    state.wait = waitState; publishNativeProgress(state)
+                end, continuing)
+            end,
             alive = function() return session and session.alive and not session.accountConnecting end})
+        if seed then deviceNative.Seed(seed)
+        else deviceNative.Restore(readJson(DEVICE_STREAM_FILE, {})) end
     end
     resetDeviceNative()
     local function fetchServers(cursor)
@@ -2841,6 +2970,9 @@ do
     end
 
     local busy = false
+    reportNativeProgress = function(state)
+        if session.alive and busy then setStatus(support.NativeProgressMessage(state), COLORS.muted) end
+    end
 
     local function setBusy(value)
         if not session.alive then return end
@@ -3161,7 +3293,8 @@ do
         GetStatus = function()
             return { active = autoEnabled and session.alive, jobId = game.JobId,
                 serverConnection = {orderBy = serverOrder, transport = connectionConfig.transport or "LocalBridge",
-                    credential = deviceCookie.Status(), request = deviceTransport.State(), native = support.Copy(nativeStatus)},
+                    credential = deviceCookie.Status(), request = deviceTransport.State(), native = support.Copy(nativeStatus),
+                    reserve = reserveStatus and reserveStatus() or {count = 0}},
                 mode = session.searchMode, cycle = eggSearch.CycleStatus(),
                 config = support.Copy(eggSearch.config), lastScan = eggSearch.lastScan and {
                     match = support.Copy(eggSearch.lastScan.match), info = support.Copy(eggSearch.lastScan.info),
@@ -3306,7 +3439,8 @@ do
                 uiAccess(); save.Active = true; once.Active = true
                 save.Text = "Guardar y usar AUTO"; once.Text = "Solo esta sesion"; updateEntry()
                 if ok then
-                    credentialGeneration += 1; deviceFatal = nil; serverOrder = "BestLatency"; resetDeviceNative()
+                    credentialGeneration += 1; deviceFatal = nil; serverOrder = "BestLatency"
+                    writeJson(POOL_FILE, {servers = {}}); resetDeviceNative(page, true)
                     -- Confirm verified storage before starting AUTO, which may
                     -- change the map status or begin a later hop independently.
                     draft = nil; input.Text = ""; mask.Text = "Toca aqui para cambiar la cookie"
@@ -3323,7 +3457,7 @@ do
         connect(forget.Activated, function()
             credentialGeneration += 1; draft = nil; connecting = false; session.accountConnecting = false; setAuto(false)
             local removed = deviceCookie.Forget()
-            deviceFatal = nil; resetDeviceNative()
+            deviceFatal = nil; writeJson(POOL_FILE, {servers = {}}); resetDeviceNative(nil, true)
             -- Leave the selected transport enabled: an absent cookie waits;
             -- it must not silently resume legacy or the owner's PC bridge.
             connectionConfig = {mode = "BestLatency", transport = "DeviceCookie"}
@@ -3354,7 +3488,7 @@ do
     session.DisposePanel = filterPanel.Destroy
 
     -- ---------------------------------------------------------------- el salto
-    local function pickCandidates()
+    local function pickCandidates(continuing, wanted)
         local visited = support.PruneVisited(readJson(VISITED_FILE, {}), os.time(), VISITED_MAX_AGE)
         local now = os.time()
         if serverOrder == "BestLatency" then
@@ -3363,11 +3497,13 @@ do
                 if nativeRequestBusy then return nil, "consulta Best Ping en curso" end
                 nativeRequestBusy = true
                 local generation = credentialGeneration
-                local ok, pool, reason = pcall(deviceNative.Pick, game.JobId, visited)
+                local ok, pool, reason = pcall(deviceNative.Pick, game.JobId, visited, continuing, wanted)
                 nativeRequestBusy = false
                 if not session.alive or generation ~= credentialGeneration then return nil, "conexion cancelada" end
                 if not ok then pool, reason = nil, "No se pudo leer Best Ping en este dispositivo." end
-                nativeStatus = {state = pool and "ready" or "error", occupancy = pool and pool[1].playing, error = reason}
+                nativeStatus = nativeStatus or {}
+                nativeStatus.state, nativeStatus.error, nativeStatus.wait = pool and "ready" or "waiting", reason, nil
+                if pool then nativeStatus.occupancy = pool[1].playing end
                 return pool, reason
             end
             if nativeRequestBusy then return nil, "consulta Best Ping en curso" end
@@ -3434,24 +3570,31 @@ do
         writeJson(POOL_FILE, {
             selectionPolicy = SERVER_SELECTION_POLICY,
             orderBy = serverOrder,
+            transport = connectionConfig.transport or "LocalBridge",
+            owner = Players.LocalPlayer.UserId,
             occupancy = group[1].playing,
             updatedAt = os.time(),
             servers = trimmed,
         })
     end
+    saveNativePool = savePool
 
     -- Lee el pool guardado (sin HTTP) y filtra lo que ya no sirve: visitados
     -- en la ultima hora y el servidor actual. Si el pool es viejo, se ignora.
     local function loadPool()
-        -- The companion keeps pagination across hops. Ask it with the current
-        -- visited set; a saved batch is never proof that a group is exhausted.
-        if serverOrder == "BestLatency" then return nil end
         local data = readJson(POOL_FILE, nil)
         if type(data) ~= "table" or type(data.servers) ~= "table" then
             return nil
         end
         if data.selectionPolicy ~= SERVER_SELECTION_POLICY then return nil end
         if data.orderBy ~= serverOrder then return nil end
+        if serverOrder == "BestLatency" then
+            if data.owner ~= Players.LocalPlayer.UserId then return nil end
+            if connectionConfig.transport == "DeviceCookie" and (deviceFatal or not deviceCookie.Status().configured) then return nil end
+            return support.PreloadedNativePool(data, os.time(), game.JobId,
+                support.PruneVisited(readJson(VISITED_FILE, {}), os.time(), VISITED_MAX_AGE),
+                connectionConfig.transport or "LocalBridge")
+        end
         local occupancy = tonumber(data.occupancy)
         if not occupancy or occupancy < 1 or occupancy >= EXPECTED_CAPACITY
             or occupancy ~= math.floor(occupancy) then return nil end
@@ -3488,6 +3631,10 @@ do
         visited[jobId] = os.time()
         writeJson(VISITED_FILE, visited)
     end
+    reserveStatus = function()
+        local pool = loadPool()
+        return {count = pool and #pool or 0, occupancy = pool and pool[1].playing or nil}
+    end
     hopperEnvironment.ChilliEggSearch.RefreshServers = function()
         assert(session.alive, "Esta sesion ya termino")
         local pool, reason = pickCandidates()
@@ -3514,7 +3661,7 @@ do
             local pool = loadPool()
             local pickError = nil
             if not pool or #pool == 0 then
-                pool, pickError = pickCandidates()
+                pool, pickError = pickCandidates(function() return canContinueHop(automatic, generation) end)
                 if not canContinueHop(automatic, generation) then return false end
                 if pool then
                     savePool(pool)
@@ -3995,7 +4142,11 @@ do
         while session.alive and game.JobId == sessionStartJobId do
             if game.PlaceId == PLACE_ID and not busy then
                 local ok, err = pcall(function()
-                    local pool = pickCandidates()
+                    local reserve = loadPool()
+                    if serverOrder == "BestLatency" and reserve and #reserve >= POOL_SIZE then return end
+                    local pool = pickCandidates(function()
+                        return session.alive and not busy and game.JobId == sessionStartJobId
+                    end, POOL_SIZE)
                     if pool and session.alive and game.JobId == sessionStartJobId then
                         savePool(pool)
                         print(string.format(
@@ -4008,7 +4159,7 @@ do
                     warn("[ServerHopButton] Pool no refrescado: " .. tostring(err))
                 end
             end
-            task.wait(POOL_REFRESH_SECONDS)
+            task.wait(serverOrder == "BestLatency" and 5 or POOL_REFRESH_SECONDS)
         end
     end)
 
