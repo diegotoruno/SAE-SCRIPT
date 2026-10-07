@@ -48,6 +48,12 @@ local function createFinderSupport()
         return type(state) == "table" and state.pending == true
             and (state.target == job or (type(state.origin) == "string" and state.origin ~= job))
     end
+    function support.AutoHopAllowed(state, job, now, busy, blocked, freshSeconds)
+        if busy or blocked then return false end
+        if type(state) ~= "table" or state.pending ~= true then return true end
+        if state.unconfirmed == true then return false end
+        return state.target == job or now - (tonumber(state.requestedAt) or 0) >= freshSeconds
+    end
     function support.Pages(fetch, accept, alive, wanted, maxPages)
         local result, seen, cursors, cursor = {}, {}, {}, nil
         for _ = 1, maxPages or 5 do
@@ -1621,7 +1627,8 @@ do
         end
 
         local existing = readJson(STATE_FILE, nil)
-        if automatic and (session.autoHopBlocked or (existing and existing.unconfirmed)) then setBusy(false); return end
+        if automatic and not support.AutoHopAllowed(existing, game.JobId, os.time(), false,
+            session.autoHopBlocked, PENDING_FRESH_SECONDS) then setBusy(false); return end
         if not automatic and existing and existing.unconfirmed then
             if not writeJson(STATE_FILE, {pending = false}) then setBusy(false); return end
             existing = nil; session.autoHopBlocked = false
@@ -1694,11 +1701,8 @@ do
                         lastMode, lastRevision, lastPeriod = mode, revision, period
                     end
                     local state = readJson(STATE_FILE, nil)
-                    local inFlight = type(state) == "table" and state.pending == true
-                        and state.target ~= game.JobId
-                        and os.time() - (tonumber(state.requestedAt) or 0) < PENDING_FRESH_SECONDS
-                    if not busy and not inFlight and not session.autoHopBlocked
-                        and not (state and state.unconfirmed) then
+                    if support.AutoHopAllowed(state, game.JobId, os.time(), busy,
+                        session.autoHopBlocked, PENDING_FRESH_SECONDS) then
                         if mode == "loading" then
                             setLabel("Escaneando")
                             setStatus(info.reason or "esperando datos del mapa...", COLORS.amber)

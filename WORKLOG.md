@@ -48,3 +48,5 @@ Las pruebas de UI, reset real y hop mencionadas en `TESTING.md` son evidencia pr
 - Build y compilacion de fuentes/bundle correctos; 45 regresiones locales pasan, incluidas simulaciones de fallo/cancelacion/timeout/paginacion/backup y recuperacion de modulos. Diff sin errores de whitespace.
 - Referencia previa del cliente: snapshot listo de 65 Slot, 30 llamadas Scan en 3,95 ms y 782 descendientes en EggCards. Son datos de esa sesion, no una garantia de FPS ni comparacion final; la primera medicion durante noche se descarto.
 - Se cargo una candidata inicial, pero los saltos manuales del usuario interrumpieron la validacion del panel y restauraron la version publica anterior. A solicitud del usuario se espera antes de continuar las pruebas del cliente. Pendientes: suite real UI/persistencia/atajo/reejecucion, renovacion/teleport real, comparacion final, PR/CI y publicacion.
+
+- Checkpoint de revision del coordinador: AutoHopAllowed compartido entre vigilante e inicio; 48 regresiones locales pasan. El PR #4 valida el codigo sin desplegarlo; su primera ejecucion CI 37555539630 paso. La validacion del cliente sigue esperando la indicacion del usuario.
