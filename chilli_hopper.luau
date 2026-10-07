@@ -4,7 +4,11 @@ local createMapEggSearch = (function()
 -- Solo lee EggState.ReadFieldEggs: no inspecciona huevos de bases.
 local function createMapEggSearch(readJson, writeJson)
     local CONFIG_FILE = "chilli_egg_search_config.json"
-    local search = { ready = false, error = nil, lastScan = nil, fieldRevision = 0 }
+    local search = { ready = false, error = nil, lastScan = nil, fieldRevision = 0,
+        stats = { scans = 0, analyses = 0, incomeReads = 0, cacheHits = 0, lastMs = 0 } }
+    local incomeCache = {}
+    local analysisKey, analysisResult
+    local rowRevision = 0
     local connections = {}
     function search.Dispose()
         search.disposed = true
@@ -103,6 +107,14 @@ local function createMapEggSearch(readJson, writeJson)
     local ok, config = pcall(normalize, readJson(CONFIG_FILE, {}))
     search.config = ok and config or normalize({})
 
+    function search.Validate(config)
+        assert(search.modules, "Espera a que cargue el catálogo del juego")
+        local result = normalize(config)
+        result.rarity = canonicalRarity(result.rarity, search.RarityOptions())
+        for _, id in ipairs(result.categories) do assert(search.modules.assets.Directory[id], "Especie desconocida: " .. id) end
+        return result
+    end
+
     function search.Configure(patch)
         assert(search.modules, "Espera a que cargue el catalogo del juego para aplicar filtros")
         local nextConfig = table.clone(search.config)
@@ -114,11 +126,53 @@ local function createMapEggSearch(readJson, writeJson)
         nextConfig.rarity = canonicalRarity(nextConfig.rarity, search.RarityOptions())
         assert(writeJson(CONFIG_FILE, nextConfig), "No se pudieron guardar los filtros")
         search.config = nextConfig
-        return table.clone(nextConfig)
+        search.lastScan = nil
+        local copy = table.clone(nextConfig); copy.categories = table.clone(nextConfig.categories); return copy
     end
 
     function search.Summary()
         return string.format("%s >= %s/s", search.config.rarity, search.FormatMinimum(search.config.minIncome))
+    end
+
+    function search.Explain(egg, catalog, income, filters)
+        filters = filters or search.config
+        if not catalog then return "Datos de especie no disponibles" end
+        if string.lower(tostring(rarityId(catalog.Rarity))) ~= string.lower(filters.rarity) then return "Rareza distinta" end
+        if #filters.categories > 0 and not table.find(filters.categories, egg.AssetCategory) then return "Especie excluida" end
+        local name = string.lower(catalog.DisplayName or egg.AssetCategory)
+        local needle = string.lower(filters.nameContains)
+        if needle ~= "" and not string.find(name, needle, 1, true)
+            and not string.find(string.lower(egg.AssetCategory), needle, 1, true) then return "Nombre distinto" end
+        if filters.mutation ~= "" then
+            local found = string.lower(tostring(egg.BaseMutation)) == string.lower(filters.mutation)
+            for _, id in ipairs(egg.Mutations or {}) do if string.lower(id) == string.lower(filters.mutation) then found = true end end
+            if not found then return "Falta la mutación elegida" end
+        end
+        if type(income) ~= "number" or income ~= income or income < 0 or income == math.huge then return "Ingreso no disponible" end
+        if income < filters.minIncome then return "Ingreso inferior al mínimo" end
+        return "Cumple todos los filtros"
+    end
+
+    -- Stable signature includes every replicated input, including base mutation,
+    -- bounds and area. It also detects changes not covered by FieldRefreshed.
+    function search.RecordKey(value)
+        if type(value) ~= "table" then return typeof and typeof(value) .. ":" .. tostring(value) or type(value) .. ":" .. tostring(value) end
+        local keys = {}; for key in pairs(value) do table.insert(keys, key) end
+        table.sort(keys, function(a,b) return tostring(a) < tostring(b) end)
+        local parts = {}; for _, key in ipairs(keys) do table.insert(parts, tostring(key) .. "=" .. search.RecordKey(value[key])) end
+        return "{" .. table.concat(parts, "|") .. "}"
+    end
+    function search.CopyRecord(value)
+        if type(value) ~= "table" then return value end
+        local result = {}; for key, item in pairs(value) do result[key] = search.CopyRecord(item) end
+        return result
+    end
+    function search.SameRecord(a, b)
+        if type(a) ~= type(b) then return false end
+        if type(a) ~= "table" then return a == b end
+        for key, value in pairs(a) do if not search.SameRecord(value, b[key]) then return false end end
+        for key in pairs(b) do if a[key] == nil then return false end end
+        return true
     end
 
     -- Funcion pura: tambien permite verificar los filtros sin teleports.
@@ -196,44 +250,51 @@ local function createMapEggSearch(readJson, writeJson)
 
     -- Datos y reloj replicados por el juego; no se modifica el ciclo.
     task.spawn(function()
-        local loaded, modules = pcall(function()
-            local replicated = game:GetService("ReplicatedStorage")
-            local data = replicated:WaitForChild("Data", 30)
-            local client = replicated:WaitForChild("Client", 30)
-            local shared = replicated:WaitForChild("Shared", 30)
-            assert(data and client and shared, "Faltan los modulos del juego")
-            local util = shared:WaitForChild("Util", 30)
-            assert(util, "No llego Shared.Util")
-            local function module(parent, name)
-                local source = parent:WaitForChild(name, 30)
-                assert(source, "No llego " .. name)
-                return require(source)
-            end
-            return {
-                assets = module(data, "Assets"), eggs = module(client, "EggState"),
-                rarities = module(data, "Rarity"), numbers = module(shared:WaitForChild("Utils", 30), "Numbers"),
-                records = module(util, "EggRecords"), earnings = module(util, "AssetEarnings"),
-                cycle = module(util, "AreaEggCycle"),
-            }
-        end)
-        if search.disposed then return end
-        if loaded then
-            search.modules = modules
-            -- Validate persisted IDs after the real catalog arrives. An obsolete
-            -- selection waits for correction instead of making hop decisions.
-            table.insert(connections, modules.eggs.FieldRefreshed:Connect(function()
-                search.fieldRevision += 1
-                if not modules.cycle.IsNightPhase(workspace:GetServerTimeNow()) then
-                    search.resetting = false
+        local retryDelay = 2
+        while not search.disposed and not search.modules do
+            local loaded, modules = pcall(function()
+                local replicated = game:GetService("ReplicatedStorage")
+                local data = replicated:WaitForChild("Data", 30)
+                local client = replicated:WaitForChild("Client", 30)
+                local shared = replicated:WaitForChild("Shared", 30)
+                assert(data and client and shared, "Faltan los modulos del juego")
+                local util = shared:WaitForChild("Util", 30)
+                assert(util, "No llego Shared.Util")
+                local function module(parent, name)
+                    local source = parent:WaitForChild(name, 30)
+                    assert(source, "No llego " .. name)
+                    return require(source)
                 end
-            end))
-            table.insert(connections, modules.eggs.ResetCountdown:Connect(function()
-                search.resetting = true
-            end))
-            table.insert(connections, modules.eggs.RarityRevealed:Connect(function()
-                search.resetting = false
-            end))
-        else search.error = tostring(modules) end
+                return {
+                    assets = module(data, "Assets"), eggs = module(client, "EggState"),
+                    rarities = module(data, "Rarity"), numbers = module(shared:WaitForChild("Utils", 30), "Numbers"),
+                    records = module(util, "EggRecords"), earnings = module(util, "AssetEarnings"),
+                    cycle = module(util, "AreaEggCycle"),
+                }
+            end)
+            if search.disposed then return end
+            if loaded then
+                search.modules = modules
+                search.error = nil
+                -- Validate persisted IDs after the real catalog arrives. An obsolete
+                -- selection waits for correction instead of making hop decisions.
+                table.insert(connections, modules.eggs.FieldRefreshed:Connect(function()
+                    search.fieldRevision += 1
+                    if not modules.cycle.IsNightPhase(workspace:GetServerTimeNow()) then
+                        search.resetting = false
+                    end
+                end))
+                table.insert(connections, modules.eggs.ResetCountdown:Connect(function()
+                    search.resetting = true
+                end))
+                table.insert(connections, modules.eggs.RarityRevealed:Connect(function()
+                    search.resetting = false
+                end))
+            else
+                search.error = tostring(modules)
+                task.wait(retryDelay); retryDelay = math.min(15, retryDelay * 2)
+            end
+        end
     end)
 
     function search.CycleStatus()
@@ -254,37 +315,116 @@ local function createMapEggSearch(readJson, writeJson)
         return ok and status or nil
     end
 
-    function search.Scan()
-        if search.error then return nil, { ready = false, reason = search.error } end
+    function search.Scan(fresh, includeMapIncome)
+        local started = os.clock()
+        search.stats.scans += 1
+        local function publish(match, info, all, rows)
+            search.ready = info.ready
+            search.lastScan = { match = match, info = info, matches = all or {}, rows = rows or {},
+                revision = search.fieldRevision, at = os.clock() }
+            search.stats.lastMs = (os.clock() - started) * 1000
+            return match, info, all, rows
+        end
+        if search.disposed then return publish(nil, {ready = false, reason = "sesión terminada"}) end
+        if search.error then return publish(nil, {ready = false, reason = search.error}) end
         local modules = search.modules
-        if not modules then return nil, { ready = false, reason = "cargando datos del mapa" } end
-        local scanOk, match, info, all = pcall(function()
+        if not modules then return publish(nil, {ready = false, reason = "cargando datos del mapa"}) end
+        local scanOk, match, info, all, rows = pcall(function()
             if search.resetting or modules.cycle.IsNightPhase(workspace:GetServerTimeNow()) then
-                return nil, { ready = false, reason = "renovando huevos; esperando snapshot nuevo" }
+                table.clear(incomeCache)
+                analysisKey, analysisResult = nil, nil
+                return nil, {ready = false, reason = "renovando huevos; esperando snapshot nuevo"}
             end
             if not modules.eggs.HasFieldSnapshot() then
-                return nil, { ready = false, reason = "esperando spawns del mapa" }
+                table.clear(incomeCache)
+                analysisKey, analysisResult = nil, nil
+                return nil, {ready = false, reason = "esperando spawns del mapa"}
             end
             local snapshot = modules.eggs.ReadFieldEggs()
-            assert(type(snapshot) == "table" and type(snapshot.Records) == "table",
-                "Snapshot del mapa incompatible")
-            local best, details, matches = search.Evaluate(snapshot.Records, modules.assets.Directory,
-                function(egg)
-                    local item = modules.records.ToAssetItemData(egg)
-                    -- Generacion del egg al eclosionar: tamaño + mutaciones.
-                    -- No incluye boosts temporales ni bonus del dueño anterior.
-                    return modules.earnings.MutationOnlyRatePerSecond(item)
-                end)
-            details.ready = details.errors == 0
-            if not details.ready then details.reason = "no se pudo verificar el ingreso de todos los eggs" end
-            return best, details, matches
+            assert(type(snapshot) == "table" and type(snapshot.Records) == "table", "Snapshot del mapa incompatible")
+            local mapRows, active, cachedByEgg, inputKeys = {}, {}, {}, {}
+            local function incomeFor(egg)
+                local cached = cachedByEgg[egg]
+                if fresh or cached.income == nil then
+                    local ok, rate = pcall(function()
+                        search.stats.incomeReads += 1
+                        return modules.earnings.MutationOnlyRatePerSecond(modules.records.ToAssetItemData(egg))
+                    end)
+                    local valid = ok and type(rate) == "number" and rate == rate and rate >= 0 and rate < math.huge
+                    cached.income = valid and rate or nil
+                else search.stats.cacheHits += 1 end
+                return cached.income
+            end
+            local count, unknown = 0, 0
+            local selectedTier = string.lower(search.config.rarity)
+            for key, egg in pairs(snapshot.Records) do
+                if egg.State == "Slot" then
+                    count += 1
+                    local id = tostring(egg.Uid or key)
+                    active[id] = true
+                    local catalog = modules.assets.Directory[egg.AssetCategory]
+                    local tier = catalog and rarityId(catalog.Rarity)
+                    if type(tier) ~= "string" then unknown += 1 end
+                    local selected = type(tier) == "string" and string.lower(tier) == selectedTier
+                    -- AUTO only needs full inputs of the selected rarity. The
+                    -- panel requests all rows explicitly; unrelated spawns
+                    -- still contribute availability/error counts.
+                    if includeMapIncome or selected then
+                        local rarity = modules.rarities.Rarities[tier]
+                        local catalogState = {rate = catalog and catalog.EarningRate, name = catalog and catalog.DisplayName,
+                            icon = catalog and catalog.Icon, eggIcon = catalog and catalog.Egg and catalog.Egg.Icon,
+                            tier = tier, rank = rarity and rarity.Rank, color = rarity and rarity.Color}
+                        local cached = incomeCache[id]
+                        if not cached or cached.modules ~= modules or cached.catalog ~= catalog
+                            or not search.SameRecord(cached.record, egg) or not search.SameRecord(cached.catalogState, catalogState) then
+                            rowRevision += 1
+                            cached = {key = tostring(rowRevision), modules = modules, catalog = catalog,
+                                record = search.CopyRecord(egg), catalogState = catalogState}
+                            incomeCache[id] = cached
+                        end
+                        cachedByEgg[egg] = cached
+                        if includeMapIncome then incomeFor(egg) end
+                        if selected then table.insert(inputKeys, id .. ":" .. cached.key) end
+                        table.insert(mapRows, {uid = id, egg = egg, catalog = catalog,
+                            income = cached.income, key = cached.key})
+                        end
+                end
+            end
+            for id in pairs(incomeCache) do if not active[id] then incomeCache[id] = nil end end
+            table.sort(inputKeys)
+            local key = tostring(modules) .. tostring(search.fieldRevision) .. search.RecordKey(search.config)
+                .. ":" .. tostring(count) .. ":" .. tostring(unknown) .. "|" .. table.concat(inputKeys, "|")
+            local best, details, matches
+            if not fresh and key == analysisKey and analysisResult and analysisResult.info.ready then
+                best, details, matches = analysisResult.match, analysisResult.info, analysisResult.matches
+            else
+                search.stats.analyses += 1
+                best, details, matches = search.Evaluate(snapshot.Records, modules.assets.Directory, incomeFor)
+                details.ready = details.errors == 0
+                analysisKey, analysisResult = key, {match = best, info = details, matches = matches}
+            end
+            local matching = {}; for _, candidate in ipairs(matches) do matching[tostring(candidate.uid)] = true end
+            for _, row in ipairs(mapRows) do
+                row.income = cachedByEgg[row.egg].income
+                row.match = matching[row.uid] == true
+                row.reason = search.Explain(row.egg, row.catalog, row.income)
+            end
+            if not details.ready then details.reason = "datos de especie o ingreso no disponibles; esperando recuperación" end
+            return best, details, matches, mapRows
         end)
-        if not scanOk then
-            return nil, { ready = false, reason = tostring(match) }
-        end
-        search.ready = info.ready
-        search.lastScan = { match = match, info = info, matches = all }
-        return match, info, all
+        if not scanOk then return publish(nil, {ready = false, reason = tostring(match)}) end
+        local result, details, matches, mapRows = publish(match, info, all, rows)
+        search.lastScan.mapIncome = includeMapIncome == true
+        return result, details, matches, mapRows
+    end
+    function search.MapSnapshot()
+        local cycle = search.CycleStatus()
+        if search.lastScan and os.clock() - search.lastScan.at < 0.6
+            and search.lastScan.revision == search.fieldRevision and not search.resetting
+            and not (cycle and cycle.night) and search.lastScan.mapIncome then return search.lastScan end
+        search.Scan(false, true)
+        search.lastScan.mapIncome = true
+        return search.lastScan
     end
     return search
 end
@@ -363,7 +503,10 @@ local function mountEggFilterPanel(context)
         local list = {}; for id, selected in pairs(selection) do if selected then table.insert(list, id) end end
         table.sort(list); return list
     end
-    local dirty, signature, popup, data = false, nil, nil, nil
+    local dirty, signature, popup, data = false, nil, nil, {}
+    local entries, metadata, orderedRows, rowsKey = {}, {}, {}, nil
+    local renderScheduled = false
+    panel.stats = {created = 0, updated = 0, modelsCreated = 0, rendered = 0, lastMs = 0}
     local function sameConfig(a, b)
         if a.rarity ~= b.rarity or a.minIncome ~= b.minIncome or a.mutation ~= b.mutation or a.nameContains ~= b.nameContains then return false end
         if #(a.categories or {}) ~= #(b.categories or {}) then return false end
@@ -387,6 +530,7 @@ local function mountEggFilterPanel(context)
     make("UIGradient", "RedGradient", header, { Rotation = 0, Color = ColorSequence.new(C.red, Color3.fromRGB(165, 27, 50)) })
     text("Title", header, "Egg Finder", 16, 5, 220, 30, C.white, 28, true)
     text("Subtitle", header, "Solo huevos del mapa", 18, 34, 230, 15, C.white, 11)
+    local optionsButton = button("Options", header, "Opciones", 238, 10, 105, 34)
     local auto = button("ToggleSearch", header, "AUTO", 353, 10, 134, 34, C.green)
     local minimize = button("Minimize", header, "−", 496, 10, 30, 34)
     local stateTitle = text("SearchState", root, "Conectando detector...", 16, 64, 355, 24, C.white, 19, true)
@@ -425,18 +569,19 @@ local function mountEggFilterPanel(context)
     local scroll = make("ScrollingFrame", "EggCards", root, {
         Position = UDim2.fromOffset(14, 344), Size = UDim2.fromOffset(512, 304), BackgroundTransparency = 1,
         BorderSizePixel = 0, ScrollBarThickness = 5, ScrollBarImageColor3 = C.border,
-        CanvasSize = UDim2.new(), AutomaticCanvasSize = Enum.AutomaticSize.Y, ScrollingDirection = Enum.ScrollingDirection.Y,
+        CanvasSize = UDim2.new(), AutomaticCanvasSize = Enum.AutomaticSize.None, ScrollingDirection = Enum.ScrollingDirection.Y,
     })
-    make("UIListLayout", "Layout", scroll, { Padding = UDim.new(0, 8), SortOrder = Enum.SortOrder.LayoutOrder })
+
     make("UIPadding", "Padding", scroll, { PaddingTop = UDim.new(0, 2), PaddingLeft = UDim.new(0, 2), PaddingRight = UDim.new(0, 8), PaddingBottom = UDim.new(0, 4) })
     local foot = text("Hint", root, "Toca una tarjeta para elegir especies; luego aplica los filtros.", 16, 658, 510, 24, C.muted, 11)
     local chooseSpecies = button("ChooseSpecies", filters, "Elegir especies ▾", 12, 119, 154, 27)
     selectionLabel.Position = UDim2.fromOffset(174, 121); selectionLabel.Size = UDim2.fromOffset(170, 18)
     local function save()
         access()
-        writeJson(FILE, { open = panel.open, visual = visual, filtersOpen = filtersOpen,
+        local ok = writeJson(FILE, { open = panel.open, visual = visual, filtersOpen = filtersOpen,
             view = "map", onlyMatches = onlyMatches, sortBest = sortBest,
             x = root.Position.X.Offset, y = root.Position.Y.Offset })
+        if not ok then panel.error = "No se pudo guardar la posición / vista"; warn("[EggPanel] " .. panel.error) end
     end
     local function closePopup() if popup then popup:Destroy(); popup = nil end end
     local function layout()
@@ -462,8 +607,17 @@ local function mountEggFilterPanel(context)
         root.Position = UDim2.fromOffset(math.clamp(root.Position.X.Offset, 8, math.max(8, viewport.X - width - 8)),
             math.clamp(root.Position.Y.Offset, 8, math.max(8, viewport.Y - height - 8)))
     end
-    function panel.Open() access(); panel.open = true; root.Visible = true; launcher.Visible = false; signature = nil; fit(); save() end
-    function panel.Close() access(); panel.open = false; root.Visible = false; launcher.Visible = true; closePopup(); save() end
+    function panel.Open()
+        access(); panel.open = true; root.Visible = true; launcher.Visible = false; signature = nil; fit(); save()
+        if panel.Refresh then task.defer(function() if panel.alive and session.alive then panel.Refresh() end end) end
+    end
+    function panel.Close()
+        access(); panel.open = false; root.Visible = false; launcher.Visible = true; closePopup()
+        for _, entry in pairs(entries) do
+            if entry.viewport then entry.viewport:Destroy(); entry.viewport = nil; entry.key = nil end
+        end
+        save()
+    end
     local function markDirty()
         access()
         dirty = true; signature = nil
@@ -505,6 +659,12 @@ local function mountEggFilterPanel(context)
         access(); assert(mode == "eggs" or mode == "pets" or mode == "models")
         visual = mode; signature = nil; save()
     end
+    function panel.SetSortBest(value)
+        access(); sortBest = value == true; signature = nil; save()
+    end
+    function panel.SetOnlyMatches(value)
+        access(); onlyMatches = value == true; signature = nil; save()
+    end
     local function dropdown(anchor, options, select)
         if popup then closePopup(); return end
         popup = make("Frame", "Dropdown", root, { Position = UDim2.fromOffset(14, 192), Size = UDim2.fromOffset(512, 310), BackgroundColor3 = C.input, BorderSizePixel = 0, ZIndex = 60 })
@@ -522,7 +682,9 @@ local function mountEggFilterPanel(context)
     end
     local function cleanupCards()
         access()
-        for _, child in ipairs(scroll:GetChildren()) do if child:IsA("GuiObject") then child:Destroy() end end
+        for _, entry in pairs(entries) do entry.card:Destroy() end
+        table.clear(entries); table.clear(metadata); orderedRows = {}; rowsKey = nil
+        local empty = scroll:FindFirstChild("Empty"); if empty then empty:Destroy() end
     end
     local function speciesPicker()
         if popup then closePopup(); return end
@@ -556,115 +718,243 @@ local function mountEggFilterPanel(context)
     end
     panel.OpenSpecies = function() access(); speciesPicker() end
     local function rarityColor(rarity)
-        local color = rarity and rarity.Color
+        local color = type(rarity) == "table" and rarity.Color
         -- Secret usa gris casi negro en el juego; aclararlo conserva la legibilidad.
         if typeof(color) == "Color3" then return color:Lerp(C.white, 0.25) end
         return C.gold
     end
-    local function buildCards()
-        local modules = search.modules
-        if not modules or not data then return end
-        local rows, fingerprint = {}, { "map", visual, tostring(onlyMatches), tostring(sortBest), table.concat(selectionList(), ",") }
-        access()
-        local firstVisible = math.max(1, math.floor(scroll.CanvasPosition.Y / 112))
-        local lastVisible = firstVisible + math.ceil(scroll.AbsoluteSize.Y / math.max(0.1, scale.Scale) / 112) + 2
-        if visual == "models" then table.insert(fingerprint, tostring(firstVisible) .. ":" .. tostring(lastVisible)) end
-        do
-            local cycle = search.CycleStatus()
-            if search.resetting or (cycle and cycle.night) or not modules.eggs.HasFieldSnapshot() then
-                table.insert(fingerprint, "reset")
-            else
-                local matches = {}
-                local _, _, all = search.Scan(); for _, m in ipairs(all or {}) do matches[m.uid] = true end
-                for _, egg in pairs(modules.eggs.ReadFieldEggs().Records) do
-                    local catalog = modules.assets.Directory[egg.AssetCategory]
-                    if egg.State == "Slot" and catalog and (not onlyMatches or matches[egg.Uid]) then
-                        local ok, rate = pcall(function() return modules.earnings.MutationOnlyRatePerSecond(modules.records.ToAssetItemData(egg)) end)
-                        local weightOk, weight = pcall(modules.records.WeightLabel, egg)
-                        local iconOk, icon = pcall(modules.records.EggIcon, egg)
-                        local rarity = modules.rarities.Rarities[catalog.Rarity._id]
-                        local labels = {}; for _, id in ipairs(egg.Mutations or {}) do table.insert(labels, data.mutations.LabelOf(id)) end
-                        table.insert(rows, { uid = egg.Uid, category = egg.AssetCategory, catalog = catalog,
-                            rarityRank = rarity and rarity.Rank or 0,
-                            income = ok and rate or nil, scale = egg.AssetScale, weight = weightOk and weight or "peso no disponible",
-                            mutations = #labels > 0 and table.concat(labels, " + ") or "Sin mutaciones",
-                            area = egg.AreaId, match = matches[egg.Uid], eggIcon = iconOk and icon or nil })
-                    end
-                end
-            end
-        end
-        table.sort(rows, function(a, b)
-            if sortBest and a.rarityRank ~= b.rarityRank then return a.rarityRank > b.rarityRank end
-            if sortBest and (a.income or 0) ~= (b.income or 0) then return (a.income or 0) > (b.income or 0) end
-            if a.category ~= b.category then return a.category < b.category end
-            return tostring(a.uid) < tostring(b.uid)
-        end)
-        for _, row in ipairs(rows) do table.insert(fingerprint, table.concat({row.uid or row.category, tostring(row.rarityRank), tostring(row.income), tostring(row.scale), row.mutations, tostring(row.match)}, ":")) end
-        local key = table.concat(fingerprint, "|")
-        if key == signature then return end
-        signature = key; cleanupCards(); panel.cards = #rows
-        if #rows == 0 then
-            local cycle = search.CycleStatus()
-            local message = onlyMatches and "Ningún huevo actual cumple los filtros guardados.\nEsperando la próxima renovación." or "No hay spawns disponibles en el mapa."
-            if panel.view == "map" and (search.resetting or (cycle and cycle.night)) then message = "Renovando huevos...\nEsperando los nuevos spawns." end
-            local empty = text("Empty", scroll, message, 0, 0, 494, 130, C.muted, 16)
-            empty.TextWrapped = true; empty.TextXAlignment = Enum.TextXAlignment.Center
-            return
-        end
-        for index, row in ipairs(rows) do
-            local selected = selection[row.category] == true
-            local card = make("TextButton", "Card_" .. (row.uid or row.category), scroll, {
-                Size = UDim2.new(1, -2, 0, 104), BackgroundColor3 = selected and Color3.fromRGB(41, 57, 44) or C.card,
-                BorderSizePixel = 0, Text = "", AutoButtonColor = true, LayoutOrder = index,
-            })
-            corner(card, 7); stroke(card, row.match and C.green or selected and C.cyan or C.border, row.match and 2 or 1)
-            local box = make("Frame", "Visual", card, { Position = UDim2.fromOffset(8, 8), Size = UDim2.fromOffset(88, 88), BackgroundColor3 = C.input, BorderSizePixel = 0 })
-            corner(box)
-            local icon = visual == "pets" and row.catalog.Icon or row.eggIcon or row.catalog.Egg.Icon
-            local image = make("ImageLabel", "EggImage", box, { Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, Image = icon or "", ScaleType = Enum.ScaleType.Fit })
-            if visual == "models" and index >= firstVisible and index <= lastVisible then
-                local ok, model = pcall(function()
-                    local originalModel = data.assetModels.GetAssetModelIfReplicated(row.category)
-                    if not originalModel then return nil end
-                    access()
-                    local viewport = make("ViewportFrame", "AssetViewport", box, {
-                        Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1,
-                        Ambient = Color3.fromRGB(210, 210, 230), LightColor = C.white,
-                        LightDirection = Vector3.new(-1, -1, -1),
-                    })
-                    local world = make("WorldModel", "PreviewWorld", viewport)
-                    local rig = originalModel:Clone()
-                    for _, child in ipairs(rig:GetDescendants()) do
-                        if child:IsA("LuaSourceContainer") or child:IsA("Sound") then child:Destroy()
-                        elseif child:IsA("BasePart") then child.Anchored = true; child.CanCollide = false end
-                    end
-                    rig.Parent = world; rig:PivotTo(CFrame.new())
-                    local bounds, size = rig:GetBoundingBox()
-                    local distance = math.max(0.1, size.X, size.Y, size.Z) * 1.8
-                    local camera = make("Camera", "PreviewCamera", viewport, {
-                        FieldOfView = 35, CFrame = CFrame.lookAt(bounds.Position + Vector3.new(distance * 0.8, distance * 0.45, distance), bounds.Position),
-                    })
-                    viewport.CurrentCamera = camera
-                    return rig
-                end)
-                access()
-                image.Visible = not (ok and model ~= nil)
-            end
-            local name = text("Name", card, row.catalog.DisplayName or row.category, 108, 8, 326, 23, rarityColor(row.catalog.Rarity), 19, true)
-            name.Size = UDim2.new(1, -166, 0, 23)
-            text("Income", card, (row.income and number(row.income) or "?") .. "/s", 108, 32, 314, 20, C.green, 17, true)
-            text("SizeWeight", card, string.format("x%.2f  ·  %s", row.scale or 1, row.weight), 108, 54, 320, 18, C.cyan, 13, true)
-            text("MutationsArea", card, row.catalog.Rarity._id .. " · " .. row.mutations .. (row.area and " · " .. row.area or ""), 108, 77, 355, 17, C.muted, 11)
-            local badge = text("Selected", card, selected and "✓" or "+", 450, 8, 36, 32, selected and C.cyan or C.muted, 28, true)
-            badge.TextXAlignment = Enum.TextXAlignment.Center
-            if panel.view == "map" then text("Match", card, row.match and "CUMPLE" or "FUERA", 430, 47, 60, 20, row.match and C.green or C.gold, 12, true) end
-            card.Activated:Connect(function() access(); panel.SelectCategory(row.category) end)
-        end
+    local function detail(row)
+        access(); closePopup()
+        popup = make("Frame", "EggDetail", root, {Position = UDim2.fromOffset(14, 192), Size = UDim2.fromOffset(512, 310),
+            BackgroundColor3 = C.input, BorderSizePixel = 0, ZIndex = 60})
+        corner(popup); stroke(popup, C.cyan, 2)
+        text("Title", popup, row.name, 14, 12, 438, 30, C.white, 21, true).ZIndex = 61
+        local dismiss = button("Dismiss", popup, "×", 466, 10, 32, 28); dismiss.ZIndex = 62
+        dismiss.Activated:Connect(function() access(); closePopup() end)
+        local value = row.income and string.format("%.17g", row.income) .. "/s" or "No disponible"
+        local content = row.reason .. "\n\nIngreso exacto: " .. value
+            .. "\nMínimo guardado: " .. string.format("%.17g", search.config.minIncome) .. "/s"
+            .. "\n" .. row.rarity .. " · " .. row.mutations .. "\nZona: " .. tostring(row.area or "No disponible")
+        local body = text("Explanation", popup, content, 14, 55, 478, 230, C.white, 15)
+        body.TextWrapped = true; body.TextTruncate = Enum.TextTruncate.None; body.TextYAlignment = Enum.TextYAlignment.Top; body.ZIndex = 61
     end
+    local function createCard(row)
+        local entry = {row = row}
+        local card = make("TextButton", "Card_" .. row.uid, scroll, {Size = UDim2.new(1, -12, 0, 104),
+            BackgroundColor3 = C.card, BorderSizePixel = 0, Text = "", AutoButtonColor = true})
+        entry.card = card; corner(card, 7); entry.border = stroke(card)
+        entry.box = make("Frame", "Visual", card, {Position = UDim2.fromOffset(8, 8), Size = UDim2.fromOffset(88, 88), BackgroundColor3 = C.input, BorderSizePixel = 0})
+        corner(entry.box)
+        entry.image = make("ImageLabel", "EggImage", entry.box, {Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, ScaleType = Enum.ScaleType.Fit})
+        entry.name = text("Name", card, "", 108, 8, 326, 23, C.white, 19, true)
+        entry.name.Size = UDim2.new(1, -166, 0, 23)
+        entry.income = text("Income", card, "", 108, 32, 314, 20, C.green, 17, true)
+        entry.weight = text("SizeWeight", card, "", 108, 54, 312, 18, C.cyan, 13, true)
+        entry.mutations = text("MutationsArea", card, "", 108, 77, 310, 17, C.muted, 11)
+        entry.badge = text("Selected", card, "", 450, 8, 36, 32, C.muted, 28, true); entry.badge.TextXAlignment = Enum.TextXAlignment.Center
+        entry.match = text("Match", card, "", 430, 47, 60, 20, C.gold, 12, true)
+        local more = button("Detail", card, "Detalle", 430, 75, 60, 20); more.TextSize = 10
+        more.Activated:Connect(function() access(); detail(entry.row) end)
+        card.Activated:Connect(function() access(); if search.modules.assets.Directory[entry.row.category] then panel.SelectCategory(entry.row.category) end end)
+        panel.stats.created += 1
+        return entry
+    end
+    local function updateCard(entry, row, index)
+        access(); entry.row = row
+        entry.card.LayoutOrder = index; entry.card.Position = UDim2.fromOffset(2, (index - 1) * 112 + 2)
+        local selected = selection[row.category] == true
+        local key = row.key .. tostring(row.match) .. row.reason .. row.mutations
+            .. tostring(row.weight) .. tostring(row.eggIcon) .. visual .. tostring(selected)
+        if entry.key == key and (visual ~= "models" or entry.viewport or not data.assetModels) then return end
+        entry.key = key; panel.stats.updated += 1
+        entry.card.Name = "Card_" .. row.uid
+        entry.card.BackgroundColor3 = selected and Color3.fromRGB(41, 57, 44) or C.card
+        entry.border.Color = row.match and C.green or selected and C.cyan or C.border; entry.border.Thickness = row.match and 2 or 1
+        entry.name.Text = row.name; entry.name.TextColor3 = rarityColor(row.catalog and row.catalog.Rarity)
+        entry.income.Text = (row.income and number(row.income) or "?") .. "/s"
+        entry.weight.Text = string.format("x%.2f  ·  %s", row.scale or 1, row.weight)
+        entry.mutations.Text = row.rarity .. " · " .. row.mutations .. (row.area and " · " .. tostring(row.area) or "")
+        entry.badge.Text = selected and "✓" or "+"; entry.badge.TextColor3 = selected and C.cyan or C.muted
+        entry.match.Text = row.match and "CUMPLE" or "FUERA"; entry.match.TextColor3 = row.match and C.green or C.gold
+        local catalog = row.catalog or {}
+        entry.image.Image = (visual == "pets" and catalog.Icon or row.eggIcon or (catalog.Egg and catalog.Egg.Icon)) or ""
+        entry.image.Visible = true
+        local modelKey = visual .. row.category .. tostring(row.scale) .. tostring(data.assetModels)
+        if entry.modelKey ~= modelKey then
+            if entry.viewport then entry.viewport:Destroy(); entry.viewport = nil end
+            entry.modelKey = modelKey
+        end
+        if visual == "models" and data.assetModels and not entry.viewport then
+            local ok, err = pcall(function()
+                local original = data.assetModels.GetAssetModelIfReplicated(row.category)
+                if not original then return end
+                access()
+                local viewport = make("ViewportFrame", "AssetViewport", entry.box, {Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1,
+                    Ambient = Color3.fromRGB(210, 210, 230), LightColor = C.white, LightDirection = Vector3.new(-1, -1, -1)})
+                entry.viewport = viewport
+                local world = make("WorldModel", "PreviewWorld", viewport)
+                local rig = original:Clone()
+                for _, child in ipairs(rig:GetDescendants()) do
+                    if child:IsA("LuaSourceContainer") or child:IsA("Sound") then child:Destroy()
+                    elseif child:IsA("BasePart") then child.Anchored = true; child.CanCollide = false end
+                end
+                rig.Parent = world; rig:PivotTo(CFrame.new())
+                local bounds, size = rig:GetBoundingBox(); local distance = math.max(0.1, size.X, size.Y, size.Z) * 1.8
+                local camera = make("Camera", "PreviewCamera", viewport, {FieldOfView = 35,
+                    CFrame = CFrame.lookAt(bounds.Position + Vector3.new(distance * 0.8, distance * 0.45, distance), bounds.Position)})
+                viewport.CurrentCamera = camera; panel.stats.modelsCreated += 1
+            end)
+            access()
+            if not ok then if entry.viewport then entry.viewport:Destroy(); entry.viewport = nil end; warn("[EggPanel] Modelo: " .. tostring(err)) end
+        end
+        access(); entry.image.Visible = entry.viewport == nil
+    end
+    local function buildCards()
+        if not panel.open or not panel.alive then return end
+        local started = os.clock()
+        local snapshot = search.MapSnapshot()
+        local modules = search.modules
+        local rows, active, fingerprints = {}, {}, {tostring(sortBest), tostring(onlyMatches), search.RecordKey(search.config)}
+        for _, item in ipairs(snapshot.rows or {}) do
+            active[item.uid] = true
+            if not onlyMatches or item.match then
+                local row = metadata[item.uid]
+                if not row or row.key ~= item.key or row.labelModule ~= data.mutations then
+                    local egg, catalog = item.egg, item.catalog
+                    local rarity = catalog and catalog.Rarity
+                    local rarityId = type(rarity) == "table" and rarity._id or rarity
+                    local rank = modules.rarities.Rarities[rarityId]
+                    local weightOk, weight = pcall(modules.records.WeightLabel, egg)
+                    local iconOk, icon = pcall(modules.records.EggIcon, egg)
+                    local labels, seen = {}, {}
+                    local function mutation(id)
+                        if not id or seen[id] then return end; seen[id] = true
+                        local ok, label = pcall(function() return data.mutations and data.mutations.LabelOf(id) or id end)
+                        table.insert(labels, ok and tostring(label) or tostring(id))
+                    end
+                    mutation(egg.BaseMutation); for _, id in ipairs(egg.Mutations or {}) do mutation(id) end
+                    row = {uid = item.uid, key = item.key, category = tostring(egg.AssetCategory or "Desconocida"), catalog = catalog,
+                        name = tostring(catalog and catalog.DisplayName or egg.AssetCategory or "Desconocida"), rarity = tostring(rarityId or "Desconocida"),
+                        rarityRank = rank and rank.Rank or 0, income = item.income, scale = egg.AssetScale,
+                        weight = weightOk and weight or "peso no disponible", eggIcon = iconOk and icon or nil,
+                        mutations = #labels > 0 and table.concat(labels, " + ") or "Sin mutaciones", area = egg.AreaId, labelModule = data.mutations}
+                    metadata[item.uid] = row
+                end
+                row.income, row.match, row.reason = item.income, item.match, item.reason
+                table.insert(rows, row); table.insert(fingerprints, row.uid .. row.key .. tostring(row.income) .. tostring(row.match))
+            end
+        end
+        for id in pairs(metadata) do if not active[id] then metadata[id] = nil end end
+        local key = table.concat(fingerprints, "|")
+        if key ~= rowsKey then
+            table.sort(rows, function(a,b)
+                if sortBest and a.rarityRank ~= b.rarityRank then return a.rarityRank > b.rarityRank end
+                if sortBest and (a.income or 0) ~= (b.income or 0) then return (a.income or 0) > (b.income or 0) end
+                if a.category ~= b.category then return a.category < b.category end
+                return a.uid < b.uid
+            end)
+            orderedRows, rowsKey = rows, key
+        end
+        access(); panel.cards = #orderedRows
+        scroll.CanvasSize = UDim2.fromOffset(0, math.max(0, #orderedRows * 112 + 4))
+        local first = math.max(1, math.floor(scroll.CanvasPosition.Y / math.max(0.1, scale.Scale) / 112) - 1)
+        local last = math.min(#orderedRows, first + math.ceil(scroll.AbsoluteSize.Y / math.max(0.1, scale.Scale) / 112) + 3)
+        local visible = {}
+        for index = first, last do
+            local row = orderedRows[index]; visible[row.uid] = true
+            local entry = entries[row.uid]
+            if not entry then entry = createCard(row); entries[row.uid] = entry end
+            updateCard(entry, row, index)
+        end
+        local rendered = 0
+        for id, entry in pairs(entries) do
+            if not visible[id] then entry.card:Destroy(); entries[id] = nil else rendered += 1 end
+        end
+        panel.stats.rendered = rendered
+        local empty = scroll:FindFirstChild("Empty")
+        if #orderedRows == 0 then
+            if not empty then empty = text("Empty", scroll, "", 0, 0, 494, 130, C.muted, 16); empty.TextWrapped = true; empty.TextXAlignment = Enum.TextXAlignment.Center end
+            empty.Text = not snapshot.info.ready and (snapshot.info.reason or "Esperando datos del mapa")
+                or onlyMatches and "Ningún huevo actual cumple los filtros guardados.\nEsperando la próxima renovación." or "No hay spawns disponibles en el mapa."
+        elseif empty then empty:Destroy() end
+        panel.stats.lastMs = (os.clock() - started) * 1000
+    end
+    local function scheduleRender()
+        if renderScheduled or not panel.open then return end
+        renderScheduled = true
+        task.defer(function()
+            renderScheduled = false
+            if panel.alive and session.alive then
+                local ok, err = pcall(buildCards); if not ok then panel.error = tostring(err); warn("[EggPanel] " .. tostring(err)) end
+            end
+        end)
+    end
+    panel.Refresh = buildCards
+    connect(scroll:GetPropertyChangedSignal("CanvasPosition"), scheduleRender)
+    function panel.LoadPreset(name)
+        local config = api.LoadPreset(name)
+        access(); setDraft(config); markDirty(); closePopup()
+        return config
+    end
+    function panel.SavePreset(name)
+        access()
+        local minimum = search.ParseMinimum(income.Text)
+        assert(minimum, "Mínimo inválido: usa 500k, 25m o 7.5b")
+        return api.SavePreset(name, {rarity = draft.rarity, minIncome = minimum, mutation = draft.mutation,
+            nameContains = nameBox.Text, categories = selectionList()})
+    end
+    function panel.OpenOptions()
+        access(); closePopup()
+        popup = make("Frame", "FinderOptions", root, {Position = UDim2.fromOffset(14, 124), Size = UDim2.fromOffset(512, 524),
+            BackgroundColor3 = C.input, BorderSizePixel = 0, ZIndex = 60})
+        corner(popup); stroke(popup, C.cyan, 2)
+        text("Title", popup, "Presets y alertas", 12, 8, 438, 30, C.white, 21, true).ZIndex = 61
+        local dismiss = button("Dismiss", popup, "×", 466, 8, 32, 28); dismiss.ZIndex = 62
+        dismiss.Activated:Connect(function() access(); closePopup() end)
+        local message = text("Message", popup, "Cargar un preset deja cambios pendientes de aplicar.", 12, 45, 486, 34, C.muted, 12)
+        message.TextWrapped = true; message.ZIndex = 61
+        local name = make("TextBox", "PresetName", popup, {Position = UDim2.fromOffset(12, 86), Size = UDim2.fromOffset(300, 32),
+            Text = "", PlaceholderText = "Nombre del preset", ClearTextOnFocus = false, Font = Enum.Font.GothamMedium,
+            TextSize = 14, TextColor3 = C.white, BackgroundColor3 = C.card, BorderSizePixel = 0, ZIndex = 62})
+        corner(name)
+        local savePreset = button("SavePreset", popup, "Guardar filtros", 324, 86, 174, 32, C.green); savePreset.ZIndex = 62
+        local list = make("ScrollingFrame", "Presets", popup, {Position = UDim2.fromOffset(12, 130), Size = UDim2.fromOffset(486, 240),
+            AutomaticCanvasSize = Enum.AutomaticSize.Y, CanvasSize = UDim2.new(), BackgroundTransparency = 1,
+            ScrollBarThickness = 4, BorderSizePixel = 0, ZIndex = 61})
+        make("UIListLayout", "Layout", list, {Padding = UDim.new(0, 6)})
+        local function result(callback)
+            local ok, err = pcall(callback); access()
+            if not ok and popup then message.Text = tostring(err); message.TextColor3 = C.red end
+            return ok
+        end
+        for index, preset in ipairs(api.Presets()) do
+            local row = make("Frame", "Preset_" .. index, list, {Size = UDim2.new(1, -6, 0, 46), BackgroundColor3 = C.card, BorderSizePixel = 0, ZIndex = 62})
+            text("Name", row, preset.name, 8, 5, 280, 18, C.white, 14).ZIndex = 63
+            local minimum = tonumber(preset.config.minIncome)
+            local summary = minimum and minimum > 0 and minimum < math.huge and search.FormatMinimum(minimum) or "inválido"
+            text("Summary", row, tostring(preset.config.rarity or "Sin rareza") .. " · ≥ " .. summary .. "/s", 8, 24, 280, 16, C.muted, 11).ZIndex = 63
+            local load = button("Load", row, "Cargar", 290, 8, 82, 30); load.ZIndex = 63
+            local delete = button("Delete", row, "Borrar", 380, 8, 86, 30); delete.ZIndex = 63
+            load.Activated:Connect(function() access(); result(function() panel.LoadPreset(preset.name) end) end)
+            delete.Activated:Connect(function() access(); if result(function() api.DeletePreset(preset.name) end) then panel.OpenOptions() end end)
+        end
+        if #api.Presets() == 0 then text("Empty", list, "Todavía no hay presets. Guarda los filtros de arriba.", 4, 10, 470, 40, C.muted, 13).ZIndex = 62 end
+        savePreset.Activated:Connect(function() access(); if result(function() panel.SavePreset(name.Text) end) then panel.OpenOptions() end end)
+        local settings = api.Alerts()
+        local notification = button("Notification", popup, "Notificación: " .. (settings.notification and "ON" or "OFF"), 12, 390, 234, 34); notification.ZIndex = 62
+        local sound = button("Sound", popup, "Sonido: " .. (settings.sound and "ON" or "OFF"), 258, 390, 240, 34); sound.ZIndex = 62
+        notification.Activated:Connect(function() access(); if result(function() api.ConfigureAlerts({notification = not settings.notification}) end) then panel.OpenOptions() end end)
+        sound.Activated:Connect(function() access(); if result(function() api.ConfigureAlerts({sound = not settings.sound}) end) then panel.OpenOptions() end end)
+        local test = button("TestAlert", popup, "Probar alerta", 12, 436, 486, 34); test.ZIndex = 62
+        test.Activated:Connect(function() access(); result(api.TestAlert) end)
+        text("AlertHint", popup, "Las alertas se emiten al encontrar un objetivo; AUTO se detiene.", 12, 482, 486, 30, C.muted, 11).ZIndex = 61
+    end
+    connect(optionsButton.Activated, panel.OpenOptions)
     function panel.GetStatus()
         access(); return { open = panel.open, view = "map", onlyMatches = onlyMatches, cards = panel.cards, dirty = dirty, error = panel.error,
-            selected = selectionList(), visual = visual, position = {x = root.AbsolutePosition.X, y = root.AbsolutePosition.Y},
-            size = {x = root.AbsoluteSize.X, y = root.AbsoluteSize.Y}, scale = scale.Scale }
+            selected = selectionList(), visual = visual, sortBest = sortBest, position = {x = root.AbsolutePosition.X, y = root.AbsolutePosition.Y},
+            size = {x = root.AbsoluteSize.X, y = root.AbsoluteSize.Y}, scale = scale.Scale,
+            stats = table.clone(panel.stats), resources = {mutations = data.mutations ~= nil, models = data.assetModels ~= nil} }
     end
     function panel.Destroy()
         if not panel.alive then return end
@@ -729,14 +1019,21 @@ local function mountEggFilterPanel(context)
     layout(); fit(); setDraft(search.config)
     task.spawn(function()
         access()
-        local ok, result = pcall(function()
-            local R = game:GetService("ReplicatedStorage")
-            return { mutations = require(R.Shared.Modules.Mutations), assetModels = require(R.Shared.Modules.AssetModels) }
-        end)
-        access()
-        if ok then data = result else changeLabel.Text = "No cargaron recursos visuales"; warn("[EggPanel] " .. tostring(result)) end
+        local nextResourceRetry = 0
         while panel.alive and session.alive do
+            if os.clock() >= nextResourceRetry and (not data.mutations or not data.assetModels) then
+                nextResourceRetry = os.clock() + 5
+                local shared = game:GetService("ReplicatedStorage"):FindFirstChild("Shared")
+                local modules = shared and shared:FindFirstChild("Modules")
+                for key, name in pairs({mutations = "Mutations", assetModels = "AssetModels"}) do
+                    if not data[key] then
+                        local source = modules and modules:FindFirstChild(name)
+                        if source then local ok, value = pcall(require, source); if ok then data[key] = value end end
+                    end
+                end
+            end
             local updated, problem = pcall(function()
+            if not panel.open then return end
             access()
             local status = api.GetStatus()
             access()
@@ -756,6 +1053,7 @@ local function mountEggFilterPanel(context)
             stateTitle.Text = titles[status.mode] or "Escaneando mapa"
             stateTitle.TextColor3 = status.mode == "match" and C.green or C.white
             stateDetail.Text = string.format("%s · ≥ %s/s · %d en mapa · %d de esa rareza", status.config.rarity, number(status.config.minIncome), info.count or 0, info.rarityCount or 0)
+            if status.mode == "loading" and info.reason then stateDetail.Text = info.reason end
             if cycle then
                 local seconds = math.ceil(cycle.secondsUntilReset)
                 clock.Text = cycle.night and "RENOVANDO" or string.format("RESET %d:%02d", math.floor(seconds / 60), seconds % 60)
@@ -778,6 +1076,126 @@ end
 
 return mountEggFilterPanel
 end)()
+-- BEGIN TESTABLE SUPPORT
+-- Dependency injection keeps storage, paging and teleport failures testable without Roblox.
+local function createFinderSupport()
+    local support = {}
+    function support.Copy(value)
+        if type(value) ~= "table" then return value end
+        local copy = {}; for key, item in pairs(value) do copy[key] = support.Copy(item) end
+        return copy
+    end
+    function support.Store(io)
+        local cache = {}
+        local store = {}
+        local function read(path)
+            local ok, value = pcall(function() return io.decode(io.read(path)) end)
+            return ok and type(value) == "table" and value or nil
+        end
+        function store.Read(path, fallback)
+            if cache[path] == nil then cache[path] = read(path) or read(path .. ".bak") or false end
+            return support.Copy(cache[path] ~= false and cache[path] or fallback)
+        end
+        function store.Write(path, value)
+            local ok = pcall(function()
+                local raw = io.encode(value)
+                local previous = read(path) or read(path .. ".bak")
+                if previous then io.write(path .. ".bak", io.encode(previous)) end
+                io.write(path .. ".tmp", raw)
+                assert(io.read(path .. ".tmp") == raw, "No se verifico el archivo temporal")
+                io.write(path, raw)
+                assert(io.read(path) == raw, "No se verifico el archivo guardado")
+            end)
+            if ok then cache[path] = support.Copy(value) end
+            return ok
+        end
+        return store
+    end
+    function support.PruneVisited(visited, now, maxAge, limit)
+        local entries = {}
+        for id, at in pairs(visited) do
+            if type(id) == "string" and type(at) == "number" and at <= now and now - at < maxAge then
+                table.insert(entries, {id = id, at = at})
+            end
+        end
+        table.sort(entries, function(a,b) if a.at ~= b.at then return a.at > b.at end; return a.id < b.id end)
+        local result = {}; for i = 1, math.min(#entries, limit or 500) do result[entries[i].id] = entries[i].at end
+        return result
+    end
+    function support.Arrived(state, job)
+        return type(state) == "table" and state.pending == true
+            and (state.target == job or (type(state.origin) == "string" and state.origin ~= job))
+    end
+    function support.AutoHopAllowed(state, job, now, busy, blocked, freshSeconds)
+        if busy or blocked then return false end
+        if type(state) ~= "table" or state.pending ~= true then return true end
+        if state.unconfirmed == true then return false end
+        return state.target == job or now - (tonumber(state.requestedAt) or 0) >= freshSeconds
+    end
+    function support.Pages(fetch, accept, alive, wanted, maxPages)
+        local result, seen, cursors, cursor = {}, {}, {}, nil
+        for _ = 1, maxPages or 5 do
+            if not alive() then return nil, "sesion terminada" end
+            local page, err = fetch(cursor)
+            if not alive() then return nil, "sesion terminada" end
+            if not page then return #result > 0 and result or nil, err end
+            for _, server in ipairs(page.data) do
+                if not seen[server.id] and accept(server) then seen[server.id] = true; table.insert(result, server) end
+            end
+            cursor = page.nextPageCursor
+            if #result >= wanted or type(cursor) ~= "string" or cursor == "" or cursors[cursor] then break end
+            cursors[cursor] = true
+        end
+        return result
+    end
+    function support.Attempt(env)
+        local attempt = { state = "idle", connection = nil }
+        local function disconnect()
+            if attempt.connection then pcall(function() attempt.connection:Disconnect() end); attempt.connection = nil end
+        end
+        function attempt.Cancel()
+            attempt.cancelled = true; disconnect()
+        end
+        function attempt.Run(target)
+            if not env.alive() then return "cancelled" end
+            if not env.save({pending = true, unconfirmed = true, target = target, requestedAt = env.time(), auto = env.automatic,
+                attemptId = env.id, origin = env.job()}) then return "storage", "No se pudo guardar el salto" end
+            attempt.state = "pending"
+            local failed, reason = false, nil
+            local connected, connection = pcall(env.connect, function(player, result, message, place, options)
+                if player ~= env.player or (place and place ~= env.place) then return end
+                if options and options.ServerInstanceId and options.ServerInstanceId ~= "" and options.ServerInstanceId ~= target then return end
+                failed, reason = true, tostring(result) .. " / " .. tostring(message)
+            end)
+            if not connected then env.save({pending = false}); return "failed", tostring(connection) end
+            attempt.connection = connection
+            local startJob = env.job()
+            local ok, err = pcall(env.send, target)
+            if not ok then failed, reason = true, tostring(err) end
+            local deadline = env.clock() + env.timeout
+            while not failed and env.job() == startJob and env.clock() < deadline
+                and env.alive() and not attempt.cancelled do env.wait(0.25) end
+            disconnect()
+            if not env.alive() or attempt.cancelled then
+                attempt.state = "cancelled" -- A sent teleport cannot be withdrawn. Leave pending on disk.
+                return "cancelled"
+            end
+            if env.job() ~= startJob then attempt.state = "moved"; return "moved" end
+            if failed then
+                if not env.save({pending = false, attemptId = env.id}) then return "storage", "No se pudo cerrar el salto" end
+                attempt.state = "failed"; return "failed", reason
+            end
+            env.save({pending = true, unconfirmed = true, target = target, requestedAt = env.time(),
+                attemptId = env.id, auto = env.automatic, origin = startJob})
+            attempt.state = "unconfirmed"
+            return "unconfirmed"
+        end
+        return attempt
+    end
+    return support
+end
+-- END TESTABLE SUPPORT
+
 -- ============================================================================
 --  CHILLI + SERVER HOP  -  script unificado y portable
 -- ----------------------------------------------------------------------------
@@ -1307,11 +1725,9 @@ do
     local HTTP_RETRIES = 2           -- intentos por consulta de la lista
     local TELEPORT_CONFIRM_SECONDS = 25  -- margen para que arranque el teleport
     local TELEPORT_HARD_WAIT_SECONDS = 35 -- espera extra si no hay senal alguna
-    local PENDING_FRESH_SECONDS = 60      -- un pending mas viejo se puede pisar
+    local PENDING_FRESH_SECONDS = 60      -- espera inicial; unconfirmed requiere clic manual
     local MIN_API_INTERVAL = 2.0          -- pausa entre consultas a la API
     local API_429_COOLDOWN_SECONDS = 30   -- castigo tras un HTTP 429
-    local lastApiRequestAt = -math.huge
-    local apiCooldownUntil = 0
     local AUTO_POLL_SECONDS = 0.5
 
     local COLORS = {
@@ -1328,35 +1744,17 @@ do
     }
 
     -- ---------------------------------------------------------------- utilidades
-    local function storageOk()
-        return type(isfile) == "function"
-            and type(readfile) == "function"
-            and type(writefile) == "function"
-    end
-
-    local function readJson(path, fallback)
-        if not storageOk() then
-            return fallback
-        end
-        local ok, value = pcall(function()
-            if not isfile(path) then
-                return nil
-            end
-            return HttpService:JSONDecode(readfile(path))
-        end)
-        if ok and type(value) == "table" then
-            return value
-        end
-        return fallback
-    end
-
+    local session
+    local support = createFinderSupport()
+    local store = support.Store({read = function(path) return readfile(path) end,
+        write = function(path, raw) writefile(path, raw) end,
+        encode = function(value) return HttpService:JSONEncode(value) end,
+        decode = function(raw) return HttpService:JSONDecode(raw) end})
+    local function readJson(path, fallback) return store.Read(path, fallback) end
     local function writeJson(path, value)
-        if not storageOk() then
-            return false
-        end
-        local ok = pcall(function()
-            writefile(path, HttpService:JSONEncode(value))
-        end)
+        if session and not session.alive then return false end
+        local ok = store.Write(path, value)
+        if not ok then warn("[EggFinder] No se pudo guardar " .. path) end
         return ok
     end
 
@@ -1400,6 +1798,7 @@ do
         local settleUntil = os.clock() + PING_SETTLE_SECONDS
         while os.clock() < settleUntil do
             readPingValue()
+            if session and not session.alive then return nil end
             task.wait(PING_SAMPLE_INTERVAL)
         end
         for _ = 1, PING_SAMPLE_COUNT do
@@ -1407,6 +1806,7 @@ do
             if value then
                 table.insert(series, math.floor(value + 0.5))
             end
+            if session and not session.alive then return nil end
             task.wait(PING_SAMPLE_INTERVAL)
         end
         return medianOf(series), series
@@ -1415,29 +1815,38 @@ do
     -- Consulta la lista publica con el mismo criterio de errores del
     -- server_hopper de referencia: distingue HTTP no-200, respuesta vacia y
     -- JSON invalido, y reintenta un par de veces antes de devolver el motivo.
-    local function fetchServers()
+    local apiEnvironment = getgenv and getgenv() or _G
+    local apiGate = apiEnvironment.__EGG_API_GATE
+    if type(apiGate) ~= "table" then apiGate = {last = -math.huge, cooldown = 0}; apiEnvironment.__EGG_API_GATE = apiGate end
+    local function fetchServers(cursor)
         local url = string.format(
             "https://games.roblox.com/v1/games/%d/servers/Public?sortOrder=Asc&excludeFullGames=true&limit=100",
             PLACE_ID
         )
+        if cursor then url ..= "&cursor=" .. HttpService:UrlEncode(cursor) end
         local requestFunction = type(request) == "function" and request or nil
         local lastError = "respuesta desconocida"
 
         for attempt = 1, HTTP_RETRIES do
             -- Espaciado minimo entre consultas y castigo si Roblox ya respondio
             -- 429, para no encadenar mas limites.
-            local nowClock = os.clock()
-            if nowClock < apiCooldownUntil then
-                task.wait(apiCooldownUntil - nowClock)
+            local lockDeadline = os.clock() + 35
+            local reserved = false
+            while session.alive and os.clock() < lockDeadline do
+                local now = os.clock()
+                local delay = math.max(apiGate.cooldown - now, MIN_API_INTERVAL - (now - apiGate.last))
+                if not apiGate.busy and delay <= 0 then
+                    apiGate.busy = true; apiGate.last = now; reserved = true; break
+                end
+                task.wait(math.min(0.25, math.max(0.05, delay)))
             end
-            local elapsed = os.clock() - lastApiRequestAt
-            if elapsed < MIN_API_INTERVAL then
-                task.wait(MIN_API_INTERVAL - elapsed)
-            end
-            lastApiRequestAt = os.clock()
+            if not session.alive then return nil, "sesion terminada" end
+            if not reserved then return nil, "consulta anterior / cooldown sigue pendiente" end
 
             local statusCode = nil
-            local ok, raw = pcall(function()
+            local completed, ok, raw = false, false, nil
+            task.spawn(function()
+            ok, raw = pcall(function()
                 if requestFunction then
                     local response = requestFunction({
                         Url = url,
@@ -1458,12 +1867,19 @@ do
                 return game:HttpGet(url)
             end)
 
+            if statusCode == 429 then apiGate.cooldown = os.clock() + API_429_COOLDOWN_SECONDS end
+            completed = true; apiGate.busy = false
+            end)
+            local responseDeadline = os.clock() + 30
+            while not completed and session.alive and os.clock() < responseDeadline do task.wait(0.1) end
+            if not session.alive then return nil, "sesion terminada" end
+            if not completed then return nil, "la consulta HTTP excedio 30 s" end
             if not ok then
                 lastError = "fallo HTTP: " .. tostring(raw)
             elseif statusCode and statusCode ~= 200 then
                 lastError = "Roblox respondio HTTP " .. tostring(statusCode)
                 if statusCode == 429 then
-                    apiCooldownUntil = os.clock() + API_429_COOLDOWN_SECONDS
+                    apiGate.cooldown = math.max(apiGate.cooldown, os.clock() + API_429_COOLDOWN_SECONDS)
                 end
             elseif type(raw) ~= "string" or raw == "" then
                 lastError = "Roblox devolvio una respuesta vacia"
@@ -1475,7 +1891,7 @@ do
                     return HttpService:JSONDecode(raw)
                 end)
                 if decodeOk and type(decoded) == "table" and type(decoded.data) == "table" then
-                    return decoded.data
+                    return decoded
                 end
                 lastError = "JSON invalido: " .. tostring(decoded)
             end
@@ -1545,7 +1961,19 @@ do
     local hopperEnvironment = getgenv and getgenv() or _G
     local oldSession = hopperEnvironment.__CHILLI_HOPPER_SESSION
     if oldSession and type(oldSession.Destroy) == "function" then oldSession.Destroy() end
-    local session = { alive = true, autoGeneration = 0 }
+    session = { alive = true, autoGeneration = 0, connections = {} }
+    local function connect(signal, callback)
+        local connection = signal:Connect(function(...)
+            if not session.alive then return end
+            uiAccess(); callback(...)
+        end)
+        table.insert(session.connections, connection)
+        return connection
+    end
+    local function disconnectSession()
+        for _, connection in ipairs(session.connections) do pcall(function() connection:Disconnect() end) end
+        table.clear(session.connections)
+    end
     hopperEnvironment.__CHILLI_HOPPER_SESSION = session
     local previous = parent:FindFirstChild("ServerHopButton")
     if previous then
@@ -1561,14 +1989,19 @@ do
     screenGui.Parent = parent
     screenGui.Destroying:Connect(function()
         session.alive = false
+        disconnectSession()
         if session.DisposeSearch then session.DisposeSearch() end
         if session.DisposePanel then session.DisposePanel() end
+        if session.attempt then session.attempt.Cancel() end
     end)
     function session.Destroy()
         session.alive = false
         session.autoGeneration += 1
+        disconnectSession()
         if session.DisposeSearch then session.DisposeSearch() end
         if session.DisposePanel then session.DisposePanel() end
+        if session.attempt then session.attempt.Cancel() end
+        if session.alertSound then session.alertSound:Destroy() end
         if screenGui.Parent then screenGui:Destroy() end
     end
 
@@ -1701,6 +2134,7 @@ do
 
     local function setLabel(text)
         if not session.alive then return end
+        if not session.alive then return end
         uiAccess()
         mainLabel.Text = text
         for _, outline in ipairs(outlineLabels) do
@@ -1710,6 +2144,7 @@ do
 
     local function setStatus(text, color)
         if not session.alive then return end
+        if not session.alive then return end
         uiAccess()
         statusLabel.Text = text
         statusLabel.TextColor3 = color or COLORS.muted
@@ -1718,6 +2153,7 @@ do
     local busy = false
 
     local function setBusy(value)
+        if not session.alive then return end
         if not session.alive then return end
         uiAccess()
         busy = value
@@ -1846,7 +2282,7 @@ do
 
     -- Arrastrar: desde cualquier punto, con umbral para no confundir un clic
     -- normal con un arrastre, y guardando la posicion al soltar.
-    holder.InputBegan:Connect(function(input)
+    connect(holder.InputBegan, function(input)
         if input.UserInputType == Enum.UserInputType.MouseButton1
             or input.UserInputType == Enum.UserInputType.Touch then
             pendingDrag = true
@@ -1856,7 +2292,7 @@ do
         end
     end)
 
-    UserInputService.InputChanged:Connect(function(input)
+    connect(UserInputService.InputChanged, function(input)
         if not pendingDrag or not dragStart then
             return
         end
@@ -1880,7 +2316,7 @@ do
         )
     end)
 
-    UserInputService.InputEnded:Connect(function(input)
+    connect(UserInputService.InputEnded, function(input)
         if input.UserInputType == Enum.UserInputType.MouseButton1
             or input.UserInputType == Enum.UserInputType.Touch then
             if dragging then
@@ -1891,7 +2327,7 @@ do
         end
     end)
 
-    toggle.MouseButton1Click:Connect(function()
+    connect(toggle.MouseButton1Click, function()
         if draggedRecently() then
             return
         end
@@ -1906,6 +2342,28 @@ do
     session.hopAllowed = false
     session.searchMode = "loading"
     local setAuto
+    local PREFERENCES_FILE = "chilli_egg_preferences.json"
+    local preferences = readJson(PREFERENCES_FILE, {})
+    preferences.presets = type(preferences.presets) == "table" and preferences.presets or {}
+    preferences.alerts = type(preferences.alerts) == "table" and preferences.alerts or {}
+    preferences.alerts = {notification = preferences.alerts.notification ~= false, sound = preferences.alerts.sound == true}
+    local function savePreferences(nextValue)
+        assert(writeJson(PREFERENCES_FILE, nextValue), "No se pudieron guardar presets / alertas")
+        preferences = nextValue
+    end
+    local function matchAlert(title, message)
+        if preferences.alerts.notification then notify(title, message, 15) end
+        if preferences.alerts.sound then
+            local ok, err = pcall(function()
+                local sound = Instance.new("Sound")
+                sound.Name = "EggFinderAlert"; sound.SoundId = "rbxasset://sounds/electronicpingshort.wav"; sound.Volume = 0.5
+                sound.Parent = game:GetService("SoundService")
+                session.alertSound = sound
+                sound:Play(); game:GetService("Debris"):AddItem(sound, 5)
+            end)
+            if not ok then warn("[EggSearch] Sonido: " .. tostring(err)) end
+        end
+    end
     local function canContinueHop(automatic, generation)
         return session.alive and game.JobId == sessionStartJobId
             and (not automatic or (autoEnabled and session.hopAllowed
@@ -1931,13 +2389,13 @@ do
         setLabel("MATCH")
         setStatus(string.format("%s · %s/s · %s", match.name,
             eggSearch.FormatMinimum(match.income), match.area or "mapa"), COLORS.green)
-        notify("Egg " .. eggSearch.config.rarity .. " encontrado", string.format(
+        matchAlert("Egg " .. eggSearch.config.rarity .. " encontrado", string.format(
             "%s · %s/s · %s. Objetivo encontrado; Chilli puede continuar.",
-            match.name, eggSearch.FormatMinimum(match.income), match.area or "mapa"), 15)
+            match.name, eggSearch.FormatMinimum(match.income), match.area or "mapa"))
         print("[EggSearch] MATCH " .. HttpService:JSONEncode(match))
     end
     local function verifyMapBeforeHop()
-        local match, info = eggSearch.Scan()
+        local match, info = eggSearch.Scan(true)
         if match then finishEggMatch(match); return false end
         local mode = eggSearch.Decide(match, info)
         setSearchMode(mode)
@@ -1945,9 +2403,46 @@ do
     end
     hopperEnvironment.ChilliEggSearch = {
         Configure = function(filters) return eggSearch.Configure(filters) end,
-        Scan = function() return eggSearch.Scan() end,
+        Scan = function(fresh)
+            local match, info, matches = eggSearch.Scan(fresh)
+            return support.Copy(match), support.Copy(info), support.Copy(matches)
+        end,
         CycleStatus = function() return eggSearch.CycleStatus() end,
         RarityOptions = function() return eggSearch.RarityOptions() end,
+        Presets = function()
+            local list = {}
+            for name, config in pairs(preferences.presets) do
+                if type(name) == "string" and type(config) == "table" then table.insert(list, {name = name, config = support.Copy(config)}) end
+            end
+            table.sort(list, function(a,b) return a.name < b.name end); return list
+        end,
+        SavePreset = function(name, config)
+            assert(type(name) == "string", "Escribe un nombre")
+            name = name:match("^%s*(.-)%s*$")
+            assert(#name > 0 and #name <= 60 and not name:find("[%c]"), "Nombre de preset inválido (máximo 60 bytes)")
+            local nextValue = support.Copy(preferences)
+            local count = 0; for _ in pairs(nextValue.presets) do count += 1 end
+            assert(nextValue.presets[name] or count < 20, "Máximo 20 presets; borra uno para guardar otro")
+            nextValue.presets[name] = eggSearch.Validate(config or eggSearch.config)
+            savePreferences(nextValue); return name
+        end,
+        LoadPreset = function(name)
+            assert(preferences.presets[name], "Preset desconocido")
+            return eggSearch.Validate(support.Copy(preferences.presets[name]))
+        end,
+        DeletePreset = function(name)
+            local nextValue = support.Copy(preferences); nextValue.presets[name] = nil; savePreferences(nextValue)
+        end,
+        Alerts = function() return support.Copy(preferences.alerts) end,
+        ConfigureAlerts = function(patch)
+            local nextValue = support.Copy(preferences)
+            for key, value in pairs(patch) do
+                assert((key == "notification" or key == "sound") and type(value) == "boolean", "Opción de alerta inválida")
+                nextValue.alerts[key] = value
+            end
+            savePreferences(nextValue); return support.Copy(nextValue.alerts)
+        end,
+        TestAlert = function() matchAlert("Egg Finder", "Prueba de alerta: objetivo encontrado") end,
         Start = function()
             assert(session.alive, "Esta sesion ya termino")
             setAuto(true)
@@ -1956,7 +2451,10 @@ do
         GetStatus = function()
             return { active = autoEnabled and session.alive, jobId = game.JobId,
                 mode = session.searchMode, cycle = eggSearch.CycleStatus(),
-                config = table.clone(eggSearch.config), lastScan = eggSearch.lastScan }
+                config = support.Copy(eggSearch.config), lastScan = eggSearch.lastScan and {
+                    match = support.Copy(eggSearch.lastScan.match), info = support.Copy(eggSearch.lastScan.info),
+                    matches = support.Copy(eggSearch.lastScan.matches), revision = eggSearch.lastScan.revision },
+                stats = support.Copy(eggSearch.stats), teleport = session.attempt and session.attempt.state }
         end,
     }
 
@@ -1967,28 +2465,18 @@ do
 
     -- ---------------------------------------------------------------- el salto
     local function pickCandidates()
-        local servers, fetchError = fetchServers()
-        if not servers then
-            return nil, fetchError
-        end
-
-        local visited = readJson(VISITED_FILE, {})
+        local visited = support.PruneVisited(readJson(VISITED_FILE, {}), os.time(), VISITED_MAX_AGE)
         local now = os.time()
+        local servers, fetchError = support.Pages(fetchServers, function(server)
+            return type(server.id) == "string" and server.id ~= game.JobId
+                and tonumber(server.maxPlayers) == EXPECTED_CAPACITY
+                and (tonumber(server.playing) or 0) < EXPECTED_CAPACITY
+                and now - (tonumber(visited[server.id]) or 0) > VISITED_MAX_AGE
+        end, function() return session.alive and game.JobId == sessionStartJobId end, POOL_SIZE, 5)
+        if not servers then return nil, fetchError end
         local pool = {}
-
         for _, server in ipairs(servers) do
-            local id = server.id
-            local capacity = tonumber(server.maxPlayers) or 0
-            if id and id ~= game.JobId and capacity == EXPECTED_CAPACITY then
-                local seenAt = tonumber(visited[id]) or 0
-                if now - seenAt > VISITED_MAX_AGE then
-                    table.insert(pool, {
-                        id = id,
-                        ping = tonumber(server.ping) or -1,
-                        fps = tonumber(server.fps) or 0,
-                    })
-                end
-            end
+            table.insert(pool, {id = server.id, ping = tonumber(server.ping) or -1, fps = tonumber(server.fps) or 0})
         end
 
         if #pool == 0 then
@@ -2061,7 +2549,7 @@ do
     end
 
     local function markVisited(jobId)
-        local visited = readJson(VISITED_FILE, {})
+        local visited = support.PruneVisited(readJson(VISITED_FILE, {}), os.time(), VISITED_MAX_AGE)
         visited[jobId] = os.time()
         writeJson(VISITED_FILE, visited)
     end
@@ -2072,6 +2560,7 @@ do
     -- se consulta la lista en vivo. Al entrar NO se encadena: reportArrival mide
     -- y se para, aunque el servidor no sea optimo.
     local function hopUntilEntered(automatic, generation)
+        local owner = session.hopWorker
         local failedRounds = 0
         while canContinueHop(automatic, generation) do
             -- Si el JobId ya cambio, estamos en otro servidor: ni un teleport
@@ -2085,6 +2574,7 @@ do
             local pickError = nil
             if not pool or #pool == 0 then
                 pool, pickError = pickCandidates()
+                if not canContinueHop(automatic, generation) then return false end
                 if pool then
                     savePool(pool)
                 end
@@ -2097,7 +2587,10 @@ do
                         return true
                     end
 
-                    if not canContinueHop(automatic, generation) then setBusy(false); return false end
+                    if not canContinueHop(automatic, generation) then
+                        if session.hopWorker == owner then setBusy(false) end
+                        return false
+                    end
                     if automatic and not verifyMapBeforeHop() then return false end
                     local candidate = pool[index]
                     setLabel("Saltando...")
@@ -2111,103 +2604,33 @@ do
                         candidate.id
                     ))
 
-                    -- El estado se escribe ANTES de saltar: el script se
-                    -- re-ejecuta en el destino y necesita saber que hay que
-                    -- medir al llegar.
-                    writeJson(STATE_FILE, {
-                        pending = true,
-                        auto = autoEnabled,
-                        target = candidate.id,
-                        apiPing = candidate.ping,
-                        requestedAt = os.time(),
+                    local attempt = support.Attempt({
+                        alive = function() return session.alive and (not automatic or autoEnabled) end,
+                        save = function(state) return writeJson(STATE_FILE, state) end,
+                        time = os.time, clock = os.clock, wait = task.wait,
+                        job = function() return game.JobId end,
+                        automatic = autoEnabled, id = HttpService:GenerateGUID(false),
+                        player = player, place = PLACE_ID,
+                        timeout = TELEPORT_CONFIRM_SECONDS + TELEPORT_HARD_WAIT_SECONDS,
+                        connect = function(callback) return TeleportService.TeleportInitFailed:Connect(callback) end,
+                        send = function(target) TeleportService:TeleportToPlaceInstance(PLACE_ID, target, player) end,
                     })
-
-                    local failed = false
-                    local failReason = nil
-                    local connection = nil
-                    pcall(function()
-                        connection = TeleportService.TeleportInitFailed:Connect(function(_, result, message)
-                            failed = true
-                            failReason = tostring(result) .. " / " .. tostring(message)
-                        end)
-                    end)
-
-                    local startJobId = game.JobId
-                    pcall(function()
-                        TeleportService:TeleportToPlaceInstance(PLACE_ID, candidate.id, player)
-                    end)
-
-                    -- Fase 1: margen normal para que el teleport arranque.
-                    local firstDeadline = os.clock() + TELEPORT_CONFIRM_SECONDS
-                    while os.clock() < firstDeadline and not failed and game.JobId == startJobId do
-                        task.wait(0.25)
-                    end
-
-                    local movedToNewServer = game.JobId ~= startJobId
-
-                    if failed or movedToNewServer then
-                        if connection then
-                            pcall(function()
-                                connection:Disconnect()
-                            end)
-                        end
-
-                        if movedToNewServer then
-                            markVisited(candidate.id)
-                            return true
-                        end
-
-                        -- Fallo explicito de Roblox (GameFull, GameEnded...):
-                        -- se marca visitado para no volver a elegirlo y se
-                        -- prueba otro con una pausa mas larga (menos throttling).
-                        markVisited(candidate.id)
-                        writeJson(STATE_FILE, { pending = false })
-                        print(string.format(
-                            "[ServerHopButton] Candidato no disponible (%s); probando otro",
-                            tostring(failReason or "sin motivo")
-                        ))
+                    session.attempt = attempt
+                    local result, reason = attempt.Run(candidate.id)
+                    if not session.alive or result == "cancelled" then return false end
+                    if result == "moved" then markVisited(candidate.id); return true end
+                    if result == "failed" then
+                        -- Throttling is temporary; don't exclude that server for an hour.
+                        if not string.find(string.lower(reason or ""), "flood", 1, true) then markVisited(candidate.id) end
                         setStatus("rechazado; probando otro candidato...", COLORS.amber)
-                        task.wait(1.5)
+                        print("[ServerHopButton] Teleport rechazado: " .. tostring(reason))
+                        waitForHop(1.5, automatic, generation)
                     else
-                        -- Fase 2: sin senal ni de exito ni de fallo. NO se lanza
-                        -- otro teleport encima; se espera de largo por si el
-                        -- arranque simplemente esta tardando.
-                        setStatus("esperando confirmacion del teleport...", COLORS.muted)
-                        local hardDeadline = firstDeadline + TELEPORT_HARD_WAIT_SECONDS
-                        while os.clock() < hardDeadline and not failed and game.JobId == startJobId do
-                            task.wait(0.5)
-                        end
-
-                        if connection then
-                            pcall(function()
-                                connection:Disconnect()
-                            end)
-                        end
-
-                        if game.JobId ~= startJobId then
-                            markVisited(candidate.id)
-                            return true
-                        end
-
-                        if failed then
-                            markVisited(candidate.id)
-                            writeJson(STATE_FILE, { pending = false })
-                            print(string.format(
-                                "[ServerHopButton] Candidato no disponible (%s); probando otro",
-                                tostring(failReason or "sin motivo")
-                            ))
-                            setStatus("rechazado; probando otro candidato...", COLORS.amber)
-                            task.wait(1.5)
-                        else
-                            -- Ni exito ni fallo tras ~60 s: mejor parar que pisar
-                            -- un teleport que podria estar en camino.
-                            writeJson(STATE_FILE, { pending = false })
-                            setBusy(false)
-                            setLabel("Server Hop")
-                            setStatus("sin confirmar; pulsa otra vez", COLORS.amber)
-                            notify("Server Hop", "El teleport no se confirmo. Pulsa otra vez.", 6)
-                            return false
-                        end
+                        session.autoHopBlocked = true
+                        setBusy(false); setLabel("Server Hop")
+                        setStatus(result == "storage" and reason or "sin confirmar; pulsa Server Hop para reintentar", COLORS.amber)
+                        notify("Server Hop", result == "storage" and reason or "AUTO pausó los saltos: el teleport sigue sin confirmar.", 8)
+                        return false
                     end
                 end
 
@@ -2229,7 +2652,7 @@ do
             end
             waitForHop(roundWait, automatic, generation)
         end
-        if session.alive then setBusy(false) end
+        if session.alive and session.hopWorker == owner then setBusy(false) end
         return false
     end
 
@@ -2246,6 +2669,12 @@ do
                 return
             end
             if not canContinueHop(automatic, generation) then return end
+            local pending = readJson(STATE_FILE, nil)
+            if pending and pending.pending and pending.unconfirmed then
+                session.autoHopBlocked = true
+                setBusy(false); setStatus("salto sin confirmar; reintenta con Server Hop", COLORS.amber)
+                return
+            end
             setStatus("error: " .. tostring(err) .. " · reintentando...", COLORS.amber)
             waitForHop(RETRY_DELAY_SECONDS, automatic, generation)
         end
@@ -2255,6 +2684,7 @@ do
     -- doble clic no lance dos bucles a la vez.
     local function beginHop(automatic)
         automatic = automatic == true
+        if not automatic then session.hopWorker = {} end
         local generation = session.autoGeneration
         if not canContinueHop(automatic, generation) then return end
         if automatic and not verifyMapBeforeHop() then return end
@@ -2275,6 +2705,12 @@ do
         end
 
         local existing = readJson(STATE_FILE, nil)
+        if automatic and not support.AutoHopAllowed(existing, game.JobId, os.time(), false,
+            session.autoHopBlocked, PENDING_FRESH_SECONDS) then setBusy(false); return end
+        if not automatic and existing and existing.unconfirmed then
+            if not writeJson(STATE_FILE, {pending = false}) then setBusy(false); return end
+            existing = nil; session.autoHopBlocked = false
+        end
         -- Solo bloquea si hay un salto realmente en vuelo (el destino no es el
         -- servidor actual). Si estas en el destino midiendo, puedes volver a
         -- pulsar al momento para descartarlo y saltar a otro.
@@ -2323,6 +2759,7 @@ do
         task.spawn(function()
             local lastMode, lastRevision, lastPeriod
             while autoEnabled and session.alive and game.JobId == sessionStartJobId do
+                local watcherOk, watcherError = pcall(function()
                 if game.PlaceId ~= PLACE_ID then
                     setSearchMode("loading")
                 else
@@ -2332,7 +2769,7 @@ do
                     setSearchMode(mode)
                     if match then
                         finishEggMatch(match)
-                        break
+                        return
                     end
                     local revision = cycle and cycle.fieldRevision
                     local period = cycle and cycle.periodIndex
@@ -2342,10 +2779,8 @@ do
                         lastMode, lastRevision, lastPeriod = mode, revision, period
                     end
                     local state = readJson(STATE_FILE, nil)
-                    local inFlight = type(state) == "table" and state.pending == true
-                        and state.target ~= game.JobId
-                        and os.time() - (tonumber(state.requestedAt) or 0) < PENDING_FRESH_SECONDS
-                    if not busy and not inFlight then
+                    if support.AutoHopAllowed(state, game.JobId, os.time(), busy,
+                        session.autoHopBlocked, PENDING_FRESH_SECONDS) then
                         if mode == "loading" then
                             setLabel("Escaneando")
                             setStatus(info.reason or "esperando datos del mapa...", COLORS.amber)
@@ -2360,9 +2795,11 @@ do
                                 info.rarityCount, eggSearch.config.rarity), COLORS.green)
                             -- El vigilante sigue escaneando durante reintentos o renovaciones.
                             setBusy(true)
+                            local hopGeneration = session.autoGeneration
+                            local worker = {}; session.hopWorker = worker
                             task.spawn(function()
                                 local ok, err = pcall(beginHop, true)
-                                if session.alive and game.JobId == sessionStartJobId then
+                                if session.alive and game.JobId == sessionStartJobId and session.hopWorker == worker then
                                     setBusy(false)
                                     if not ok then warn("[EggSearch] Hop: " .. tostring(err)) end
                                 end
@@ -2370,7 +2807,9 @@ do
                         end
                     end
                 end
-                task.wait(AUTO_POLL_SECONDS)
+                end)
+                if not watcherOk then warn("[EggSearch] Vigilante: " .. tostring(watcherError)) end
+                task.wait(watcherOk and AUTO_POLL_SECONDS or 2)
             end
             autoWatcherStarted = false
             if autoEnabled and session.alive and game.JobId == sessionStartJobId then startAutoHopWatcher() end
@@ -2386,19 +2825,23 @@ do
             setStatus(eggSearch.Summary() .. " · revisando mapa...", COLORS.green)
             startAutoHopWatcher()
         else
+            if session.attempt and session.attempt.state == "pending" then
+                session.attempt.Cancel(); session.autoHopBlocked = true
+            end
+            setBusy(false)
             setLabel("Server Hop")
             setStatus("busqueda apagada · salto manual disponible", COLORS.muted)
         end
     end
 
-    autoChip.MouseButton1Click:Connect(function()
+    connect(autoChip.MouseButton1Click, function()
         if draggedRecently() then
             return
         end
         setAuto(not autoEnabled)
     end)
 
-    button.MouseButton1Click:Connect(function()
+    connect(button.MouseButton1Click, function()
         if draggedRecently() or busy then
             return
         end
@@ -2408,7 +2851,7 @@ do
 
         task.spawn(function()
             local ok, err = pcall(beginHop)
-            if not ok then
+            if not ok and session.alive then
                 setBusy(false)
                 setLabel("Server Hop")
                 setStatus("error: " .. tostring(err), COLORS.amber)
@@ -2435,6 +2878,11 @@ do
             return
         end
 
+        if not support.Arrived(state, game.JobId) then
+            session.autoHopBlocked = true
+            setStatus("salto anterior sin confirmar; pulsa Server Hop para reintentar", COLORS.amber)
+            return
+        end
         if os.time() - (tonumber(state.requestedAt) or 0) > 240 then
             writeJson(STATE_FILE, { pending = false })
             setStatus("salto caducado", COLORS.muted)
@@ -2467,17 +2915,19 @@ do
         setStatus("estabilizando la conexion...", COLORS.muted)
 
         task.wait(ARRIVE_STABILIZE_SECONDS)
+        if not session.alive then return end
 
         local players = #Players:GetPlayers()
         setStatus("midiendo ping real...", COLORS.muted)
 
         local ping = measurePing()
+        if not session.alive then return end
         local good = type(ping) == "number" and ping <= IDEAL_PING and players <= IDEAL_PLAYERS
 
         -- Si el estado ya no es el mismo salto (el usuario pulso otra vez
         -- mientras mediamos), este resultado se descarta sin tocar la UI.
         local current = readJson(STATE_FILE, nil)
-        if type(current) ~= "table"
+        if not session.alive or type(current) ~= "table"
             or current.pending ~= true
             or current.target ~= capturedTarget
             or current.requestedAt ~= capturedAt then
@@ -2495,7 +2945,7 @@ do
         if game.JobId ~= "" then
             visited[game.JobId] = now
         end
-        writeJson(VISITED_FILE, visited)
+        writeJson(VISITED_FILE, support.PruneVisited(visited, now, VISITED_MAX_AGE))
 
         writeJson(STATE_FILE, {
             pending = false,
@@ -2567,7 +3017,7 @@ do
         end
 
         local waitUntil = os.clock() + 20
-        while os.clock() < waitUntil and not chilliUiReady() do
+        while session.alive and os.clock() < waitUntil and not chilliUiReady() do
             task.wait(0.5)
         end
 
@@ -2575,7 +3025,7 @@ do
             if game.PlaceId == PLACE_ID and not busy then
                 local ok, err = pcall(function()
                     local pool = pickCandidates()
-                    if pool then
+                    if pool and session.alive and game.JobId == sessionStartJobId then
                         savePool(pool)
                         print(string.format(
                             "[ServerHopButton] Pool refrescado: %d candidatos",
