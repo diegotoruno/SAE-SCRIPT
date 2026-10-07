@@ -1,5 +1,9 @@
 # Pruebas y validacion
 
+## Publicacion compartida solicitada (2026-10-07)
+
+Usuario confirma **CUENTA GUARDADA** en Delta/iPad y pide usar main/chilli_hopper.luau en todos los dispositivos. Ese feedback implica consulta aceptada/escritura/relectura terminadas en el flujo; no se inspecciona su cookie ni se declara comprobada la continuidad entre hops o Redirect=false. Codigo de la candidata aprobado por CI run 37601500836: compilacion, 125 regresiones Luau, diez tests Python y artefacto. Actualizacion de documentacion para integrar PR #10; antes de afirmar publicacion, exigir CI del head final y del merge y verificar stable/version.json/checksum contra el bundle aprobado. Sin editar stable manualmente.
+
 ## Confirmacion de guardado (2026-10-07)
 
 Refinamiento de feedback: confirmacion visible tras guardado/relectura, aviso distinto para sesion temporal, estado en launcher y reapertura, etiquetas de comprobacion. No cambia decisiones del detector ni persistencia. Build/compilacion y las 125 regresiones existentes pasan; confirmar manualmente mensaje en Delta despues de una consulta aceptada. El SHA antiguo del usuario no recibe modificaciones; probar el cargador de rama actualizable.

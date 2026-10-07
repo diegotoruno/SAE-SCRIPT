@@ -18,7 +18,7 @@ El punto de entrada de `main` carga el script validado de la rama `stable`. Los 
 
 ## Desarrollo y CI/CD
 
-La candidata agrega **CUENTA / BEST PING** para pegar una cookie propia desde Delta o Potassium. Guardado opcional local sin cifrado, consulta directa a Roblox y opcion de borrar/desconectar. El boton fijo permite reabrir el formulario si se cierra. Configuracion, APIs y limites de prueba: [BEST_PING.md](BEST_PING.md). Requiere cargar esta candidata tambien en autoexec; main/stable aun conserva la version publicada anterior.
+**CUENTA / BEST PING** permite pegar una cookie propia desde Delta o Potassium. Guardado opcional local sin cifrado, consulta directa a Roblox y opcion de borrar/desconectar. El boton fijo permite reabrir el formulario si se cierra; **CUENTA · GUARDADA** confirma la escritura y verificacion local. Configuracion, APIs y limites de prueba: [BEST_PING.md](BEST_PING.md). Todos usan el cargador de `main` mostrado arriba, tambien en autoexec; CI publica la misma version validada para todos. La cuenta, cookie y filtros siguen siendo propios de cada dispositivo. Los cargadores antiguos fijados a un SHA o a una rama de prueba deben sustituirse por el de `main`.
 
 El codigo mantenido esta en tres archivos:
 

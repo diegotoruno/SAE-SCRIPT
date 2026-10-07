@@ -1,5 +1,9 @@
 # Contexto del proyecto
 
+## Unificar distribucion en main/stable (2026-10-07)
+
+Usuario confirma CUENTA GUARDADA en Delta/iPad y solicita publicar para que todos usen exclusivamente main/chilli_hopper.luau. Se prepara integracion de PR #10 y publicacion mediante CI; stable no se edita manualmente. CI del codigo 7658660 paso compilacion, 125 regresiones Luau y diez tests Python (run 37601500836). La confirmacion reportada indica validacion inicial/escritura/relectura completadas; no demuestra aun continuidad DeviceCookie entre hops ni Redirect=false. PC e iPad usan el mismo cargador de main en autoexec, conservando cookies/filtros locales. Previews y SHA antiguos requieren sustitucion unica por main. Los siguientes apartados describen las pruebas previas y sus limites en ese momento.
+
 ## Confirmacion de guardado y cargador actualizable (2026-10-07)
 
 Usuario no distingue si Guardar funciono y pide actualizar el enlace que ya pego. Confirma que usa el SHA e0f669...: es inmutable y necesita una sustitucion unica por la rama preview, sin reemplazar la cookie local. Formulario ahora conserva confirmacion explicita tras escritura/relectura, muestra comprobacion en botones y refleja GUARDADA/SOLO SESION en launcher; reapertura/restauracion comunica estado. No cambia detector ni stable. Autenticacion Delta sigue pendiente.
