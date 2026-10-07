@@ -1,5 +1,9 @@
 # Contexto del proyecto
 
+## Best Ping atascado y precarga rapida (2026-10-07)
+
+Usuario confirma cuenta guardada en PC, pero Buscar queda en buscando Best Ping. Lectura real: DeviceCookie, HTTP200, lista parcial, cliente/snapshot vivos; no se observa crash de Roblox. Recorrido reiniciaba a los 180s, limitando paginas alcanzables. Usuario pide reserva de servidores 1/7 con buen ping para buscar rapidamente. Corregido cursor persistente/sanitizado, vencimiento individual de registros y reserva hasta ocho 1/7 que Hop/AUTO consumen sin HTTP. Progreso pagina/filas/contador mientras no hay reserva. Respeta orden BestLatency, grupos 2..6 solo con prueba nueva, cookie/config/AUTO y detector existentes. Build/134 regresiones/diez Python pasan; montaje real conserva AUTO apagado/filtros y reutiliza Chilli. Continuidad/hop real y publicacion se registran en WORKLOG al verificarse.
+
 ## Unificar distribucion en main/stable (2026-10-07)
 
 Usuario confirma CUENTA GUARDADA en Delta/iPad y solicita publicar para que todos usen exclusivamente main/chilli_hopper.luau. Se prepara integracion de PR #10 y publicacion mediante CI; stable no se edita manualmente. CI del codigo 7658660 paso compilacion, 125 regresiones Luau y diez tests Python (run 37601500836). La confirmacion reportada indica validacion inicial/escritura/relectura completadas; no demuestra aun continuidad DeviceCookie entre hops ni Redirect=false. PC e iPad usan el mismo cargador de main en autoexec, conservando cookies/filtros locales. Previews y SHA antiguos requieren sustitucion unica por main. Los siguientes apartados describen las pruebas previas y sus limites en ese momento.

@@ -1,5 +1,9 @@
 # Pruebas y validacion
 
+## Reserva rapida BestLatency (2026-10-07)
+
+Build/compilacion y 134 regresiones Luau pasan; diez Python tambien. Nuevos casos alcanzan pagina16 despues de 180s sin reiniciar; verifican reserva sin HTTP/orden nativo/frescura individual/exclusiones, publicacion incremental hasta ocho, grupos mayores/transporte incorrecto rechazados, cursor recuperado tras llegada, Seed inicial, lista completa consumida, cancelacion/progreso y cursor400 renovado sin inferir agotamiento. Potassium reejecuto candidato conservando Eternal>=7B/s/AUTO apagado, cookie restaurada, Chilli reutilizado y sesion anterior destruida. HTTP200/progreso real de consulta observado; salto y cache real siguen pendientes al escribir esta seccion. No se simularon entradas ni dispararon conexiones.
+
 ## Publicacion compartida solicitada (2026-10-07)
 
 Usuario confirma **CUENTA GUARDADA** en Delta/iPad y pide usar main/chilli_hopper.luau en todos los dispositivos. Ese feedback implica consulta aceptada/escritura/relectura terminadas en el flujo; no se inspecciona su cookie ni se declara comprobada la continuidad entre hops o Redirect=false. Codigo de la candidata aprobado por CI run 37601500836: compilacion, 125 regresiones Luau, diez tests Python y artefacto. Actualizacion de documentacion para integrar PR #10; antes de afirmar publicacion, exigir CI del head final y del merge y verificar stable/version.json/checksum contra el bundle aprobado. Sin editar stable manualmente.

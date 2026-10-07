@@ -1139,6 +1139,131 @@ test("device expired catalogue cannot reuse servers from the previous arrival", 
     clock(281)
     assert(native.Pick("current", {})[1].id == "two")
 end)
+test("device pagination reaches later pages beyond the record freshness window", function()
+    local clock, pageIndex, calls = 100, 0, {}
+    local native = support.DeviceNative({now = function() return clock end, alive = function() return true end,
+        fetch = function(order, cursor)
+            table.insert(calls, {order = order, cursor = cursor})
+            clock += 15
+            if order == "OccupancyAsc" then return nativePage({{"late-one", 1}}) end
+            pageIndex += 1
+            local expected = nil
+            if pageIndex > 1 then expected = "page" .. (pageIndex - 1) end
+            assert(cursor == expected, "latency cursor restarted before reaching the candidate")
+            return nativePage({{pageIndex == 16 and "late-one" or "two" .. pageIndex, pageIndex == 16 and 1 or 2}}, "page" .. pageIndex)
+        end})
+    for _ = 1, 3 do assert(native.Pick("current", {}) == nil); clock += 30 end
+    local found = native.Pick("current", {})
+    assert(found and found[1].id == "late-one" and pageIndex == 16)
+end)
+
+test("preloaded BestLatency reserve preserves order and needs no HTTP at the click", function()
+    local data = {orderBy = "BestLatency", transport = "DeviceCookie", occupancy = 1, servers = {
+        {id = "native-first", playing = 1, ping = 1, observedAt = 100},
+        {id = "native-second", playing = 1, ping = 999, observedAt = 105},
+    }}
+    local pool = support.PreloadedNativePool(data, 110, "current", {}, "DeviceCookie")
+    assert(#pool == 2 and pool[1].id == "native-first" and pool[2].id == "native-second")
+    assert(pool[1].observedAt == 100)
+    pool[1].id = "changed"
+    assert(data.servers[1].id == "native-first")
+end)
+
+test("preloaded reserve expires per observation and excludes current visited and duplicates", function()
+    local data = {orderBy = "BestLatency", transport = "DeviceCookie", occupancy = 1, servers = {}}
+    for _, row in ipairs({{"expired", 99}, {"future", 400}, {"current", 100}, {"visited", 100}, {"usable", 100}, {"usable", 100}}) do
+        table.insert(data.servers, {id = row[1], playing = 1, observedAt = row[2]})
+    end
+    local pool = support.PreloadedNativePool(data, 280, "current", {visited = 200}, "DeviceCookie")
+    assert(#pool == 1 and pool[1].id == "usable")
+    assert(support.PreloadedNativePool(data, 281, "current", {visited = 200}, "DeviceCookie") == nil)
+end)
+
+test("higher occupancy and another transport cannot bypass proof using reserve", function()
+    local data = {orderBy = "BestLatency", transport = "DeviceCookie", occupancy = 2,
+        servers = {{id = "two", playing = 2, observedAt = 100}}}
+    assert(not support.PreloadedNativePool(data, 110, "current", {}, "DeviceCookie"))
+    data.occupancy, data.servers[1].playing = 1, 1
+    assert(not support.PreloadedNativePool(data, 110, "current", {}, "LocalBridge"))
+end)
+
+test("prefetch publishes usable one-player rows while continuing to fill eight", function()
+    local published, index = {}, 0
+    local pages = {
+        nativePage({{"one-a", 1}}, "two"),
+        nativePage({{"one-b", 1}, {"one-c", 1}}, "three"),
+        nativePage({{"one-d", 1}, {"one-e", 1}, {"one-f", 1}, {"one-g", 1}, {"one-h", 1}}, "four"),
+    }
+    local native = support.DeviceNative({now = function() return 100 end, alive = function() return true end,
+        publish = function(pool) table.insert(published, support.Copy(pool)) end,
+        fetch = function(order)
+            if order == "OccupancyAsc" then return nativePage({{"one-a", 1}}) end
+            index += 1; return pages[index]
+        end})
+    assert(#native.Pick("current", {}, nil, 8) == 8)
+    assert(#published[1] == 1 and #published[2] == 3 and #published[3] == 8 and index == 3)
+    assert(#native.Pick("current", {}) == 8 and index == 3)
+end)
+
+test("completed native stream renews immediately when its candidates are consumed", function()
+    local native, calls = deviceNativeFixture({
+        {page = nativePage({{"one-a", 1}})}, {page = nativePage({{"one-a", 1}})},
+        {page = nativePage({{"one-b", 1}})}, {page = nativePage({{"one-b", 1}})},
+    })
+    assert(native.Pick("current", {})[1].id == "one-a")
+    assert(native.Pick("current", {['one-a'] = 100})[1].id == "one-b")
+    assert(calls[4].cursor == nil)
+end)
+
+test("native stream survives arrival while reserve and visited exclusions advance", function()
+    local saved
+    local native = support.DeviceNative({now = function() return 100 end, alive = function() return true end,
+        save = function(value) saved = value end, fetch = function() error("unexpected fetch") end})
+    assert(native.Seed(nativePage({{"one-a", 1}}, "next")))
+    assert(native.Pick("current", {})[1].id == "one-a")
+    local calls = {}
+    local arrived = support.DeviceNative({now = function() return 110 end, alive = function() return true end,
+        fetch = function(order, cursor)
+            table.insert(calls, {order = order, cursor = cursor})
+            if order == "OccupancyAsc" then return nativePage({{"one-b", 1}}) end
+            assert(cursor == "next"); return nativePage({{"one-b", 1}}, "later")
+        end})
+    assert(arrived.Restore(saved))
+    assert(arrived.Pick("one-a", {['one-a'] = 100})[1].id == "one-b")
+    assert(#calls == 2)
+    assert(not arrived.Restore({schema = 1}) and not arrived.Restore({}))
+    saved.updatedAt = -100
+    assert(not arrived.Restore(saved))
+end)
+
+test("cancelled search sends no next page and reports sanitized progress", function()
+    local active, calls, progress = true, 0, {}
+    local native = support.DeviceNative({now = function() return 100 end, alive = function() return true end,
+        progress = function(value) table.insert(progress, value) end,
+        fetch = function() calls += 1; active = false; return nativePage({{"one", 1}}) end})
+    assert(not native.Pick("current", {}, function() return active end) and calls == 1)
+    assert(not native.Pick("current", {}, function() return active end) and calls == 1)
+    assert(progress[1].phase == "occupancy" and progress[1].page == 1)
+    local message = support.NativeProgressMessage({phase = "latency", page = 16, occupancy = 1, servers = 1500,
+        wait = {kind = "interval", seconds = 12}})
+    assert(message:find("16", 1, true) and message:find("1500", 1, true) and message:find("12 s", 1, true))
+end)
+
+test("expired continuation cursor renews without treating a partial stream as exhaustion", function()
+    local calls = {}
+    local native = support.DeviceNative({now = function() return 100 end, alive = function() return true end,
+        fetch = function(order, cursor)
+            table.insert(calls, {order = order, cursor = cursor})
+            if order == "OccupancyAsc" then return nativePage({{"one", 1}}) end
+            if cursor then return nil, "cursor expired", 400 end
+            return nativePage({{"one", 1}})
+        end})
+    assert(native.Seed(nativePage({{"two", 2}}, "expired")))
+    assert(not native.Pick("current", {}))
+    assert(native.Pick("current", {})[1].id == "one")
+    assert(calls[2].cursor == "expired" and calls[4].cursor == nil)
+end)
+
 local function requestFixture(shared, delay)
     local clock, live, queued = 100, true, {}
     local env = {now = function() return clock end, clock = function() return clock end,

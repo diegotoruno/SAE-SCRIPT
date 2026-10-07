@@ -1,5 +1,9 @@
 # Arquitectura
 
+## Reserva Best Ping y continuidad del recorrido (2026-10-07)
+
+DeviceNative conserva el cursor hasta completar el stream, venciendo solo observaciones de 180s. Snapshot sanitizado por UserId recuperable durante 180s entre hops/reejecuciones; cuenta nueva o borrada limpia stream y reserva. Prefetch solicita ocho candidatos y publica los grupos utiles conforme llegan. loadPool acepta BestLatency solo para el grupo 1/7 fresco de la cuenta/transporte actuales, preservando orden nativo y excluyendo actual/visitados. Grupos mayores requieren nueva prueba OccupancyAsc. Hop/AUTO usan la reserva sin HTTP incluso durante reposicion de fondo. GetStatus.serverConnection.reserve muestra count/occupancy; native agrega progreso de paginas/filas/espera. Los limites HTTP compartidos permanecen activos. La comprobacion de cuenta alimenta el stream para evitar consultar dos veces la misma pagina inicial.
+
 ## Distribucion compartida
 
 Delta y Potassium usan el mismo punto de entrada `main/chilli_hopper.luau`, que carga el bundle validado por CI de `stable`. No elegir un bundle distinto por dispositivo; transporte/configuracion/cookie son estado local. La funcion de cuenta se integra con el bridge anterior sin cambiar su configuracion existente. Los previews no son la distribucion de uso diario; sesiones ya ejecutadas reciben actualizaciones solo al recargar el cargador o llegar con autoexec.
