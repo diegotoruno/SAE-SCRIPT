@@ -65,7 +65,7 @@ El ingreso previsto incluye escala y mutaciones; excluye bonos personales y boos
 
 El minimo acepta `500k`, `25m`, `7b`, `7.5b`, `1t` o `1q`, tambien en mayusculas. Puedes usar coma decimal (`7,5b`). Sin sufijo, el valor son unidades por segundo: `7` significa 7/s. La configuracion anterior de 7B conserva su valor y aparece como `7b`; editar y volver a aplicar conserva el limite exacto.
 
-**Solo filtro** muestra los spawns actuales que cumplen los filtros guardados. Puedes ordenar por ingreso o nombre, cambiar la vista visual, arrastrar el panel y plegar los filtros.
+**Solo filtro** muestra los spawns actuales que cumplen los filtros guardados. **Rareza ↓** muestra primero la mejor rareza usando el rango real del juego; dentro de cada rareza, primero el mayor ingreso. El boton alterna con **Nombre A–Z** y conserva la preferencia. Este orden se aplica a huevos, criaturas y modelos 3D. Puedes cambiar la vista visual, arrastrar el panel y plegar los filtros.
 
 ## API
 
