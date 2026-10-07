@@ -2,6 +2,8 @@
 
 ## Reserva balanceada DeviceCookie (2026-10-07)
 
+Reposicion adaptativa: cada Pick consulta como maximo5 paginas. Una pasada con menos16 opciones conserva cursor entre llamadas hasta12 paginas o180s; con stock>=16 termina al presupuesto normal5 paginas/75s.24 registros frescos de la pasada o fin de lista terminan antes. Tras interrupcion>=180s se vuelve a cabeza. Restore conserva pasadas parciales; TTL individual no se extiende por paginar. Los saltos siguen consumiendo inmediatamente cualquier reserva vigente.
+
 BalancedReserve ordena1/7 antes de2/7, pasadas recientes antes de anteriores y rank nativo dentro de la pasada/ocupacion. Limite24, TTL1=180s/2=90s, deduplicacion/exclusion actual/visitados. DeviceNative NeedsRefill revisa umbral16 o respaldo>=60s; nuevo refill comienza en cabeza BestLatency conservando filas validas. Snapshot guarda pass/policy/estado de reposicion; migra datos de la politica anterior sin perder1/7 listo. Cold start acepta2/7 nativo sin consultar agotamiento global1/7 por autorizacion nueva. Grupos3..6 solo mediante prueba anterior. savePool/loadPool identifican balanced-1-2-v1/owner/transporte; antigua reserva1/7 compatible. GetStatus.reserve agrega primary/backup/capacity. Errores de autenticacion no devuelven cache como exito. Hop/AUTO consumen cache sin esperar refill. Cookie y detector no cambian.
 
 ## Reserva Best Ping y continuidad del recorrido (2026-10-07)

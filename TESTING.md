@@ -1,5 +1,9 @@
 # Pruebas y validacion
 
+## Reposicion adaptativa y salto de respaldo (2026-10-07)
+
+149 regresiones Luau/diez Python y compilacion pasan. El caso de stock escaso ahora verifica continuidad pagina6, limite12/180s y vigencia individual. Tres casos nuevos prueban reserva24 encontrada en pagina6 tras Restore, stock suficiente que termina a5 paginas/75s e interrupcion larga que vuelve a cabeza. Hop real API hacia ace56edf-d55a-41ce-8cd1-086a03b9c6ea anunciado2/7: pendiente en21.8269ms sin HTTP previo adicional, llegada exacta/autoexec/cuenta/AUTO/Eternal>=7B intactos. Ocho muestras independientes de Data Ping: mediana56.3193ms, cuatro jugadores al medir. No garantiza ocupacion o ping futuros. Reserva anterior descendio a1..6 en prueba prolongada, justificando la extension adaptativa. Sin inputs GUI sinteticos.
+
 ## Balance cantidad/calidad (2026-10-07)
 
 Build/compilacion146 regresiones Luau/diez Python. Doce casos nuevos cubren prioridad1/7->2/7, orden nativo/recencia, limite24/frescura1=180/2=90, politica/transporte, cold start sin espera global, Seed, refill por stock<16/60s desde cabeza, continuidad de filas1/7 anteriores de rango anterior mayor al de la pasada nueva, restore/migracion, errores/autenticacion, cancelacion y presupuesto maximo de5 paginas/75s sin perseguir candidatos de menor prioridad indefinidamente. Muestra real previa3/1 y190/2; montaje candidato en Potassium paso de0 listos a24 respaldos2/7, conservandoAUTO activo/Eternal>=7B/cookie/JobId, sesion anterior terminada y Chilli reutilizado. Reejecucion real recupero24, volvio a cabeza de lista y descarto una entrada2/7 de97s; controles/config/cookie intactos. Hop/publicacion se registran en WORKLOG al comprobarse. No entradas simuladas ni conexiones GUI disparadas. No se afirma ping numerico previo al ingreso ni deteccion de un huevo real que cumpla7B.

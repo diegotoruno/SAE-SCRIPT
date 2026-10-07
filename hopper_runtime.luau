@@ -505,7 +505,7 @@ local function createFinderSupport()
                 local cached = native.Reserve(current, visited)
                 -- A manual/AUTO hop consumes ready candidates immediately.
                 if cached and (wanted == 1 or not native.NeedsRefill(current, visited)) then return cached end
-                if not balancedInProgress or complete or needsRefresh or pages >= 5 then
+                if not balancedInProgress or complete or needsRefresh or pages >= 12 or env.now() - pass >= 180 then
                     cursors, cursor, rank, pages, complete = {}, nil, 0, 0, false
                     pass = math.max(env.now(), pass + 1)
                     balancedInProgress, needsRefresh = true, false
@@ -528,7 +528,13 @@ local function createFinderSupport()
                     if found and env.publish then pcall(env.publish, found) end
                     local fresh = 0
                     for _, row in ipairs(native.Reserve(current, visited, math.huge) or {}) do if row.pass == pass then fresh += 1 end end
-                    if fresh >= wanted or complete or pages >= 5 or env.now() - pass >= 75 then
+                    -- Stop near the native head when stock is sufficient. A
+                    -- sparse reserve may continue deeper, within a hard bound;
+                    -- observations still expire independently while paging.
+                    local enough = found and #found >= 16
+                    local normalBudget = pages >= 5 or env.now() - pass >= 75
+                    local hardBudget = pages >= 12 or env.now() - pass >= 180
+                    if fresh >= wanted or complete or (enough and normalBudget) or hardBudget then
                         balancedInProgress = false; saveStream(); break
                     end
                 end

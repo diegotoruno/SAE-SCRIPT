@@ -1402,7 +1402,7 @@ test("balanced refill preserves ready stock while cancelled background cannot se
     assert(native.Pick("current", {})[1].id == "two" and calls == 2)
 end)
 
-test("balanced small partial stock never chases pages beyond the quality budget", function()
+test("balanced scarce stock continues its native cursor but respects the hard quality budget", function()
     local clock, calls, saved = 100, {}, nil
     local native = support.DeviceNative({reservePolicy = "Balanced", now = function() return clock end,
         alive = function() return true end, save = function(value) saved = value end,
@@ -1410,9 +1410,56 @@ test("balanced small partial stock never chases pages beyond the quality budget"
             calls[#calls+1] = {order = order, cursor = cursor}; clock += 15
             return nativePage({{"two-" .. #calls, 2}}, "page-" .. #calls)
         end})
-    assert(#native.Pick("current", {}, nil, 24) == 5 and #calls == 5 and not saved.balancedInProgress)
+    assert(#native.Pick("current", {}, nil, 24) == 5 and #calls == 5 and saved.balancedInProgress)
     native.Pick("current", {}, nil, 24)
-    assert(calls[6].cursor == nil)
+    assert(calls[6].cursor == "page-5" and #calls == 10 and saved.balancedInProgress)
+    local pool = native.Pick("current", {}, nil, 24)
+    assert(#calls == 12 and not saved.balancedInProgress and #pool == 7)
+    for _, row in ipairs(pool) do assert(clock - row.observedAt <= 90) end
+    native.Pick("current", {}, nil, 24)
+    assert(calls[13].cursor == nil)
+end)
+
+test("balanced sparse native head finds a full fresh reserve beyond five pages and can restore continuation", function()
+    local clock, calls, saved = 100, {}, nil
+    local function fetch(order, cursor)
+        calls[#calls+1] = {order = order, cursor = cursor}; clock += 15
+        local rows = {{"two-" .. #calls, 2}}
+        if #calls == 6 then for i = 1, 24 do rows[#rows+1] = {"found-" .. i, 2} end end
+        return nativePage(rows, "page-" .. #calls)
+    end
+    local function env() return {reservePolicy = "Balanced", now = function() return clock end,
+        alive = function() return true end, save = function(value) saved = value end, fetch = fetch} end
+    local native = support.DeviceNative(env())
+    assert(#native.Pick("current", {}, nil, 24) == 5 and saved.balancedInProgress)
+    local restored = support.DeviceNative(env()); assert(restored.Restore(saved))
+    assert(#restored.Pick("current", {}, nil, 24) == 24 and #calls == 6 and calls[6].cursor == "page-5")
+    assert(not saved.balancedInProgress)
+end)
+
+test("balanced sufficient stock ends at the normal quality budget instead of exploring deeper", function()
+    local clock, calls, saved = 100, 0, nil
+    local native = support.DeviceNative({reservePolicy = "Balanced", now = function() return clock end,
+        alive = function() return true end, save = function(value) saved = value end,
+        fetch = function()
+            calls += 1; clock += 15
+            local rows = {}; for i = 1, 4 do rows[#rows+1] = {"two-" .. calls .. "-" .. i, 2} end
+            return nativePage(rows, "page-" .. calls)
+        end})
+    assert(#native.Pick("current", {}, nil, 24) == 20 and calls == 5 and not saved.balancedInProgress)
+end)
+
+test("balanced scarce refill restarts at the native head after a long interruption", function()
+    local clock, calls = 100, {}
+    local native = support.DeviceNative({reservePolicy = "Balanced", now = function() return clock end,
+        alive = function() return true end, fetch = function(order, cursor)
+            calls[#calls+1] = cursor or "head"
+            return nativePage({{"two-" .. #calls, 2}}, "page-" .. #calls)
+        end})
+    assert(#native.Pick("current", {}, nil, 24) == 5)
+    clock = 281
+    native.Pick("current", {}, nil, 24)
+    assert(calls[6] == "head")
 end)
 
 local function requestFixture(shared, delay)
