@@ -1,5 +1,9 @@
 # Contexto del proyecto
 
+## Pausa al guardar en Delta (2026-10-07)
+
+Usuario confirma que "Best Ping en pausa; espera el limite de Roblox" aparece al pulsar Guardar y usar AUTO. Ese texto propio no demuestra HTTP 429. Corregido deadline 35s que era menor al cooldown 60s; DeviceRequest da progreso/contador y distingue intervalo, 429 y native request pendiente, con excepciones sanitizadas y reserva hasta terminacion real. Guardar tiene prioridad sobre prefetch, reintenta una vez ante 429 y conserva borrador oculto si falla mientras ventana abierta. Build/125 regresiones pasan. Auth real de Delta sigue sin confirmacion; conservar preview y PR #10 en borrador.
+
 ## Cookie propia por dispositivo (2026-10-07)
 
 Rama codex/cookie-local-dispositivo, sobre la conexion Best Ping previa. Usuario requiere pegar la cookie dentro del script en Delta/iPad; conocidos usan Potassium. Nuevo formulario con launcher fijo CUENTA / BEST PING y acceso desde Opciones; cerrar no impide reabrir. Guardado local opcional sin cifrado por UserId para sobrevivir hops, sin PC/proxy ni credenciales en API/logs/Git. Alternativa de sesion sola y borrado/desconexion. Build/117 regresiones y diez tests Python pasan. Montaje/cierre/reapertura/limpieza comprobados aislados en Potassium con almacenamiento simulado; no autenticar desde Delta ni declarar soporte de redirects probado. Ver BEST_PING.md. Version activa/autoexec de esta PC sigue usando el bridge anterior; no se ha sustituido stable.
