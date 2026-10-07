@@ -421,7 +421,7 @@ local function mountEggFilterPanel(context)
     local tabMap = button("MapTab", root, "Mapa", 14, 304, 131, 30)
     local tabCatalog = button("CatalogTab", root, "Solo filtro: OFF", 153, 304, 126, 30)
     local visualButton = button("VisualMode", root, "Huevos", 288, 304, 108, 30)
-    local sortButton = button("Sort", root, "Ingreso ↓", 404, 304, 122, 30)
+    local sortButton = button("Sort", root, "Rareza ↓", 404, 304, 122, 30)
     local scroll = make("ScrollingFrame", "EggCards", root, {
         Position = UDim2.fromOffset(14, 344), Size = UDim2.fromOffset(512, 304), BackgroundTransparency = 1,
         BorderSizePixel = 0, ScrollBarThickness = 5, ScrollBarImageColor3 = C.border,
@@ -582,8 +582,10 @@ local function mountEggFilterPanel(context)
                         local ok, rate = pcall(function() return modules.earnings.MutationOnlyRatePerSecond(modules.records.ToAssetItemData(egg)) end)
                         local weightOk, weight = pcall(modules.records.WeightLabel, egg)
                         local iconOk, icon = pcall(modules.records.EggIcon, egg)
+                        local rarity = modules.rarities.Rarities[catalog.Rarity._id]
                         local labels = {}; for _, id in ipairs(egg.Mutations or {}) do table.insert(labels, data.mutations.LabelOf(id)) end
                         table.insert(rows, { uid = egg.Uid, category = egg.AssetCategory, catalog = catalog,
+                            rarityRank = rarity and rarity.Rank or 0,
                             income = ok and rate or nil, scale = egg.AssetScale, weight = weightOk and weight or "peso no disponible",
                             mutations = #labels > 0 and table.concat(labels, " + ") or "Sin mutaciones",
                             area = egg.AreaId, match = matches[egg.Uid], eggIcon = iconOk and icon or nil })
@@ -592,11 +594,12 @@ local function mountEggFilterPanel(context)
             end
         end
         table.sort(rows, function(a, b)
+            if sortBest and a.rarityRank ~= b.rarityRank then return a.rarityRank > b.rarityRank end
             if sortBest and (a.income or 0) ~= (b.income or 0) then return (a.income or 0) > (b.income or 0) end
             if a.category ~= b.category then return a.category < b.category end
             return tostring(a.uid) < tostring(b.uid)
         end)
-        for _, row in ipairs(rows) do table.insert(fingerprint, table.concat({row.uid or row.category, tostring(row.income), tostring(row.scale), row.mutations, tostring(row.match)}, ":")) end
+        for _, row in ipairs(rows) do table.insert(fingerprint, table.concat({row.uid or row.category, tostring(row.rarityRank), tostring(row.income), tostring(row.scale), row.mutations, tostring(row.match)}, ":")) end
         local key = table.concat(fingerprint, "|")
         if key == signature then return end
         signature = key; cleanupCards(); panel.cards = #rows
@@ -689,7 +692,7 @@ local function mountEggFilterPanel(context)
     connect(chooseSpecies.Activated, function() panel.OpenSpecies() end)
     connect(tabCatalog.Activated, function() onlyMatches = not onlyMatches; signature = nil; save() end)
     connect(tabMap.Activated, function() onlyMatches = false; signature = nil; save() end)
-    connect(sortButton.Activated, function() sortBest = not sortBest; sortButton.Text = sortBest and "Ingreso ↓" or "Nombre A–Z"; signature = nil; save() end)
+    connect(sortButton.Activated, function() sortBest = not sortBest; sortButton.Text = sortBest and "Rareza ↓" or "Nombre A–Z"; signature = nil; save() end)
     connect(visualButton.Activated, function() panel.SetVisual(visual == "eggs" and "pets" or visual == "pets" and "models" or "eggs") end)
     connect(rarityButton.Activated, function()
         if not search.modules then return end
@@ -736,7 +739,7 @@ local function mountEggFilterPanel(context)
             auto.Text = status.active and "AUTO: ON" or "AUTO: OFF"
             auto.BackgroundColor3 = status.active and C.green or C.red
             visualButton.Text = visual == "eggs" and "Huevos" or visual == "pets" and "Criaturas" or "Modelos 3D"
-            sortButton.Text = sortBest and "Ingreso ↓" or "Nombre A–Z"
+            sortButton.Text = sortBest and "Rareza ↓" or "Nombre A–Z"
             tabCatalog.Text = onlyMatches and "Solo filtro: ON" or "Solo filtro: OFF"
             tabCatalog.BackgroundColor3 = onlyMatches and Color3.fromRGB(58, 74, 100) or C.card
             tabMap.BackgroundColor3 = not onlyMatches and Color3.fromRGB(58, 74, 100) or C.card
