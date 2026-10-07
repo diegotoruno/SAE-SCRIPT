@@ -1458,7 +1458,8 @@ local function createFinderSupport()
                 and playing == math.floor(playing) then
                 table.insert(pool, {id = server.id, playing = playing,
                     ping = tonumber(server.ping) or -1, fps = tonumber(server.fps) or 0,
-                    sourceRank = index, observedAt = tonumber(server.observedAt)})
+                    sourceRank = index, observedAt = tonumber(server.observedAt),
+                    nativeRank = tonumber(server.nativeRank), pass = tonumber(server.pass)})
             end
         end
         table.sort(pool, function(a, b)
@@ -1694,16 +1695,48 @@ local function createFinderSupport()
         return "Comprobando la conexion con Roblox..."
     end
     function support.NativeProgressMessage(state)
-        local text = state.phase == "occupancy" and string.format("Best Ping: revisando ocupacion, pagina %d", state.page or 1)
+        local text = state.policy == "Balanced" and string.format("Best Ping: reserva 1-2/7, pagina %d (%d servidores revisados)", state.page or 1, state.servers or 0)
+            or state.phase == "occupancy" and string.format("Best Ping: revisando ocupacion, pagina %d", state.page or 1)
             or string.format("Best Ping: %d/7, pagina %d (%d servidores revisados)", state.occupancy or 1, state.page or 1, state.servers or 0)
         if state.wait then text ..= " | " .. support.DeviceWaitMessage(state.wait) end
         return text
     end
     -- A fresh one-player reserve is already the minimum eligible occupancy.
     -- Larger groups still require a new OccupancyAsc proof before a hop.
-    function support.PreloadedNativePool(data, now, current, visited, transport)
+    function support.BalancedReserve(servers, now, current, visited, limit)
+        local accepted, seen = {}, {}
+        for index, row in ipairs(servers) do
+            if type(row) == "table" and type(row.id) == "string" and not seen[row.id]
+                and (row.playing == 1 or row.playing == 2) and type(row.observedAt) == "number" then
+                local age = now - row.observedAt
+                if age >= 0 and age <= (row.playing == 1 and 180 or 90) and row.id ~= current and not visited[row.id] then
+                    local copy = support.Copy(row)
+                    copy.nativeRank = tonumber(row.nativeRank) or tonumber(row.sourceRank) or index
+                    copy.pass = tonumber(row.pass) or 0
+                    if copy.nativeRank ~= copy.nativeRank or math.abs(copy.nativeRank) == math.huge then copy.nativeRank = index end
+                    if copy.pass ~= copy.pass or math.abs(copy.pass) == math.huge then copy.pass = 0 end
+                    seen[row.id] = true; table.insert(accepted, copy)
+                end
+            end
+        end
+        -- Keep native order in each observation pass; favor the refreshed head
+        -- over older fallback records of the same occupancy.
+        table.sort(accepted, function(a,b)
+            if a.pass ~= b.pass then return a.pass > b.pass end
+            if a.nativeRank ~= b.nativeRank then return a.nativeRank < b.nativeRank end
+            return a.id < b.id
+        end)
+        local ranked = support.RankServers(accepted, "BestLatency")
+        local pool = {}; for i = 1, math.min(#ranked, limit or 24) do pool[i] = ranked[i] end
+        return #pool > 0 and pool or nil
+    end
+    function support.PreloadedNativePool(data, now, current, visited, transport, balanced)
         if type(data) ~= "table" or data.orderBy ~= "BestLatency" or data.transport ~= transport
-            or data.occupancy ~= 1 or type(data.servers) ~= "table" then return nil end
+            or type(data.servers) ~= "table" then return nil end
+        if balanced and data.reservePolicy == "balanced-1-2-v1" then
+            return support.BalancedReserve(data.servers, now, current, visited, 24)
+        end
+        if data.occupancy ~= 1 then return nil end
         local pool, seen = {}, {}
         for _, row in ipairs(data.servers) do
             if type(row) ~= "table" or row.playing ~= 1 or type(row.id) ~= "string" then return nil end
@@ -1718,9 +1751,11 @@ local function createFinderSupport()
     -- establishes exhaustion of lower occupancy groups.
     function support.DeviceNative(env)
         local rows, cursors, cursor, rank, pages, complete = {}, {}, nil, 0, 0, false
+        local pass, balancedInProgress, needsRefresh = 0, false, env.reservePolicy == "Balanced"
         local native = {}
         local function resetStream()
             rows, cursors, cursor, rank, pages, complete = {}, {}, nil, 0, 0, false
+            pass, balancedInProgress, needsRefresh = 0, false, env.reservePolicy == "Balanced"
         end
         local function saveStream()
             local now = env.now()
@@ -1728,7 +1763,8 @@ local function createFinderSupport()
                 if now - row.observedAt > 180 or now < row.observedAt then rows[id] = nil end
             end
             if env.save then pcall(env.save, {schema = 1, updatedAt = now, rows = support.Copy(rows),
-                cursors = support.Copy(cursors), cursor = cursor, rank = rank, pages = pages, complete = complete}) end
+                cursors = support.Copy(cursors), cursor = cursor, rank = rank, pages = pages, complete = complete,
+                reservePolicy = env.reservePolicy, pass = pass, balancedInProgress = balancedInProgress}) end
         end
         function native.Restore(value)
             if type(value) ~= "table" or value.schema ~= 1 or type(value.rows) ~= "table" or type(value.cursors) ~= "table"
@@ -1743,7 +1779,8 @@ local function createFinderSupport()
                 count += 1
                 if count > 2000 or type(id) ~= "string" or #id > 128 or type(row) ~= "table" or row.id ~= id
                     or type(row.playing) ~= "number" or row.playing < 1 or row.playing > 6 or row.playing ~= math.floor(row.playing)
-                    or type(row.nativeRank) ~= "number" or row.nativeRank < 1 or row.nativeRank > value.rank
+                    or type(row.nativeRank) ~= "number" or row.nativeRank < 1
+                    or row.nativeRank > (env.reservePolicy == "Balanced" and 200000 or value.rank)
                     or row.nativeRank ~= math.floor(row.nativeRank) or type(row.observedAt) ~= "number"
                     or row.observedAt ~= row.observedAt or row.observedAt > env.now() then return false end
             end
@@ -1755,6 +1792,23 @@ local function createFinderSupport()
             if value.cursor and not value.cursors[value.cursor] then return false end
             rows, cursors, cursor, rank, pages, complete = support.Copy(value.rows), support.Copy(value.cursors), value.cursor,
                 value.rank, value.pages, value.complete
+            if env.reservePolicy == "Balanced" then
+                local validPass = type(value.pass) == "number" and value.pass >= 0 and value.pass < math.huge
+                    and value.pass == math.floor(value.pass)
+                if value.reservePolicy == "Balanced" and validPass then
+                    pass, balancedInProgress, needsRefresh = value.pass, value.balancedInProgress == true, false
+                    for _, row in pairs(rows) do
+                        if row.pass ~= nil and (type(row.pass) ~= "number" or row.pass ~= row.pass
+                            or row.pass < 0 or row.pass > pass or row.pass ~= math.floor(row.pass)) then
+                            resetStream(); return false
+                        end
+                    end
+                else
+                    -- Migrate usable observations, then refresh from the head.
+                    for _, row in pairs(rows) do row.pass = 0 end
+                    needsRefresh = true
+                end
+            end
             return true
         end
         local function observe(page)
@@ -1765,7 +1819,8 @@ local function createFinderSupport()
                     and type(row.playing) == "number" and row.playing == math.floor(row.playing)
                     and row.playing >= 1 and row.playing <= 6 then
                     rows[row.id] = {id = row.id, playing = row.playing,
-                        nativeRank = rows[row.id] and rows[row.id].nativeRank or rank, observedAt = env.now()}
+                        nativeRank = env.reservePolicy == "Balanced" and rank or (rows[row.id] and rows[row.id].nativeRank or rank),
+                        observedAt = env.now(), pass = env.reservePolicy == "Balanced" and pass or nil}
                 end
             end
             cursor = page.nextPageCursor
@@ -1778,12 +1833,33 @@ local function createFinderSupport()
         end
         function native.Seed(page)
             resetStream()
+            if env.reservePolicy == "Balanced" then pass = env.now(); balancedInProgress, needsRefresh = true, false end
             if type(page) ~= "table" or type(page.data) ~= "table" or not observe(page) then return false end
+            if env.reservePolicy == "Balanced" then
+                local pool = native.Reserve("", {})
+                if pool and env.publish then pcall(env.publish, pool) end
+                if pool and #pool >= 24 then balancedInProgress = false; saveStream() end
+                return true
+            end
             local ones = {}
             for _, row in pairs(rows) do if row.playing == 1 then table.insert(ones, row) end end
             table.sort(ones, function(a,b) return a.nativeRank < b.nativeRank end)
             if #ones > 0 and env.publish then pcall(env.publish, support.RankServers(ones, "BestLatency")) end
             return true
+        end
+        function native.Reserve(current, visited, limit)
+            local servers = {}; for _, row in pairs(rows) do table.insert(servers, row) end
+            return support.BalancedReserve(servers, env.now(), current, visited, limit or 24)
+        end
+        function native.NeedsRefill(current, visited)
+            if needsRefresh then return true end
+            local pool = native.Reserve(current, visited)
+            if not pool or #pool < 16 then return true end
+            local now = env.now()
+            for _, row in ipairs(pool) do
+                if row.playing == 2 and now - row.observedAt >= 60 then return true end
+            end
+            return false
         end
         function native.Pick(current, visited, continuing, wanted)
             wanted = wanted or 1
@@ -1794,6 +1870,42 @@ local function createFinderSupport()
             -- cursor. At 15s/request a valid candidate may be many minutes away.
             for id, row in pairs(rows) do
                 if now - row.observedAt > 180 or now < row.observedAt then rows[id] = nil end
+            end
+            if env.reservePolicy == "Balanced" then
+                local cached = native.Reserve(current, visited)
+                -- A manual/AUTO hop consumes ready candidates immediately.
+                if cached and (wanted == 1 or not native.NeedsRefill(current, visited)) then return cached end
+                if not balancedInProgress or complete or needsRefresh or pages >= 5 then
+                    cursors, cursor, rank, pages, complete = {}, nil, 0, 0, false
+                    pass = math.max(env.now(), pass + 1)
+                    balancedInProgress, needsRefresh = true, false
+                end
+                for _ = 1, 5 do
+                    if env.progress then pcall(env.progress, {state = "searching", policy = "Balanced", phase = "latency",
+                        page = pages + 1, pages = pages, servers = rank}) end
+                    local page, err, status = env.fetch("BestLatency", cursor, alive)
+                    if not alive() then return nil, "busqueda cancelada" end
+                    if not page and status == 400 and cursor then
+                        balancedInProgress, needsRefresh = false, true
+                        return native.Reserve(current, visited), "cursor Best Ping vencido; renovando lista"
+                    end
+                    if not page and (status == 400 or status == 401 or status == 403 or status == 302) then
+                        return nil, err or "Roblox no acepto la conexion"
+                    end
+                    if not page or type(page.data) ~= "table" then return native.Reserve(current, visited), err or "respuesta Best Ping invalida" end
+                    if not observe(page) then return nil, "cursor Best Ping invalido; se renovara la lista" end
+                    local found = native.Reserve(current, visited)
+                    if found and env.publish then pcall(env.publish, found) end
+                    local fresh = 0
+                    for _, row in ipairs(native.Reserve(current, visited, math.huge) or {}) do if row.pass == pass then fresh += 1 end end
+                    if fresh >= wanted or complete or pages >= 5 or env.now() - pass >= 75 then
+                        balancedInProgress = false; saveStream(); break
+                    end
+                end
+                local found = native.Reserve(current, visited)
+                if found then return found end
+                -- Preserve the established 3..6 fallback: only the existing
+                -- fresh occupancy proof may advance beyond the quick reserve.
             end
             local function eligible(row)
                 return row.id ~= current and not visited[row.id]
@@ -2445,6 +2557,7 @@ do
     local VISITED_MAX_AGE = 60 * 60
     local POOL_REFRESH_SECONDS = 45   -- cada cuanto se refresca el pool
     local POOL_SIZE = 8               -- candidatos guardados en el pool
+    local BALANCED_RESERVE_SIZE = 24  -- 1/7 first; 2/7 ready when the quick primary reserve is empty
     local POOL_MAX_AGE = 180          -- pool mas viejo que esto se ignora
     local PING_SETTLE_SECONDS = 10
     local PING_SAMPLE_INTERVAL = 1
@@ -2616,6 +2729,7 @@ do
     local function resetDeviceNative(seed, clear)
         if clear then writeJson(DEVICE_STREAM_FILE, {}) end
         deviceNative = support.DeviceNative({now = os.time,
+            reservePolicy = "Balanced",
             save = function(state) writeJson(DEVICE_STREAM_FILE, state) end,
             progress = publishNativeProgress,
             publish = function(pool) if saveNativePool and session.alive then saveNativePool(pool) end end,
@@ -3561,10 +3675,13 @@ do
         if not pool or #pool == 0 then
             return
         end
-        local group = support.OccupancyGroup(pool, serverOrder, true)
+        local balanced = serverOrder == "BestLatency" and connectionConfig.transport == "DeviceCookie"
+        local group = balanced and support.BalancedReserve(pool, os.time(), game.JobId,
+            support.PruneVisited(readJson(VISITED_FILE, {}), os.time(), VISITED_MAX_AGE), BALANCED_RESERVE_SIZE)
+            or support.OccupancyGroup(pool, serverOrder, true)
         if #group == 0 then return end
         local trimmed = {}
-        for index = 1, math.min(#group, POOL_SIZE) do
+        for index = 1, math.min(#group, balanced and BALANCED_RESERVE_SIZE or POOL_SIZE) do
             trimmed[index] = group[index]
         end
         writeJson(POOL_FILE, {
@@ -3572,12 +3689,18 @@ do
             orderBy = serverOrder,
             transport = connectionConfig.transport or "LocalBridge",
             owner = Players.LocalPlayer.UserId,
+            reservePolicy = balanced and "balanced-1-2-v1" or nil,
             occupancy = group[1].playing,
             updatedAt = os.time(),
             servers = trimmed,
         })
     end
     saveNativePool = savePool
+    if connectionConfig.transport == "DeviceCookie" then
+        local restored = deviceNative.Reserve(game.JobId,
+            support.PruneVisited(readJson(VISITED_FILE, {}), os.time(), VISITED_MAX_AGE))
+        if restored then savePool(restored) end
+    end
 
     -- Lee el pool guardado (sin HTTP) y filtra lo que ya no sirve: visitados
     -- en la ultima hora y el servidor actual. Si el pool es viejo, se ignora.
@@ -3593,7 +3716,7 @@ do
             if connectionConfig.transport == "DeviceCookie" and (deviceFatal or not deviceCookie.Status().configured) then return nil end
             return support.PreloadedNativePool(data, os.time(), game.JobId,
                 support.PruneVisited(readJson(VISITED_FILE, {}), os.time(), VISITED_MAX_AGE),
-                connectionConfig.transport or "LocalBridge")
+                connectionConfig.transport or "LocalBridge", connectionConfig.transport == "DeviceCookie")
         end
         local occupancy = tonumber(data.occupancy)
         if not occupancy or occupancy < 1 or occupancy >= EXPECTED_CAPACITY
@@ -3633,7 +3756,12 @@ do
     end
     reserveStatus = function()
         local pool = loadPool()
-        return {count = pool and #pool or 0, occupancy = pool and pool[1].playing or nil}
+        local primary, backup = 0, 0
+        for _, row in ipairs(pool or {}) do
+            if row.playing == 1 then primary += 1 elseif row.playing == 2 then backup += 1 end
+        end
+        return {count = pool and #pool or 0, occupancy = pool and pool[1].playing or nil,
+            primary = primary, backup = backup, capacity = connectionConfig.transport == "DeviceCookie" and BALANCED_RESERVE_SIZE or POOL_SIZE}
     end
     hopperEnvironment.ChilliEggSearch.RefreshServers = function()
         assert(session.alive, "Esta sesion ya termino")
@@ -4143,10 +4271,14 @@ do
             if game.PlaceId == PLACE_ID and not busy then
                 local ok, err = pcall(function()
                     local reserve = loadPool()
-                    if serverOrder == "BestLatency" and reserve and #reserve >= POOL_SIZE then return end
+                    local balanced = serverOrder == "BestLatency" and connectionConfig.transport == "DeviceCookie"
+                    if balanced then
+                        local visited = support.PruneVisited(readJson(VISITED_FILE, {}), os.time(), VISITED_MAX_AGE)
+                        if not deviceNative.NeedsRefill(game.JobId, visited) then return end
+                    elseif serverOrder == "BestLatency" and reserve and #reserve >= POOL_SIZE then return end
                     local pool = pickCandidates(function()
                         return session.alive and not busy and game.JobId == sessionStartJobId
-                    end, POOL_SIZE)
+                    end, balanced and BALANCED_RESERVE_SIZE or POOL_SIZE)
                     if pool and session.alive and game.JobId == sessionStartJobId then
                         savePool(pool)
                         print(string.format(
