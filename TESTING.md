@@ -1,5 +1,9 @@
 # Pruebas y validacion
 
+## Balance cantidad/calidad (2026-10-07)
+
+Build/compilacion145 regresiones Luau/diez Python. Once casos nuevos cubren prioridad1/7->2/7, orden nativo/recencia, limite24/frescura1=180/2=90, politica/transporte, cold start sin espera global, Seed, refill por stock<16/60s desde cabeza, continuidad de filas1/7 anteriores, restore/migracion, errores/autenticacion y cancelacion sin peticiones extra. Muestra real previa3/1 y190/2; montaje candidato en Potassium paso de0 listos a24 respaldos2/7, conservandoAUTO activo/Eternal>=7B/cookie/JobId, sesion anterior terminada y Chilli reutilizado. Recarga/refill/hop/publicacion se registran en WORKLOG al comprobarse. No entradas simuladas ni conexiones GUI disparadas. No se afirma ping numerico previo al ingreso ni deteccion de un huevo real que cumpla7B.
+
 ## Reserva rapida BestLatency (2026-10-07)
 
 Build/compilacion y 134 regresiones Luau pasan; diez Python tambien. Nuevos casos alcanzan pagina16 despues de 180s sin reiniciar; verifican reserva sin HTTP/orden nativo/frescura individual/exclusiones, publicacion incremental hasta ocho, grupos mayores/transporte incorrecto rechazados, cursor recuperado tras llegada, Seed inicial, lista completa consumida, cancelacion/progreso y cursor400 renovado sin inferir agotamiento. Potassium reejecuto candidato conservando Eternal>=7B/s/AUTO apagado, cookie restaurada, Chilli reutilizado y sesion anterior destruida. HTTP200/progreso real de consulta observado; salto y cache real siguen pendientes al escribir esta seccion. No se simularon entradas ni dispararon conexiones.

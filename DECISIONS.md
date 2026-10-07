@@ -2,6 +2,7 @@
 
 | Decision | Motivo y consecuencia |
 | --- | --- |
+| Balance autorizado:1/7 listo, despues2/7 BestLatency | El huevo es el objetivo principal. Usuario autoriza2/7 al agotar la reserva rapida1/7 sin probar ausencia global. Hasta24 destinos; refill<16 o respaldo>=60s; TTL1=180s/2=90s y nuevo muestreo desde cabeza nativa. Evita que una busqueda larga de1/7 deje de revisar huevos. Solo DeviceCookie; grupos3..6/bridge/legacy mantienen guardas anteriores. |
 | Precargar hasta ocho 1/7 con BestLatency | Click/AUTO usan reserva vigente sin HTTP, conservando orden nativo y excluyendo visitados/actual. Vencen registros, no el cursor incompleto. Cursor sanitizado por cuenta sobrevive hops durante 180s; grupos 2..6 requieren prueba nueva. Primera reserva puede tardar, ocupacion/ping al llegar no se garantizan. |
 | Una distribucion comun para Delta y Potassium | Usuario solicita conservar main/chilli_hopper.luau en todas las PC y usarlo tambien en iPad. CI publica el mismo bundle en stable tras validar; cookies/filtros son locales. Un script abierto conserva su version hasta recargar. Previews o SHA de prueba no se usan como distribucion permanente. |
 | Separar pausa propia, HTTP 429 y peticion pendiente | Usuario observa pausa al guardar desde Delta. La espera anterior de 35s no cubria cooldown 60s y descartaba el borrador. Prioridad a validacion, contador, un reintento 429 y borrador en memoria mientras formulario abierto. Una peticion colgada sigue bloqueada hasta terminar, sin forzar duplicados. |

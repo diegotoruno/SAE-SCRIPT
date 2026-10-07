@@ -1,5 +1,9 @@
 # Arquitectura
 
+## Reserva balanceada DeviceCookie (2026-10-07)
+
+BalancedReserve ordena1/7 antes de2/7, pasadas recientes antes de anteriores y rank nativo dentro de la pasada/ocupacion. Limite24, TTL1=180s/2=90s, deduplicacion/exclusion actual/visitados. DeviceNative NeedsRefill revisa umbral16 o respaldo>=60s; nuevo refill comienza en cabeza BestLatency conservando filas validas. Snapshot guarda pass/policy/estado de reposicion; migra datos de la politica anterior sin perder1/7 listo. Cold start acepta2/7 nativo sin consultar agotamiento global1/7 por autorizacion nueva. Grupos3..6 solo mediante prueba anterior. savePool/loadPool identifican balanced-1-2-v1/owner/transporte; antigua reserva1/7 compatible. GetStatus.reserve agrega primary/backup/capacity. Errores de autenticacion no devuelven cache como exito. Hop/AUTO consumen cache sin esperar refill. Cookie y detector no cambian.
+
 ## Reserva Best Ping y continuidad del recorrido (2026-10-07)
 
 DeviceNative conserva el cursor hasta completar el stream, venciendo solo observaciones de 180s. Snapshot sanitizado por UserId recuperable durante 180s entre hops/reejecuciones; cuenta nueva o borrada limpia stream y reserva. Prefetch solicita ocho candidatos y publica los grupos utiles conforme llegan. loadPool acepta BestLatency solo para el grupo 1/7 fresco de la cuenta/transporte actuales, preservando orden nativo y excluyendo actual/visitados. Grupos mayores requieren nueva prueba OccupancyAsc. Hop/AUTO usan la reserva sin HTTP incluso durante reposicion de fondo. GetStatus.serverConnection.reserve muestra count/occupancy; native agrega progreso de paginas/filas/espera. Los limites HTTP compartidos permanecen activos. La comprobacion de cuenta alimenta el stream para evitar consultar dos veces la misma pagina inicial.
