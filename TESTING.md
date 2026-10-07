@@ -9,11 +9,15 @@
 
 Se compilan fuentes, punto de entrada, loader, tests y bundle integrado. El CLI oficial Luau 0.741 se descarga y verifica por SHA256. No se ejecuta el bundle de Roblox en el CLI; se ejecuta solo `ci_tests.luau` con un entorno controlado.
 
-Las 50 regresiones cubren: mapa vacio, solo Common, Divine justo bajo 7B, limite exacto, mejor candidato, estados no disponibles, mutacion base, nombre literal, especies exactas, ingreso invalido, catalogo desconocido, minimo invalido, deduplicacion/persistencia, noche, snapshot pendiente, ciclo de renovacion entre hops, snapshot malformado y error al guardar. Los casos nuevos verifican sufijos k/m/b/t/q, numeros sin sufijo por segundo, formatos invalidos/overflow, edicion sin redondear el umbral, opciones de rareza derivadas del catalogo y sus rangos, rechazo de IDs auxiliares y rangos numericos, configuracion antes de cargar datos, compatibilidad de valores guardados y rarezas obsoletas que deben esperar.
+Las 68 regresiones incluyen los 50 casos anteriores del detector, filtros, caches, persistencia y soporte de teleport. Se conservan sufijos y limites exactos, rarezas reales, Slot como unica fuente y rechazo de datos incompletos.
+
+Los 18 casos adicionales prueban huevo robado/ausente tras observar la rareza, persistencia entre instancias, expiracion al inicio de noche y reset durante desconexion, cambios de filtros/rareza/overrides, reloj desconocido/pausado, memoria futura/corrupta, fallos al guardar, snapshots del periodo anterior y reset durante scan, sesiones destruidas, recuperacion por conexion nueva, timeout bloqueado, fallo de cierre de pending y cancelacion antes de enviar. Desconexiones/fallos se simulan con adapters offline; no se fuerzan expulsiones o fallos de red del cliente.
 
 Al cambiar una decision o filtro, ampliar las regresiones con el caso que fallo. No agregar tests que se limiten a comparar lineas de codigo.
 
 ## Smoke test real con Potassium
+
+No usar entradas simuladas ni disparar conexiones de GUI en el cliente publico para pruebas: los logs nativos anteriores registraron expulsiones BAC despues de SendKeyEvent. La relacion temporal no demuestra por si sola la causa. Validar teclado/clics manualmente y revisar logs pasivamente; no interceptar kicks ni alterar anticheat. La continuidad por ciclo se verifica offline en esta publicacion, sin una nueva prueba de desconexion real ni carga automatizada en el cliente.
 
 1. Obtener clientes actuales con `list_clients`; seleccionar el PID conectado.
 2. Ejecutar el cargador y leer consola desde el cursor devuelto por `execute_script`.

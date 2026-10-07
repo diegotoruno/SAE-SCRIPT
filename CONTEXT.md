@@ -11,13 +11,17 @@ El filtro inicial es **Divine con ingreso previsto minimo de 7.000.000.000 por s
 ## Flujo final acordado
 
 1. Al entrar, leer un snapshot valido del mapa.
-2. Sin Divine disponible, quedarse en ese servidor y esperar la renovacion.
+2. Sin Divine disponible ni observacion guardada de Divine en el ciclo vigente, quedarse en ese servidor y esperar la renovacion.
 3. Al renovarse los huevos, esperar el snapshot nuevo y escanear otra vez. Si no hay Divine, seguir esperando.
 4. Si hay Divine pero ninguno cumple el minimo y los demas filtros, hacer hop y escanear el servidor de destino.
 5. Si cualquier Divine cumple, quedarse, apagar AUTO y mostrar la coincidencia. Chilli permanece activo con sus opciones actuales.
 6. Si la noche se reinicia durante los hops, descartar la decision previa, esperar los nuevos datos y repetir el mismo ciclo. **El reset no detiene la busqueda por completo.**
+7. Si se observo Divine disponible y se inicio la busqueda en ese ciclo, su ausencia en otro servidor por robo/recogida no termina la busqueda. Continuar los hops hasta match o hasta empezar la siguiente noche. La observacion no demuestra que el huevo siga disponible en otros servidores.
+8. Persistir esa ventana antes de saltar. Tras una desconexion, recuperar la busqueda con AUTO activo y un reloj/snapshot valido del mismo ciclo. Un Stop manual se conserva; reejecutar en la misma conexion no confirma llegada.
 
 Hubo requisitos anteriores de esperar siempre en el mismo servidor o detener todo al reset. El usuario los reemplazo por el flujo anterior; no deben reintroducirse.
+
+La memoria de busqueda en `chilli_egg_search_cycle.json` vence al inicio de la noche siguiente, `NextResetTime(now) - NightLengthSeconds()`, usando los overrides del juego. Cambios de rareza/periodo/overrides invalidan esa ventana; minimo y demas filtros se vuelven a comprobar para cada spawn. El archivo es independiente del estado de teleport.
 
 ## Datos y significado de 7B
 

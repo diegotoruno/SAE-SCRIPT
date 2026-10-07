@@ -619,6 +619,9 @@ local function mountEggFilterPanel(context)
             stateTitle.Text = titles[status.mode] or "Escaneando mapa"
             stateTitle.TextColor3 = status.mode == "match" and C.green or C.white
             stateDetail.Text = string.format("%s · ≥ %s/s · %d en mapa · %d de esa rareza", status.config.rarity, number(status.config.minIncome), info.count or 0, info.rarityCount or 0)
+            if status.mode == "hop" and info.continuingCycle then
+                stateDetail.Text = status.config.rarity .. " observado en este ciclo · no está aquí; sigo buscando"
+            end
             if status.mode == "loading" and info.reason then stateDetail.Text = info.reason end
             if cycle then
                 local seconds = math.ceil(cycle.secondsUntilReset)

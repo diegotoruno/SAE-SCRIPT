@@ -378,4 +378,187 @@ test("catalog income and rarity changes invalidate analysis", function()
     catalog.divine.Rarity = {_id = "Common"}; assert(scanDecision() == "wait")
     catalog.divine.Rarity = {_id = "Divine"}; catalog.divine.EarningRate = nil
 end)
+local function cycleFactory(read, write)
+    local finder = factory(read, write)
+    finder.modules = {assets = {Directory = catalog}, rarities = {Rarities = rarities}}
+    return finder
+end
+local function cycle(now, overrides)
+    local index = math.floor(now / 300)
+    local result = {running = true, night = now % 300 >= 290, serverTime = now,
+        periodIndex = index, nextReset = (index + 1) * 300, periodSeconds = 300, nightSeconds = 10}
+    for key, value in pairs(overrides or {}) do result[key] = value end
+    return result
+end
+local function memoryStore()
+    local files, writes, fail = {}, 0, false
+    return files, function(key, fallback) return table.clone(files[key] or fallback) end,
+        function(key, value)
+            if fail then return false end
+            writes += 1; files[key] = table.clone(value); return true
+        end, function(value) fail = value end, function() return writes end
+end
+local function decideCycle(finder, input, at, filters)
+    local match, info = finder.Evaluate(input, catalog, function(e) return e.rate end, filters)
+    info.ready = info.errors == 0
+    return finder.Decide(match, info, cycle(at)), info
+end
+test("observed rarity continues when stolen or missing in next server", function()
+    local _, read, write, _, writes = memoryStore(); local finder = cycleFactory(read, write)
+    assert(decideCycle(finder, {egg("a", 6e9)}, 100) == "hop")
+    local mode, info = decideCycle(finder, {}, 101)
+    assert(mode == "hop" and info.rarityCount == 0 and info.continuingCycle and info.searchUntil == 290)
+    for _, state in ipairs({"Carried", "Claimed", "Dropped", "Base"}) do
+        assert(decideCycle(finder, {egg("a", 99e9, "divine", state)}, 102) == "hop")
+    end
+    assert(writes() == 1, "Polling must not rewrite the same window")
+end)
+test("absence alone cannot invent an active hunt", function()
+    local _, read, write = memoryStore(); local finder = cycleFactory(read, write)
+    assert(decideCycle(finder, {egg("a", 99e9, "divine", "Carried")}, 100) == "wait")
+    assert(decideCycle(finder, {}, 101) == "wait" and next(finder.SearchWindow()) == nil)
+end)
+test("saved hunt resumes after disconnect with a fresh missing snapshot", function()
+    local _, read, write = memoryStore(); local finder = cycleFactory(read, write)
+    assert(decideCycle(finder, {egg("a", 6e9)}, 100) == "hop")
+    local resumed = cycleFactory(read, write)
+    assert(resumed.Decide(nil, {ready = false}, cycle(105)) == "loading")
+    assert(decideCycle(resumed, {}, 106) == "hop")
+    local copy = resumed.SearchWindow(); copy.rarity = "common"
+    assert(resumed.SearchWindow().rarity == "divine")
+end)
+test("next night expires the hunt before the period index changes", function()
+    local files, read, write = memoryStore(); local finder = cycleFactory(read, write)
+    assert(decideCycle(finder, {egg("a", 6e9)}, 100) == "hop")
+    assert(decideCycle(finder, {}, 289.999) == "hop")
+    assert(finder.Decide(nil, {ready = false}, cycle(290)) == "loading")
+    assert(next(files["chilli_egg_search_cycle.json"]) == nil)
+    assert(decideCycle(cycleFactory(read, write), {}, 301) == "wait")
+end)
+test("reset missed while disconnected cannot restore last night's rarity", function()
+    local _, read, write = memoryStore(); local finder = cycleFactory(read, write)
+    assert(decideCycle(finder, {egg("a", 6e9)}, 100) == "hop")
+    local resumed = cycleFactory(read, write)
+    assert(resumed.Decide(nil, {ready = false}, cycle(601)) == "loading")
+    assert(decideCycle(resumed, {}, 602) == "wait")
+    assert(decideCycle(resumed, {egg("new", 5e9)}, 603) == "hop")
+    assert(resumed.SearchWindow().periodIndex == 2)
+end)
+test("fresh matching egg wins over continuation but missing data cannot match", function()
+    local _, read, write = memoryStore(); local finder = cycleFactory(read, write)
+    assert(decideCycle(finder, {egg("a", 6e9)}, 100) == "hop")
+    assert(decideCycle(finder, {egg("new", 7e9)}, 101) == "match")
+    assert(finder.Decide({income = 7e9}, {ready = false}, cycle(102)) == "loading")
+    assert(finder.Decide({income = 7e9}, {ready = true}, cycle(290)) == "loading")
+end)
+test("changed rarity resets memory but income filters keep the current rarity hunt", function()
+    local _, read, write = memoryStore(); local finder = cycleFactory(read, write)
+    assert(decideCycle(finder, {egg("a", 6e9)}, 100) == "hop")
+    finder.Configure({minIncome = 8e9, categories = {"divine2"}})
+    assert(decideCycle(finder, {}, 101) == "hop")
+    finder.Configure({rarity = "Common"})
+    assert(decideCycle(finder, {}, 102) == "wait")
+    finder.Configure({rarity = "Divine"})
+    assert(decideCycle(finder, {}, 103) == "wait")
+end)
+test("unknown or paused clock preserves memory without allowing hop", function()
+    local _, read, write = memoryStore(); local finder = cycleFactory(read, write)
+    assert(decideCycle(finder, {egg("a", 6e9)}, 100) == "hop")
+    assert(finder.Decide(nil, {ready = true}, false) == "loading")
+    assert(finder.Decide(nil, {ready = true}, {}) == "loading")
+    assert(finder.Decide(nil, {ready = true}, cycle(101, {running = false})) == "loading")
+    assert(finder.SearchWindow().rarity == "divine" and decideCycle(finder, {}, 102) == "hop")
+end)
+test("clock overrides and future or corrupt saved windows cannot drive a hop", function()
+    for _, patch in ipairs({{nextReset = 400}, {periodSeconds = 400}, {nightSeconds = 15}}) do
+        local _, read, write = memoryStore(); local finder = cycleFactory(read, write)
+        assert(decideCycle(finder, {egg("a", 6e9)}, 100) == "hop")
+        assert(finder.Decide(nil, {ready = true, rarityCount = 0}, cycle(101, patch)) == "wait")
+    end
+    local files, read, write = memoryStore(); local finder = cycleFactory(read, write)
+    assert(decideCycle(finder, {egg("a", 6e9)}, 100) == "hop")
+    files["chilli_egg_search_cycle.json"].seenAt = 200
+    assert(decideCycle(cycleFactory(read, write), {}, 101) == "wait")
+    files["chilli_egg_search_cycle.json"] = {version = 9, rarity = "divine"}
+    assert(decideCycle(cycleFactory(read, write), {}, 102) == "wait")
+end)
+test("failed window persistence waits and retries instead of losing the hunt", function()
+    local _, read, write, fail = memoryStore(); local finder = cycleFactory(read, write)
+    fail(true); assert(decideCycle(finder, {egg("a", 6e9)}, 100) == "loading")
+    fail(false); assert(decideCycle(finder, {egg("a", 6e9)}, 101) == "hop")
+    fail(true); assert(finder.Decide(nil, {ready = false}, cycle(290)) == "loading")
+    assert(decideCycle(finder, {}, 301) == "loading")
+    fail(false); assert(decideCycle(finder, {}, 302) == "wait")
+end)
+test("snapshot from previous cycle cannot match or seed the new cycle", function()
+    local _, read, write = memoryStore(); local finder = cycleFactory(read, write)
+    local match, info = finder.Evaluate({egg("old", 8e9)}, catalog, function(e) return e.rate end)
+    info.ready, info.cycle = true, cycle(100)
+    assert(finder.Decide(match, info, cycle(301)) == "loading")
+    assert(next(finder.SearchWindow()) == nil)
+    info.rarityCount = 1
+    assert(finder.Decide(nil, info, cycle(301)) == "loading")
+    assert(decideCycle(finder, {}, 302) == "wait")
+end)
+test("cycle renewal during a scan discards the pre-reset match", function()
+    local _, read, write = memoryStore(); local finder = cycleFactory(read, write)
+    local sample = 0
+    finder.CycleStatus = function() sample += 1; return sample == 1 and cycle(289) or cycle(301) end
+    finder.modules = {assets = {Directory = catalog}, rarities = {Rarities = rarities}, eggs = {HasFieldSnapshot = function() return true end,
+        ReadFieldEggs = function() return {Records = {egg("old", 8e9)}} end},
+        records = {ToAssetItemData = function(e) return e end},
+        earnings = {MutationOnlyRatePerSecond = function(e) return e.rate end},
+        cycle = {IsNightPhase = function() return false end}}
+    setfenv(finder.Scan, setmetatable({workspace = {GetServerTimeNow = function() return 289 end}},
+        {__index = getfenv(finder.Scan)}) :: any)
+    local match, info = finder.Scan()
+    assert(match == nil and not info.ready and finder.Decide(match, info, cycle(301)) == "loading")
+    finder.modules.eggs.ReadFieldEggs = function() return {Records = {}} end
+    match, info = finder.Scan()
+    assert(info.ready and finder.Decide(match, info, cycle(302)) == "wait")
+end)
+test("disposed detector cannot replace persisted cycle or filters", function()
+    local _, read, write, _, writes = memoryStore(); local finder = cycleFactory(read, write)
+    finder.Dispose()
+    assert(decideCycle(finder, {egg("a", 6e9)}, 100) == "loading")
+    assert(not pcall(finder.Configure, {minIncome = 8e9}) and writes() == 0)
+    local _, info = finder.Scan(); assert(not info.ready)
+end)
+test("new connection recovers origin but script rerun cannot clear pending", function()
+    local state = {pending = true, unconfirmed = true, origin = "origin", target = "destination", originConnection = "A"}
+    assert(support.TeleportDisposition(state, "origin", "A") == "blocked")
+    assert(support.TeleportDisposition(state, "origin", "B") == "reconnected")
+    assert(support.TeleportDisposition(state, "destination", "A") == "arrived")
+    assert(support.TeleportDisposition({pending = true, target = "destination"}, "origin", "B") == "blocked")
+end)
+test("disconnect persists connection proof and hunt for the same cycle", function()
+    local _, read, write = memoryStore(); local finder = cycleFactory(read, write)
+    assert(decideCycle(finder, {egg("a", 6e9)}, 100) == "hop")
+    local attempt, fake = fakeAttempt({connectionId = "A"})
+    fake.env.wait = fake.cancel
+    assert(attempt.Run("destination") == "cancelled" and fake.disconnected() == 1)
+    local state = fake.states[1]
+    assert(state.pending and state.originConnection == "A")
+    assert(support.TeleportDisposition(state, "origin", "B") == "reconnected")
+    assert(decideCycle(cycleFactory(read, write), {}, 101) == "hop")
+    assert(decideCycle(cycleFactory(read, write), {}, 301) == "wait")
+end)
+test("timeout retains original connection identity and cannot auto retry", function()
+    local attempt, fake = fakeAttempt({connectionId = "A"})
+    assert(attempt.Run("destination") == "unconfirmed")
+    local state = fake.states[#fake.states]
+    assert(state.originConnection == "A" and support.TeleportDisposition(state, "origin", "A") == "blocked")
+    assert(not support.AutoHopAllowed(state, "origin", 10000, false, false, 60))
+end)
+test("connection failure cannot retry if pending closure fails", function()
+    local writes = 0
+    local attempt, fake = fakeAttempt({connect = function() error("signal unavailable") end,
+        save = function() writes += 1; return writes == 1 end})
+    assert(attempt.Run("destination") == "storage" and fake.sent() == 0)
+end)
+test("cancellation during connection setup cannot send a stale teleport", function()
+    local attempt, fake = fakeAttempt()
+    fake.env.connect = function() attempt.Cancel(); return {Disconnect = function() end} end
+    assert(attempt.Run("destination") == "cancelled" and fake.sent() == 0 and #fake.states == 1)
+end)
 print(string.format("%d regression tests passed", passed))

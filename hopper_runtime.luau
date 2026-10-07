@@ -48,6 +48,13 @@ local function createFinderSupport()
         return type(state) == "table" and state.pending == true
             and (state.target == job or (type(state.origin) == "string" and state.origin ~= job))
     end
+    function support.TeleportDisposition(state, job, connectionId)
+        if type(state) ~= "table" or state.pending ~= true then return "none" end
+        if support.Arrived(state, job) then return "arrived" end
+        if state.origin == job and type(state.originConnection) == "string"
+            and type(connectionId) == "string" and state.originConnection ~= connectionId then return "reconnected" end
+        return "blocked"
+    end
     function support.AutoHopAllowed(state, job, now, busy, blocked, freshSeconds)
         if busy or blocked then return false end
         if type(state) ~= "table" or state.pending ~= true then return true end
@@ -81,7 +88,7 @@ local function createFinderSupport()
         function attempt.Run(target)
             if not env.alive() then return "cancelled" end
             if not env.save({pending = true, unconfirmed = true, target = target, requestedAt = env.time(), auto = env.automatic,
-                attemptId = env.id, origin = env.job()}) then return "storage", "No se pudo guardar el salto" end
+                attemptId = env.id, origin = env.job(), originConnection = env.connectionId}) then return "storage", "No se pudo guardar el salto" end
             attempt.state = "pending"
             local failed, reason = false, nil
             local connected, connection = pcall(env.connect, function(player, result, message, place, options)
@@ -89,8 +96,12 @@ local function createFinderSupport()
                 if options and options.ServerInstanceId and options.ServerInstanceId ~= "" and options.ServerInstanceId ~= target then return end
                 failed, reason = true, tostring(result) .. " / " .. tostring(message)
             end)
-            if not connected then env.save({pending = false}); return "failed", tostring(connection) end
+            if not connected then
+                if not env.save({pending = false}) then return "storage", "No se pudo cerrar el salto" end
+                return "failed", tostring(connection)
+            end
             attempt.connection = connection
+            if not env.alive() or attempt.cancelled then disconnect(); attempt.state = "cancelled"; return "cancelled" end
             local startJob = env.job()
             local ok, err = pcall(env.send, target)
             if not ok then failed, reason = true, tostring(err) end
@@ -108,7 +119,7 @@ local function createFinderSupport()
                 attempt.state = "failed"; return "failed", reason
             end
             env.save({pending = true, unconfirmed = true, target = target, requestedAt = env.time(),
-                attemptId = env.id, auto = env.automatic, origin = startJob})
+                attemptId = env.id, auto = env.automatic, origin = startJob, originConnection = env.connectionId})
             attempt.state = "unconfirmed"
             return "unconfirmed"
         end
@@ -881,6 +892,9 @@ do
     end
 
     local hopperEnvironment = getgenv and getgenv() or _G
+    -- A script rerun keeps this ID; a new client environment gets a new one.
+    hopperEnvironment.__CHILLI_CONNECTION_ID = hopperEnvironment.__CHILLI_CONNECTION_ID or HttpService:GenerateGUID(false)
+    local connectionId = hopperEnvironment.__CHILLI_CONNECTION_ID
     local oldSession = hopperEnvironment.__CHILLI_HOPPER_SESSION
     if oldSession and type(oldSession.Destroy) == "function" then oldSession.Destroy() end
     session = { alive = true, autoGeneration = 0, connections = {} }
@@ -1318,8 +1332,8 @@ do
     end
     local function verifyMapBeforeHop()
         local match, info = eggSearch.Scan(true)
-        if match then finishEggMatch(match); return false end
-        local mode = eggSearch.Decide(match, info)
+        local mode = eggSearch.Decide(match, info, eggSearch.CycleStatus() or false)
+        if mode == "match" then finishEggMatch(match); return false end
         setSearchMode(mode)
         return mode == "hop"
     end
@@ -1376,7 +1390,8 @@ do
                 config = support.Copy(eggSearch.config), lastScan = eggSearch.lastScan and {
                     match = support.Copy(eggSearch.lastScan.match), info = support.Copy(eggSearch.lastScan.info),
                     matches = support.Copy(eggSearch.lastScan.matches), revision = eggSearch.lastScan.revision },
-                stats = support.Copy(eggSearch.stats), teleport = session.attempt and session.attempt.state }
+                stats = support.Copy(eggSearch.stats), teleport = session.attempt and session.attempt.state,
+                searchWindow = eggSearch.SearchWindow() }
         end,
     }
 
@@ -1532,6 +1547,7 @@ do
                         time = os.time, clock = os.clock, wait = task.wait,
                         job = function() return game.JobId end,
                         automatic = autoEnabled, id = HttpService:GenerateGUID(false),
+                        connectionId = connectionId,
                         player = player, place = PLACE_ID,
                         timeout = TELEPORT_CONFIRM_SECONDS + TELEPORT_HARD_WAIT_SECONDS,
                         connect = function(callback) return TeleportService.TeleportInitFailed:Connect(callback) end,
@@ -1687,9 +1703,9 @@ do
                 else
                     local match, info = eggSearch.Scan()
                     local cycle = eggSearch.CycleStatus()
-                    local mode = eggSearch.Decide(match, info)
+                    local mode = eggSearch.Decide(match, info, cycle or false)
                     setSearchMode(mode)
-                    if match then
+                    if mode == "match" then
                         finishEggMatch(match)
                         return
                     end
@@ -1713,8 +1729,10 @@ do
                             setStatus(cycle and not cycle.running
                                 and "sin " .. eggSearch.config.rarity .. " · ciclo pausado" or "sin " .. eggSearch.config.rarity .. " · esperando renovacion", COLORS.muted)
                         else
-                            setStatus(string.format("%d %s; ninguno cumple · buscando servidor",
-                                info.rarityCount, eggSearch.config.rarity), COLORS.green)
+                            setStatus(info.continuingCycle
+                                and "no está aquí · búsqueda del ciclo vigente; buscando servidor"
+                                or string.format("%d %s; ninguno cumple · buscando servidor",
+                                    info.rarityCount, eggSearch.config.rarity), COLORS.green)
                             -- El vigilante sigue escaneando durante reintentos o renovaciones.
                             setBusy(true)
                             local hopGeneration = session.autoGeneration
@@ -1800,9 +1818,29 @@ do
             return
         end
 
-        if not support.Arrived(state, game.JobId) then
+        local disposition = support.TeleportDisposition(state, game.JobId, connectionId)
+        if disposition == "blocked" then
             session.autoHopBlocked = true
             setStatus("salto anterior sin confirmar; pulsa Server Hop para reintentar", COLORS.amber)
+            return
+        end
+        if disposition == "reconnected" then
+            while session.alive do
+                local _, info = eggSearch.Scan(true)
+                local cycle = eggSearch.CycleStatus()
+                if info.ready and cycle and cycle.running and not cycle.night then break end
+                task.wait(0.5)
+            end
+            if not session.alive then return end
+            local current = readJson(STATE_FILE, nil)
+            if type(current) ~= "table" or current.pending ~= true or current.target ~= state.target
+                or current.requestedAt ~= state.requestedAt or current.originConnection ~= state.originConnection then return end
+            if not writeJson(STATE_FILE, {pending = false, reconnected = true, at = os.time()}) then
+                setStatus("no se pudo cerrar el salto de la conexión anterior", COLORS.amber); return
+            end
+            session.autoHopBlocked = false
+            setBusy(false); setLabel("Server Hop")
+            setStatus("reconectado · revisando ciclo y snapshot actuales", COLORS.green)
             return
         end
         if os.time() - (tonumber(state.requestedAt) or 0) > 240 then
@@ -1816,12 +1854,12 @@ do
         if state.auto == true and autoEnabled then
             markVisited(game.JobId)
             if state.target and state.target ~= game.JobId then markVisited(state.target) end
-            writeJson(STATE_FILE, {
+            if not writeJson(STATE_FILE, {
                 pending = false,
                 auto = true,
                 lastTarget = state.target,
                 at = os.time(),
-            })
+            }) then setStatus("no se pudo confirmar la llegada", COLORS.amber); return end
             setBusy(false)
             setLabel("Server Hop")
             setStatus("AUTO ON · revisando huevos del mapa", COLORS.green)

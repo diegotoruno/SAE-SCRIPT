@@ -10,6 +10,7 @@ references/
 verification/
 chilli_client.json
 chilli_egg_search_config.json*
+chilli_egg_search_cycle.json*
 chilli_egg_panel_ui.json*
 chilli_egg_preferences.json*
 server_hop_button*.json*
