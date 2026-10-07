@@ -4,8 +4,44 @@ local createMapEggSearch = (function()
 -- Solo lee EggState.ReadFieldEggs: no inspecciona huevos de bases.
 local function createMapEggSearch(readJson, writeJson)
     local CONFIG_FILE = "chilli_egg_search_config.json"
+    local CYCLE_FILE = "chilli_egg_search_cycle.json"
     local search = { ready = false, error = nil, lastScan = nil, fieldRevision = 0,
         stats = { scans = 0, analyses = 0, incomeReads = 0, cacheHits = 0, lastMs = 0 } }
+    local remembered = readJson(CYCLE_FILE, {})
+    if type(remembered) ~= "table" then remembered = {} end
+    local function finite(value)
+        return type(value) == "number" and value == value and math.abs(value) < math.huge
+    end
+    local function clockKnown(cycle)
+        return type(cycle) == "table" and type(cycle.night) == "boolean"
+            and finite(cycle.serverTime) and finite(cycle.periodIndex)
+            and finite(cycle.nextReset) and finite(cycle.periodSeconds) and cycle.periodSeconds > 0
+            and finite(cycle.nightSeconds) and cycle.nightSeconds >= 0
+            and cycle.nightSeconds < cycle.periodSeconds
+    end
+    local function cycleReady(cycle)
+        return clockKnown(cycle) and cycle.running == true and cycle.night == false
+            and cycle.serverTime >= cycle.nextReset - cycle.periodSeconds
+            and cycle.serverTime < cycle.nextReset - cycle.nightSeconds
+    end
+    local function validWindow(cycle)
+        return cycleReady(cycle) and remembered.version == 1
+            and remembered.rarity == string.lower(search.config.rarity)
+            and remembered.periodIndex == cycle.periodIndex and remembered.nextReset == cycle.nextReset
+            and remembered.periodSeconds == cycle.periodSeconds and remembered.nightSeconds == cycle.nightSeconds
+            and finite(remembered.seenAt) and remembered.seenAt <= cycle.serverTime
+            and remembered.seenAt >= cycle.nextReset - cycle.periodSeconds
+            and remembered.untilTime == cycle.nextReset - cycle.nightSeconds
+    end
+    local function saveWindow(value)
+        local ok, saved = pcall(writeJson, CYCLE_FILE, value)
+        if ok and saved then remembered = value; return true end
+        return false
+    end
+    function search.SearchWindow()
+        return table.clone(remembered)
+    end
+
     local incomeCache = {}
     local analysisKey, analysisResult
     local rowRevision = 0
@@ -116,6 +152,7 @@ local function createMapEggSearch(readJson, writeJson)
     end
 
     function search.Configure(patch)
+        assert(not search.disposed, "Esta sesión ya terminó")
         assert(search.modules, "Espera a que cargue el catalogo del juego para aplicar filtros")
         local nextConfig = table.clone(search.config)
         for key, value in pairs(patch) do
@@ -242,10 +279,40 @@ local function createMapEggSearch(readJson, writeJson)
     end
 
     -- La misma decision se usa al entrar, despues de un reset y antes de saltar.
-    function search.Decide(match, info)
+    function search.Decide(match, info, cycle)
+        if search.disposed then info.reason = "sesión terminada"; return "loading" end
+        cycle = cycle == nil and search.CycleStatus() or cycle
+        -- Pure Evaluate callers without modules retain the local decision.
+        -- Runtime passes false when its clock is unavailable and must wait.
+        if cycle == nil and remembered.version == nil then
+            if not info.ready then return "loading" end
+            if match then return "match" end
+            return (info.rarityCount or 0) > 0 and "hop" or "wait"
+        end
+        local valid = validWindow(cycle)
+        if not valid and next(remembered) ~= nil then
+            -- No clock means we cannot validate or expire the saved cycle yet.
+            if not clockKnown(cycle) or cycle.running ~= true then return "loading" end
+            if not saveWindow({}) then info.reason = "no se pudo cerrar la búsqueda del ciclo anterior"; return "loading" end
+        end
+        if not cycleReady(cycle) or not info.ready then return "loading" end
+        if info.cycle and (not clockKnown(info.cycle) or info.cycle.periodIndex ~= cycle.periodIndex
+            or info.cycle.nextReset ~= cycle.nextReset or info.cycle.nightSeconds ~= cycle.nightSeconds
+            or info.cycle.periodSeconds ~= cycle.periodSeconds or info.cycle.night) then
+            info.reason = "el snapshot pertenece al ciclo anterior; esperando lectura nueva"
+            return "loading"
+        end
         if match then return "match" end
-        if not info.ready then return "loading" end
-        return (info.rarityCount or 0) > 0 and "hop" or "wait"
+        if (info.rarityCount or 0) > 0 and not valid then
+            local window = {version = 1, rarity = string.lower(search.config.rarity), periodIndex = cycle.periodIndex,
+                nextReset = cycle.nextReset, periodSeconds = cycle.periodSeconds, nightSeconds = cycle.nightSeconds,
+                untilTime = cycle.nextReset - cycle.nightSeconds, seenAt = cycle.serverTime}
+            if not saveWindow(window) then info.reason = "no se pudo guardar la búsqueda para continuar al reconectar"; return "loading" end
+            valid = true
+        end
+        info.continuingCycle = valid and (info.rarityCount or 0) == 0
+        info.searchUntil = valid and remembered.untilTime or nil
+        return valid and "hop" or "wait"
     end
 
     -- Datos y reloj replicados por el juego; no se modifica el ciclo.
@@ -309,7 +376,7 @@ local function createMapEggSearch(readJson, writeJson)
                 periodIndex = cycle.PeriodIndexAt(now), nextReset = cycle.NextResetTime(now),
                 secondsUntilReset = cycle.SecondsUntilReset(now),
                 secondsUntilPhaseEnd = cycle.SecondsUntilPhaseEnd(now),
-                fieldRevision = search.fieldRevision,
+                fieldRevision = search.fieldRevision, serverTime = now,
             }
         end)
         return ok and status or nil
@@ -340,6 +407,7 @@ local function createMapEggSearch(readJson, writeJson)
                 analysisKey, analysisResult = nil, nil
                 return nil, {ready = false, reason = "esperando spawns del mapa"}
             end
+            local snapshotCycle = search.CycleStatus()
             local snapshot = modules.eggs.ReadFieldEggs()
             assert(type(snapshot) == "table" and type(snapshot.Records) == "table", "Snapshot del mapa incompatible")
             local mapRows, active, cachedByEgg, inputKeys = {}, {}, {}, {}
@@ -393,6 +461,10 @@ local function createMapEggSearch(readJson, writeJson)
             for id in pairs(incomeCache) do if not active[id] then incomeCache[id] = nil end end
             table.sort(inputKeys)
             local key = tostring(modules) .. tostring(search.fieldRevision) .. search.RecordKey(search.config)
+                .. ":cycle:" .. tostring(snapshotCycle and snapshotCycle.periodIndex)
+                .. ":" .. tostring(snapshotCycle and snapshotCycle.nextReset)
+                .. ":" .. tostring(snapshotCycle and snapshotCycle.periodSeconds)
+                .. ":" .. tostring(snapshotCycle and snapshotCycle.nightSeconds)
                 .. ":" .. tostring(count) .. ":" .. tostring(unknown) .. "|" .. table.concat(inputKeys, "|")
             local best, details, matches
             if not fresh and key == analysisKey and analysisResult and analysisResult.info.ready then
@@ -410,6 +482,15 @@ local function createMapEggSearch(readJson, writeJson)
                 row.reason = search.Explain(row.egg, row.catalog, row.income)
             end
             if not details.ready then details.reason = "datos de especie o ingreso no disponibles; esperando recuperación" end
+            local afterCycle = search.CycleStatus()
+            if afterCycle and (not snapshotCycle or snapshotCycle.periodIndex ~= afterCycle.periodIndex
+                or snapshotCycle.nextReset ~= afterCycle.nextReset or snapshotCycle.periodSeconds ~= afterCycle.periodSeconds
+                or snapshotCycle.nightSeconds ~= afterCycle.nightSeconds or afterCycle.night or search.resetting) then
+                analysisKey, analysisResult = nil, nil
+                return nil, {ready = false, reason = "renovación durante el scan; esperando snapshot nuevo"}
+            end
+            details = table.clone(details)
+            details.cycle = snapshotCycle
             return best, details, matches, mapRows
         end)
         if not scanOk then return publish(nil, {ready = false, reason = tostring(match)}) end
@@ -1053,6 +1134,9 @@ local function mountEggFilterPanel(context)
             stateTitle.Text = titles[status.mode] or "Escaneando mapa"
             stateTitle.TextColor3 = status.mode == "match" and C.green or C.white
             stateDetail.Text = string.format("%s · ≥ %s/s · %d en mapa · %d de esa rareza", status.config.rarity, number(status.config.minIncome), info.count or 0, info.rarityCount or 0)
+            if status.mode == "hop" and info.continuingCycle then
+                stateDetail.Text = status.config.rarity .. " observado en este ciclo · no está aquí; sigo buscando"
+            end
             if status.mode == "loading" and info.reason then stateDetail.Text = info.reason end
             if cycle then
                 local seconds = math.ceil(cycle.secondsUntilReset)
@@ -1126,6 +1210,13 @@ local function createFinderSupport()
         return type(state) == "table" and state.pending == true
             and (state.target == job or (type(state.origin) == "string" and state.origin ~= job))
     end
+    function support.TeleportDisposition(state, job, connectionId)
+        if type(state) ~= "table" or state.pending ~= true then return "none" end
+        if support.Arrived(state, job) then return "arrived" end
+        if state.origin == job and type(state.originConnection) == "string"
+            and type(connectionId) == "string" and state.originConnection ~= connectionId then return "reconnected" end
+        return "blocked"
+    end
     function support.AutoHopAllowed(state, job, now, busy, blocked, freshSeconds)
         if busy or blocked then return false end
         if type(state) ~= "table" or state.pending ~= true then return true end
@@ -1159,7 +1250,7 @@ local function createFinderSupport()
         function attempt.Run(target)
             if not env.alive() then return "cancelled" end
             if not env.save({pending = true, unconfirmed = true, target = target, requestedAt = env.time(), auto = env.automatic,
-                attemptId = env.id, origin = env.job()}) then return "storage", "No se pudo guardar el salto" end
+                attemptId = env.id, origin = env.job(), originConnection = env.connectionId}) then return "storage", "No se pudo guardar el salto" end
             attempt.state = "pending"
             local failed, reason = false, nil
             local connected, connection = pcall(env.connect, function(player, result, message, place, options)
@@ -1167,8 +1258,12 @@ local function createFinderSupport()
                 if options and options.ServerInstanceId and options.ServerInstanceId ~= "" and options.ServerInstanceId ~= target then return end
                 failed, reason = true, tostring(result) .. " / " .. tostring(message)
             end)
-            if not connected then env.save({pending = false}); return "failed", tostring(connection) end
+            if not connected then
+                if not env.save({pending = false}) then return "storage", "No se pudo cerrar el salto" end
+                return "failed", tostring(connection)
+            end
             attempt.connection = connection
+            if not env.alive() or attempt.cancelled then disconnect(); attempt.state = "cancelled"; return "cancelled" end
             local startJob = env.job()
             local ok, err = pcall(env.send, target)
             if not ok then failed, reason = true, tostring(err) end
@@ -1186,7 +1281,7 @@ local function createFinderSupport()
                 attempt.state = "failed"; return "failed", reason
             end
             env.save({pending = true, unconfirmed = true, target = target, requestedAt = env.time(),
-                attemptId = env.id, auto = env.automatic, origin = startJob})
+                attemptId = env.id, auto = env.automatic, origin = startJob, originConnection = env.connectionId})
             attempt.state = "unconfirmed"
             return "unconfirmed"
         end
@@ -1959,6 +2054,9 @@ do
     end
 
     local hopperEnvironment = getgenv and getgenv() or _G
+    -- A script rerun keeps this ID; a new client environment gets a new one.
+    hopperEnvironment.__CHILLI_CONNECTION_ID = hopperEnvironment.__CHILLI_CONNECTION_ID or HttpService:GenerateGUID(false)
+    local connectionId = hopperEnvironment.__CHILLI_CONNECTION_ID
     local oldSession = hopperEnvironment.__CHILLI_HOPPER_SESSION
     if oldSession and type(oldSession.Destroy) == "function" then oldSession.Destroy() end
     session = { alive = true, autoGeneration = 0, connections = {} }
@@ -2396,8 +2494,8 @@ do
     end
     local function verifyMapBeforeHop()
         local match, info = eggSearch.Scan(true)
-        if match then finishEggMatch(match); return false end
-        local mode = eggSearch.Decide(match, info)
+        local mode = eggSearch.Decide(match, info, eggSearch.CycleStatus() or false)
+        if mode == "match" then finishEggMatch(match); return false end
         setSearchMode(mode)
         return mode == "hop"
     end
@@ -2454,7 +2552,8 @@ do
                 config = support.Copy(eggSearch.config), lastScan = eggSearch.lastScan and {
                     match = support.Copy(eggSearch.lastScan.match), info = support.Copy(eggSearch.lastScan.info),
                     matches = support.Copy(eggSearch.lastScan.matches), revision = eggSearch.lastScan.revision },
-                stats = support.Copy(eggSearch.stats), teleport = session.attempt and session.attempt.state }
+                stats = support.Copy(eggSearch.stats), teleport = session.attempt and session.attempt.state,
+                searchWindow = eggSearch.SearchWindow() }
         end,
     }
 
@@ -2610,6 +2709,7 @@ do
                         time = os.time, clock = os.clock, wait = task.wait,
                         job = function() return game.JobId end,
                         automatic = autoEnabled, id = HttpService:GenerateGUID(false),
+                        connectionId = connectionId,
                         player = player, place = PLACE_ID,
                         timeout = TELEPORT_CONFIRM_SECONDS + TELEPORT_HARD_WAIT_SECONDS,
                         connect = function(callback) return TeleportService.TeleportInitFailed:Connect(callback) end,
@@ -2765,9 +2865,9 @@ do
                 else
                     local match, info = eggSearch.Scan()
                     local cycle = eggSearch.CycleStatus()
-                    local mode = eggSearch.Decide(match, info)
+                    local mode = eggSearch.Decide(match, info, cycle or false)
                     setSearchMode(mode)
-                    if match then
+                    if mode == "match" then
                         finishEggMatch(match)
                         return
                     end
@@ -2791,8 +2891,10 @@ do
                             setStatus(cycle and not cycle.running
                                 and "sin " .. eggSearch.config.rarity .. " · ciclo pausado" or "sin " .. eggSearch.config.rarity .. " · esperando renovacion", COLORS.muted)
                         else
-                            setStatus(string.format("%d %s; ninguno cumple · buscando servidor",
-                                info.rarityCount, eggSearch.config.rarity), COLORS.green)
+                            setStatus(info.continuingCycle
+                                and "no está aquí · búsqueda del ciclo vigente; buscando servidor"
+                                or string.format("%d %s; ninguno cumple · buscando servidor",
+                                    info.rarityCount, eggSearch.config.rarity), COLORS.green)
                             -- El vigilante sigue escaneando durante reintentos o renovaciones.
                             setBusy(true)
                             local hopGeneration = session.autoGeneration
@@ -2878,9 +2980,29 @@ do
             return
         end
 
-        if not support.Arrived(state, game.JobId) then
+        local disposition = support.TeleportDisposition(state, game.JobId, connectionId)
+        if disposition == "blocked" then
             session.autoHopBlocked = true
             setStatus("salto anterior sin confirmar; pulsa Server Hop para reintentar", COLORS.amber)
+            return
+        end
+        if disposition == "reconnected" then
+            while session.alive do
+                local _, info = eggSearch.Scan(true)
+                local cycle = eggSearch.CycleStatus()
+                if info.ready and cycle and cycle.running and not cycle.night then break end
+                task.wait(0.5)
+            end
+            if not session.alive then return end
+            local current = readJson(STATE_FILE, nil)
+            if type(current) ~= "table" or current.pending ~= true or current.target ~= state.target
+                or current.requestedAt ~= state.requestedAt or current.originConnection ~= state.originConnection then return end
+            if not writeJson(STATE_FILE, {pending = false, reconnected = true, at = os.time()}) then
+                setStatus("no se pudo cerrar el salto de la conexión anterior", COLORS.amber); return
+            end
+            session.autoHopBlocked = false
+            setBusy(false); setLabel("Server Hop")
+            setStatus("reconectado · revisando ciclo y snapshot actuales", COLORS.green)
             return
         end
         if os.time() - (tonumber(state.requestedAt) or 0) > 240 then
@@ -2894,12 +3016,12 @@ do
         if state.auto == true and autoEnabled then
             markVisited(game.JobId)
             if state.target and state.target ~= game.JobId then markVisited(state.target) end
-            writeJson(STATE_FILE, {
+            if not writeJson(STATE_FILE, {
                 pending = false,
                 auto = true,
                 lastTarget = state.target,
                 at = os.time(),
-            })
+            }) then setStatus("no se pudo confirmar la llegada", COLORS.amber); return end
             setBusy(false)
             setLabel("Server Hop")
             setStatus("AUTO ON · revisando huevos del mapa", COLORS.green)
