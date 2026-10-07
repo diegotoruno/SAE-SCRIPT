@@ -2,7 +2,11 @@
 -- Solo lee EggState.ReadFieldEggs: no inspecciona huevos de bases.
 local function createMapEggSearch(readJson, writeJson)
     local CONFIG_FILE = "chilli_egg_search_config.json"
-    local search = { ready = false, error = nil, lastScan = nil, fieldRevision = 0 }
+    local search = { ready = false, error = nil, lastScan = nil, fieldRevision = 0,
+        stats = { scans = 0, analyses = 0, incomeReads = 0, cacheHits = 0, lastMs = 0 } }
+    local incomeCache = {}
+    local analysisKey, analysisResult
+    local rowRevision = 0
     local connections = {}
     function search.Dispose()
         search.disposed = true
@@ -101,6 +105,14 @@ local function createMapEggSearch(readJson, writeJson)
     local ok, config = pcall(normalize, readJson(CONFIG_FILE, {}))
     search.config = ok and config or normalize({})
 
+    function search.Validate(config)
+        assert(search.modules, "Espera a que cargue el catálogo del juego")
+        local result = normalize(config)
+        result.rarity = canonicalRarity(result.rarity, search.RarityOptions())
+        for _, id in ipairs(result.categories) do assert(search.modules.assets.Directory[id], "Especie desconocida: " .. id) end
+        return result
+    end
+
     function search.Configure(patch)
         assert(search.modules, "Espera a que cargue el catalogo del juego para aplicar filtros")
         local nextConfig = table.clone(search.config)
@@ -112,11 +124,53 @@ local function createMapEggSearch(readJson, writeJson)
         nextConfig.rarity = canonicalRarity(nextConfig.rarity, search.RarityOptions())
         assert(writeJson(CONFIG_FILE, nextConfig), "No se pudieron guardar los filtros")
         search.config = nextConfig
-        return table.clone(nextConfig)
+        search.lastScan = nil
+        local copy = table.clone(nextConfig); copy.categories = table.clone(nextConfig.categories); return copy
     end
 
     function search.Summary()
         return string.format("%s >= %s/s", search.config.rarity, search.FormatMinimum(search.config.minIncome))
+    end
+
+    function search.Explain(egg, catalog, income, filters)
+        filters = filters or search.config
+        if not catalog then return "Datos de especie no disponibles" end
+        if string.lower(tostring(rarityId(catalog.Rarity))) ~= string.lower(filters.rarity) then return "Rareza distinta" end
+        if #filters.categories > 0 and not table.find(filters.categories, egg.AssetCategory) then return "Especie excluida" end
+        local name = string.lower(catalog.DisplayName or egg.AssetCategory)
+        local needle = string.lower(filters.nameContains)
+        if needle ~= "" and not string.find(name, needle, 1, true)
+            and not string.find(string.lower(egg.AssetCategory), needle, 1, true) then return "Nombre distinto" end
+        if filters.mutation ~= "" then
+            local found = string.lower(tostring(egg.BaseMutation)) == string.lower(filters.mutation)
+            for _, id in ipairs(egg.Mutations or {}) do if string.lower(id) == string.lower(filters.mutation) then found = true end end
+            if not found then return "Falta la mutación elegida" end
+        end
+        if type(income) ~= "number" or income ~= income or income < 0 or income == math.huge then return "Ingreso no disponible" end
+        if income < filters.minIncome then return "Ingreso inferior al mínimo" end
+        return "Cumple todos los filtros"
+    end
+
+    -- Stable signature includes every replicated input, including base mutation,
+    -- bounds and area. It also detects changes not covered by FieldRefreshed.
+    function search.RecordKey(value)
+        if type(value) ~= "table" then return typeof and typeof(value) .. ":" .. tostring(value) or type(value) .. ":" .. tostring(value) end
+        local keys = {}; for key in pairs(value) do table.insert(keys, key) end
+        table.sort(keys, function(a,b) return tostring(a) < tostring(b) end)
+        local parts = {}; for _, key in ipairs(keys) do table.insert(parts, tostring(key) .. "=" .. search.RecordKey(value[key])) end
+        return "{" .. table.concat(parts, "|") .. "}"
+    end
+    function search.CopyRecord(value)
+        if type(value) ~= "table" then return value end
+        local result = {}; for key, item in pairs(value) do result[key] = search.CopyRecord(item) end
+        return result
+    end
+    function search.SameRecord(a, b)
+        if type(a) ~= type(b) then return false end
+        if type(a) ~= "table" then return a == b end
+        for key, value in pairs(a) do if not search.SameRecord(value, b[key]) then return false end end
+        for key in pairs(b) do if a[key] == nil then return false end end
+        return true
     end
 
     -- Funcion pura: tambien permite verificar los filtros sin teleports.
@@ -194,44 +248,51 @@ local function createMapEggSearch(readJson, writeJson)
 
     -- Datos y reloj replicados por el juego; no se modifica el ciclo.
     task.spawn(function()
-        local loaded, modules = pcall(function()
-            local replicated = game:GetService("ReplicatedStorage")
-            local data = replicated:WaitForChild("Data", 30)
-            local client = replicated:WaitForChild("Client", 30)
-            local shared = replicated:WaitForChild("Shared", 30)
-            assert(data and client and shared, "Faltan los modulos del juego")
-            local util = shared:WaitForChild("Util", 30)
-            assert(util, "No llego Shared.Util")
-            local function module(parent, name)
-                local source = parent:WaitForChild(name, 30)
-                assert(source, "No llego " .. name)
-                return require(source)
-            end
-            return {
-                assets = module(data, "Assets"), eggs = module(client, "EggState"),
-                rarities = module(data, "Rarity"), numbers = module(shared:WaitForChild("Utils", 30), "Numbers"),
-                records = module(util, "EggRecords"), earnings = module(util, "AssetEarnings"),
-                cycle = module(util, "AreaEggCycle"),
-            }
-        end)
-        if search.disposed then return end
-        if loaded then
-            search.modules = modules
-            -- Validate persisted IDs after the real catalog arrives. An obsolete
-            -- selection waits for correction instead of making hop decisions.
-            table.insert(connections, modules.eggs.FieldRefreshed:Connect(function()
-                search.fieldRevision += 1
-                if not modules.cycle.IsNightPhase(workspace:GetServerTimeNow()) then
-                    search.resetting = false
+        local retryDelay = 2
+        while not search.disposed and not search.modules do
+            local loaded, modules = pcall(function()
+                local replicated = game:GetService("ReplicatedStorage")
+                local data = replicated:WaitForChild("Data", 30)
+                local client = replicated:WaitForChild("Client", 30)
+                local shared = replicated:WaitForChild("Shared", 30)
+                assert(data and client and shared, "Faltan los modulos del juego")
+                local util = shared:WaitForChild("Util", 30)
+                assert(util, "No llego Shared.Util")
+                local function module(parent, name)
+                    local source = parent:WaitForChild(name, 30)
+                    assert(source, "No llego " .. name)
+                    return require(source)
                 end
-            end))
-            table.insert(connections, modules.eggs.ResetCountdown:Connect(function()
-                search.resetting = true
-            end))
-            table.insert(connections, modules.eggs.RarityRevealed:Connect(function()
-                search.resetting = false
-            end))
-        else search.error = tostring(modules) end
+                return {
+                    assets = module(data, "Assets"), eggs = module(client, "EggState"),
+                    rarities = module(data, "Rarity"), numbers = module(shared:WaitForChild("Utils", 30), "Numbers"),
+                    records = module(util, "EggRecords"), earnings = module(util, "AssetEarnings"),
+                    cycle = module(util, "AreaEggCycle"),
+                }
+            end)
+            if search.disposed then return end
+            if loaded then
+                search.modules = modules
+                search.error = nil
+                -- Validate persisted IDs after the real catalog arrives. An obsolete
+                -- selection waits for correction instead of making hop decisions.
+                table.insert(connections, modules.eggs.FieldRefreshed:Connect(function()
+                    search.fieldRevision += 1
+                    if not modules.cycle.IsNightPhase(workspace:GetServerTimeNow()) then
+                        search.resetting = false
+                    end
+                end))
+                table.insert(connections, modules.eggs.ResetCountdown:Connect(function()
+                    search.resetting = true
+                end))
+                table.insert(connections, modules.eggs.RarityRevealed:Connect(function()
+                    search.resetting = false
+                end))
+            else
+                search.error = tostring(modules)
+                task.wait(retryDelay); retryDelay = math.min(15, retryDelay * 2)
+            end
+        end
     end)
 
     function search.CycleStatus()
@@ -252,37 +313,116 @@ local function createMapEggSearch(readJson, writeJson)
         return ok and status or nil
     end
 
-    function search.Scan()
-        if search.error then return nil, { ready = false, reason = search.error } end
+    function search.Scan(fresh, includeMapIncome)
+        local started = os.clock()
+        search.stats.scans += 1
+        local function publish(match, info, all, rows)
+            search.ready = info.ready
+            search.lastScan = { match = match, info = info, matches = all or {}, rows = rows or {},
+                revision = search.fieldRevision, at = os.clock() }
+            search.stats.lastMs = (os.clock() - started) * 1000
+            return match, info, all, rows
+        end
+        if search.disposed then return publish(nil, {ready = false, reason = "sesión terminada"}) end
+        if search.error then return publish(nil, {ready = false, reason = search.error}) end
         local modules = search.modules
-        if not modules then return nil, { ready = false, reason = "cargando datos del mapa" } end
-        local scanOk, match, info, all = pcall(function()
+        if not modules then return publish(nil, {ready = false, reason = "cargando datos del mapa"}) end
+        local scanOk, match, info, all, rows = pcall(function()
             if search.resetting or modules.cycle.IsNightPhase(workspace:GetServerTimeNow()) then
-                return nil, { ready = false, reason = "renovando huevos; esperando snapshot nuevo" }
+                table.clear(incomeCache)
+                analysisKey, analysisResult = nil, nil
+                return nil, {ready = false, reason = "renovando huevos; esperando snapshot nuevo"}
             end
             if not modules.eggs.HasFieldSnapshot() then
-                return nil, { ready = false, reason = "esperando spawns del mapa" }
+                table.clear(incomeCache)
+                analysisKey, analysisResult = nil, nil
+                return nil, {ready = false, reason = "esperando spawns del mapa"}
             end
             local snapshot = modules.eggs.ReadFieldEggs()
-            assert(type(snapshot) == "table" and type(snapshot.Records) == "table",
-                "Snapshot del mapa incompatible")
-            local best, details, matches = search.Evaluate(snapshot.Records, modules.assets.Directory,
-                function(egg)
-                    local item = modules.records.ToAssetItemData(egg)
-                    -- Generacion del egg al eclosionar: tamaño + mutaciones.
-                    -- No incluye boosts temporales ni bonus del dueño anterior.
-                    return modules.earnings.MutationOnlyRatePerSecond(item)
-                end)
-            details.ready = details.errors == 0
-            if not details.ready then details.reason = "no se pudo verificar el ingreso de todos los eggs" end
-            return best, details, matches
+            assert(type(snapshot) == "table" and type(snapshot.Records) == "table", "Snapshot del mapa incompatible")
+            local mapRows, active, cachedByEgg, inputKeys = {}, {}, {}, {}
+            local function incomeFor(egg)
+                local cached = cachedByEgg[egg]
+                if fresh or cached.income == nil then
+                    local ok, rate = pcall(function()
+                        search.stats.incomeReads += 1
+                        return modules.earnings.MutationOnlyRatePerSecond(modules.records.ToAssetItemData(egg))
+                    end)
+                    local valid = ok and type(rate) == "number" and rate == rate and rate >= 0 and rate < math.huge
+                    cached.income = valid and rate or nil
+                else search.stats.cacheHits += 1 end
+                return cached.income
+            end
+            local count, unknown = 0, 0
+            local selectedTier = string.lower(search.config.rarity)
+            for key, egg in pairs(snapshot.Records) do
+                if egg.State == "Slot" then
+                    count += 1
+                    local id = tostring(egg.Uid or key)
+                    active[id] = true
+                    local catalog = modules.assets.Directory[egg.AssetCategory]
+                    local tier = catalog and rarityId(catalog.Rarity)
+                    if type(tier) ~= "string" then unknown += 1 end
+                    local selected = type(tier) == "string" and string.lower(tier) == selectedTier
+                    -- AUTO only needs full inputs of the selected rarity. The
+                    -- panel requests all rows explicitly; unrelated spawns
+                    -- still contribute availability/error counts.
+                    if includeMapIncome or selected then
+                        local rarity = modules.rarities.Rarities[tier]
+                        local catalogState = {rate = catalog and catalog.EarningRate, name = catalog and catalog.DisplayName,
+                            icon = catalog and catalog.Icon, eggIcon = catalog and catalog.Egg and catalog.Egg.Icon,
+                            tier = tier, rank = rarity and rarity.Rank, color = rarity and rarity.Color}
+                        local cached = incomeCache[id]
+                        if not cached or cached.modules ~= modules or cached.catalog ~= catalog
+                            or not search.SameRecord(cached.record, egg) or not search.SameRecord(cached.catalogState, catalogState) then
+                            rowRevision += 1
+                            cached = {key = tostring(rowRevision), modules = modules, catalog = catalog,
+                                record = search.CopyRecord(egg), catalogState = catalogState}
+                            incomeCache[id] = cached
+                        end
+                        cachedByEgg[egg] = cached
+                        if includeMapIncome then incomeFor(egg) end
+                        if selected then table.insert(inputKeys, id .. ":" .. cached.key) end
+                        table.insert(mapRows, {uid = id, egg = egg, catalog = catalog,
+                            income = cached.income, key = cached.key})
+                        end
+                end
+            end
+            for id in pairs(incomeCache) do if not active[id] then incomeCache[id] = nil end end
+            table.sort(inputKeys)
+            local key = tostring(modules) .. tostring(search.fieldRevision) .. search.RecordKey(search.config)
+                .. ":" .. tostring(count) .. ":" .. tostring(unknown) .. "|" .. table.concat(inputKeys, "|")
+            local best, details, matches
+            if not fresh and key == analysisKey and analysisResult and analysisResult.info.ready then
+                best, details, matches = analysisResult.match, analysisResult.info, analysisResult.matches
+            else
+                search.stats.analyses += 1
+                best, details, matches = search.Evaluate(snapshot.Records, modules.assets.Directory, incomeFor)
+                details.ready = details.errors == 0
+                analysisKey, analysisResult = key, {match = best, info = details, matches = matches}
+            end
+            local matching = {}; for _, candidate in ipairs(matches) do matching[tostring(candidate.uid)] = true end
+            for _, row in ipairs(mapRows) do
+                row.income = cachedByEgg[row.egg].income
+                row.match = matching[row.uid] == true
+                row.reason = search.Explain(row.egg, row.catalog, row.income)
+            end
+            if not details.ready then details.reason = "datos de especie o ingreso no disponibles; esperando recuperación" end
+            return best, details, matches, mapRows
         end)
-        if not scanOk then
-            return nil, { ready = false, reason = tostring(match) }
-        end
-        search.ready = info.ready
-        search.lastScan = { match = match, info = info, matches = all }
-        return match, info, all
+        if not scanOk then return publish(nil, {ready = false, reason = tostring(match)}) end
+        local result, details, matches, mapRows = publish(match, info, all, rows)
+        search.lastScan.mapIncome = includeMapIncome == true
+        return result, details, matches, mapRows
+    end
+    function search.MapSnapshot()
+        local cycle = search.CycleStatus()
+        if search.lastScan and os.clock() - search.lastScan.at < 0.6
+            and search.lastScan.revision == search.fieldRevision and not search.resetting
+            and not (cycle and cycle.night) and search.lastScan.mapIncome then return search.lastScan end
+        search.Scan(false, true)
+        search.lastScan.mapIncome = true
+        return search.lastScan
     end
     return search
 end

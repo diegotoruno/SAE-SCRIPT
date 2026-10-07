@@ -36,6 +36,10 @@ def check():
             executable.write_bytes(package.read(name))
             executable.chmod(0o755)
     suffix = ".exe" if os.name == "nt" else ""
+    source = (ROOT / "hopper_runtime.luau").read_text(encoding="utf-8")
+    support = source.split("-- BEGIN TESTABLE SUPPORT\n", 1)[1].split("-- END TESTABLE SUPPORT", 1)[0]
+    (ROOT / ".tools" / "runtime_support.luau").write_text(
+        support + "\nreturn createFinderSupport\n", encoding="utf-8")
     compiler = target / ("luau-compile" + suffix)
     runtime = target / ("luau" + suffix)
     files = ["map_egg_search.luau", "egg_filter_panel.luau", "hopper_runtime.luau",

@@ -1,3 +1,123 @@
+-- BEGIN TESTABLE SUPPORT
+-- Dependency injection keeps storage, paging and teleport failures testable without Roblox.
+local function createFinderSupport()
+    local support = {}
+    function support.Copy(value)
+        if type(value) ~= "table" then return value end
+        local copy = {}; for key, item in pairs(value) do copy[key] = support.Copy(item) end
+        return copy
+    end
+    function support.Store(io)
+        local cache = {}
+        local store = {}
+        local function read(path)
+            local ok, value = pcall(function() return io.decode(io.read(path)) end)
+            return ok and type(value) == "table" and value or nil
+        end
+        function store.Read(path, fallback)
+            if cache[path] == nil then cache[path] = read(path) or read(path .. ".bak") or false end
+            return support.Copy(cache[path] ~= false and cache[path] or fallback)
+        end
+        function store.Write(path, value)
+            local ok = pcall(function()
+                local raw = io.encode(value)
+                local previous = read(path) or read(path .. ".bak")
+                if previous then io.write(path .. ".bak", io.encode(previous)) end
+                io.write(path .. ".tmp", raw)
+                assert(io.read(path .. ".tmp") == raw, "No se verifico el archivo temporal")
+                io.write(path, raw)
+                assert(io.read(path) == raw, "No se verifico el archivo guardado")
+            end)
+            if ok then cache[path] = support.Copy(value) end
+            return ok
+        end
+        return store
+    end
+    function support.PruneVisited(visited, now, maxAge, limit)
+        local entries = {}
+        for id, at in pairs(visited) do
+            if type(id) == "string" and type(at) == "number" and at <= now and now - at < maxAge then
+                table.insert(entries, {id = id, at = at})
+            end
+        end
+        table.sort(entries, function(a,b) if a.at ~= b.at then return a.at > b.at end; return a.id < b.id end)
+        local result = {}; for i = 1, math.min(#entries, limit or 500) do result[entries[i].id] = entries[i].at end
+        return result
+    end
+    function support.Arrived(state, job)
+        return type(state) == "table" and state.pending == true
+            and (state.target == job or (type(state.origin) == "string" and state.origin ~= job))
+    end
+    function support.AutoHopAllowed(state, job, now, busy, blocked, freshSeconds)
+        if busy or blocked then return false end
+        if type(state) ~= "table" or state.pending ~= true then return true end
+        if state.unconfirmed == true then return false end
+        return state.target == job or now - (tonumber(state.requestedAt) or 0) >= freshSeconds
+    end
+    function support.Pages(fetch, accept, alive, wanted, maxPages)
+        local result, seen, cursors, cursor = {}, {}, {}, nil
+        for _ = 1, maxPages or 5 do
+            if not alive() then return nil, "sesion terminada" end
+            local page, err = fetch(cursor)
+            if not alive() then return nil, "sesion terminada" end
+            if not page then return #result > 0 and result or nil, err end
+            for _, server in ipairs(page.data) do
+                if not seen[server.id] and accept(server) then seen[server.id] = true; table.insert(result, server) end
+            end
+            cursor = page.nextPageCursor
+            if #result >= wanted or type(cursor) ~= "string" or cursor == "" or cursors[cursor] then break end
+            cursors[cursor] = true
+        end
+        return result
+    end
+    function support.Attempt(env)
+        local attempt = { state = "idle", connection = nil }
+        local function disconnect()
+            if attempt.connection then pcall(function() attempt.connection:Disconnect() end); attempt.connection = nil end
+        end
+        function attempt.Cancel()
+            attempt.cancelled = true; disconnect()
+        end
+        function attempt.Run(target)
+            if not env.alive() then return "cancelled" end
+            if not env.save({pending = true, unconfirmed = true, target = target, requestedAt = env.time(), auto = env.automatic,
+                attemptId = env.id, origin = env.job()}) then return "storage", "No se pudo guardar el salto" end
+            attempt.state = "pending"
+            local failed, reason = false, nil
+            local connected, connection = pcall(env.connect, function(player, result, message, place, options)
+                if player ~= env.player or (place and place ~= env.place) then return end
+                if options and options.ServerInstanceId and options.ServerInstanceId ~= "" and options.ServerInstanceId ~= target then return end
+                failed, reason = true, tostring(result) .. " / " .. tostring(message)
+            end)
+            if not connected then env.save({pending = false}); return "failed", tostring(connection) end
+            attempt.connection = connection
+            local startJob = env.job()
+            local ok, err = pcall(env.send, target)
+            if not ok then failed, reason = true, tostring(err) end
+            local deadline = env.clock() + env.timeout
+            while not failed and env.job() == startJob and env.clock() < deadline
+                and env.alive() and not attempt.cancelled do env.wait(0.25) end
+            disconnect()
+            if not env.alive() or attempt.cancelled then
+                attempt.state = "cancelled" -- A sent teleport cannot be withdrawn. Leave pending on disk.
+                return "cancelled"
+            end
+            if env.job() ~= startJob then attempt.state = "moved"; return "moved" end
+            if failed then
+                if not env.save({pending = false, attemptId = env.id}) then return "storage", "No se pudo cerrar el salto" end
+                attempt.state = "failed"; return "failed", reason
+            end
+            env.save({pending = true, unconfirmed = true, target = target, requestedAt = env.time(),
+                attemptId = env.id, auto = env.automatic, origin = startJob})
+            attempt.state = "unconfirmed"
+            return "unconfirmed"
+        end
+        return attempt
+    end
+    return support
+end
+-- END TESTABLE SUPPORT
+
 -- ============================================================================
 --  CHILLI + SERVER HOP  -  script unificado y portable
 -- ----------------------------------------------------------------------------
@@ -527,11 +647,9 @@ do
     local HTTP_RETRIES = 2           -- intentos por consulta de la lista
     local TELEPORT_CONFIRM_SECONDS = 25  -- margen para que arranque el teleport
     local TELEPORT_HARD_WAIT_SECONDS = 35 -- espera extra si no hay senal alguna
-    local PENDING_FRESH_SECONDS = 60      -- un pending mas viejo se puede pisar
+    local PENDING_FRESH_SECONDS = 60      -- espera inicial; unconfirmed requiere clic manual
     local MIN_API_INTERVAL = 2.0          -- pausa entre consultas a la API
     local API_429_COOLDOWN_SECONDS = 30   -- castigo tras un HTTP 429
-    local lastApiRequestAt = -math.huge
-    local apiCooldownUntil = 0
     local AUTO_POLL_SECONDS = 0.5
 
     local COLORS = {
@@ -548,35 +666,17 @@ do
     }
 
     -- ---------------------------------------------------------------- utilidades
-    local function storageOk()
-        return type(isfile) == "function"
-            and type(readfile) == "function"
-            and type(writefile) == "function"
-    end
-
-    local function readJson(path, fallback)
-        if not storageOk() then
-            return fallback
-        end
-        local ok, value = pcall(function()
-            if not isfile(path) then
-                return nil
-            end
-            return HttpService:JSONDecode(readfile(path))
-        end)
-        if ok and type(value) == "table" then
-            return value
-        end
-        return fallback
-    end
-
+    local session
+    local support = createFinderSupport()
+    local store = support.Store({read = function(path) return readfile(path) end,
+        write = function(path, raw) writefile(path, raw) end,
+        encode = function(value) return HttpService:JSONEncode(value) end,
+        decode = function(raw) return HttpService:JSONDecode(raw) end})
+    local function readJson(path, fallback) return store.Read(path, fallback) end
     local function writeJson(path, value)
-        if not storageOk() then
-            return false
-        end
-        local ok = pcall(function()
-            writefile(path, HttpService:JSONEncode(value))
-        end)
+        if session and not session.alive then return false end
+        local ok = store.Write(path, value)
+        if not ok then warn("[EggFinder] No se pudo guardar " .. path) end
         return ok
     end
 
@@ -620,6 +720,7 @@ do
         local settleUntil = os.clock() + PING_SETTLE_SECONDS
         while os.clock() < settleUntil do
             readPingValue()
+            if session and not session.alive then return nil end
             task.wait(PING_SAMPLE_INTERVAL)
         end
         for _ = 1, PING_SAMPLE_COUNT do
@@ -627,6 +728,7 @@ do
             if value then
                 table.insert(series, math.floor(value + 0.5))
             end
+            if session and not session.alive then return nil end
             task.wait(PING_SAMPLE_INTERVAL)
         end
         return medianOf(series), series
@@ -635,29 +737,38 @@ do
     -- Consulta la lista publica con el mismo criterio de errores del
     -- server_hopper de referencia: distingue HTTP no-200, respuesta vacia y
     -- JSON invalido, y reintenta un par de veces antes de devolver el motivo.
-    local function fetchServers()
+    local apiEnvironment = getgenv and getgenv() or _G
+    local apiGate = apiEnvironment.__EGG_API_GATE
+    if type(apiGate) ~= "table" then apiGate = {last = -math.huge, cooldown = 0}; apiEnvironment.__EGG_API_GATE = apiGate end
+    local function fetchServers(cursor)
         local url = string.format(
             "https://games.roblox.com/v1/games/%d/servers/Public?sortOrder=Asc&excludeFullGames=true&limit=100",
             PLACE_ID
         )
+        if cursor then url ..= "&cursor=" .. HttpService:UrlEncode(cursor) end
         local requestFunction = type(request) == "function" and request or nil
         local lastError = "respuesta desconocida"
 
         for attempt = 1, HTTP_RETRIES do
             -- Espaciado minimo entre consultas y castigo si Roblox ya respondio
             -- 429, para no encadenar mas limites.
-            local nowClock = os.clock()
-            if nowClock < apiCooldownUntil then
-                task.wait(apiCooldownUntil - nowClock)
+            local lockDeadline = os.clock() + 35
+            local reserved = false
+            while session.alive and os.clock() < lockDeadline do
+                local now = os.clock()
+                local delay = math.max(apiGate.cooldown - now, MIN_API_INTERVAL - (now - apiGate.last))
+                if not apiGate.busy and delay <= 0 then
+                    apiGate.busy = true; apiGate.last = now; reserved = true; break
+                end
+                task.wait(math.min(0.25, math.max(0.05, delay)))
             end
-            local elapsed = os.clock() - lastApiRequestAt
-            if elapsed < MIN_API_INTERVAL then
-                task.wait(MIN_API_INTERVAL - elapsed)
-            end
-            lastApiRequestAt = os.clock()
+            if not session.alive then return nil, "sesion terminada" end
+            if not reserved then return nil, "consulta anterior / cooldown sigue pendiente" end
 
             local statusCode = nil
-            local ok, raw = pcall(function()
+            local completed, ok, raw = false, false, nil
+            task.spawn(function()
+            ok, raw = pcall(function()
                 if requestFunction then
                     local response = requestFunction({
                         Url = url,
@@ -678,12 +789,19 @@ do
                 return game:HttpGet(url)
             end)
 
+            if statusCode == 429 then apiGate.cooldown = os.clock() + API_429_COOLDOWN_SECONDS end
+            completed = true; apiGate.busy = false
+            end)
+            local responseDeadline = os.clock() + 30
+            while not completed and session.alive and os.clock() < responseDeadline do task.wait(0.1) end
+            if not session.alive then return nil, "sesion terminada" end
+            if not completed then return nil, "la consulta HTTP excedio 30 s" end
             if not ok then
                 lastError = "fallo HTTP: " .. tostring(raw)
             elseif statusCode and statusCode ~= 200 then
                 lastError = "Roblox respondio HTTP " .. tostring(statusCode)
                 if statusCode == 429 then
-                    apiCooldownUntil = os.clock() + API_429_COOLDOWN_SECONDS
+                    apiGate.cooldown = math.max(apiGate.cooldown, os.clock() + API_429_COOLDOWN_SECONDS)
                 end
             elseif type(raw) ~= "string" or raw == "" then
                 lastError = "Roblox devolvio una respuesta vacia"
@@ -695,7 +813,7 @@ do
                     return HttpService:JSONDecode(raw)
                 end)
                 if decodeOk and type(decoded) == "table" and type(decoded.data) == "table" then
-                    return decoded.data
+                    return decoded
                 end
                 lastError = "JSON invalido: " .. tostring(decoded)
             end
@@ -765,7 +883,19 @@ do
     local hopperEnvironment = getgenv and getgenv() or _G
     local oldSession = hopperEnvironment.__CHILLI_HOPPER_SESSION
     if oldSession and type(oldSession.Destroy) == "function" then oldSession.Destroy() end
-    local session = { alive = true, autoGeneration = 0 }
+    session = { alive = true, autoGeneration = 0, connections = {} }
+    local function connect(signal, callback)
+        local connection = signal:Connect(function(...)
+            if not session.alive then return end
+            uiAccess(); callback(...)
+        end)
+        table.insert(session.connections, connection)
+        return connection
+    end
+    local function disconnectSession()
+        for _, connection in ipairs(session.connections) do pcall(function() connection:Disconnect() end) end
+        table.clear(session.connections)
+    end
     hopperEnvironment.__CHILLI_HOPPER_SESSION = session
     local previous = parent:FindFirstChild("ServerHopButton")
     if previous then
@@ -781,14 +911,19 @@ do
     screenGui.Parent = parent
     screenGui.Destroying:Connect(function()
         session.alive = false
+        disconnectSession()
         if session.DisposeSearch then session.DisposeSearch() end
         if session.DisposePanel then session.DisposePanel() end
+        if session.attempt then session.attempt.Cancel() end
     end)
     function session.Destroy()
         session.alive = false
         session.autoGeneration += 1
+        disconnectSession()
         if session.DisposeSearch then session.DisposeSearch() end
         if session.DisposePanel then session.DisposePanel() end
+        if session.attempt then session.attempt.Cancel() end
+        if session.alertSound then session.alertSound:Destroy() end
         if screenGui.Parent then screenGui:Destroy() end
     end
 
@@ -921,6 +1056,7 @@ do
 
     local function setLabel(text)
         if not session.alive then return end
+        if not session.alive then return end
         uiAccess()
         mainLabel.Text = text
         for _, outline in ipairs(outlineLabels) do
@@ -930,6 +1066,7 @@ do
 
     local function setStatus(text, color)
         if not session.alive then return end
+        if not session.alive then return end
         uiAccess()
         statusLabel.Text = text
         statusLabel.TextColor3 = color or COLORS.muted
@@ -938,6 +1075,7 @@ do
     local busy = false
 
     local function setBusy(value)
+        if not session.alive then return end
         if not session.alive then return end
         uiAccess()
         busy = value
@@ -1066,7 +1204,7 @@ do
 
     -- Arrastrar: desde cualquier punto, con umbral para no confundir un clic
     -- normal con un arrastre, y guardando la posicion al soltar.
-    holder.InputBegan:Connect(function(input)
+    connect(holder.InputBegan, function(input)
         if input.UserInputType == Enum.UserInputType.MouseButton1
             or input.UserInputType == Enum.UserInputType.Touch then
             pendingDrag = true
@@ -1076,7 +1214,7 @@ do
         end
     end)
 
-    UserInputService.InputChanged:Connect(function(input)
+    connect(UserInputService.InputChanged, function(input)
         if not pendingDrag or not dragStart then
             return
         end
@@ -1100,7 +1238,7 @@ do
         )
     end)
 
-    UserInputService.InputEnded:Connect(function(input)
+    connect(UserInputService.InputEnded, function(input)
         if input.UserInputType == Enum.UserInputType.MouseButton1
             or input.UserInputType == Enum.UserInputType.Touch then
             if dragging then
@@ -1111,7 +1249,7 @@ do
         end
     end)
 
-    toggle.MouseButton1Click:Connect(function()
+    connect(toggle.MouseButton1Click, function()
         if draggedRecently() then
             return
         end
@@ -1126,6 +1264,28 @@ do
     session.hopAllowed = false
     session.searchMode = "loading"
     local setAuto
+    local PREFERENCES_FILE = "chilli_egg_preferences.json"
+    local preferences = readJson(PREFERENCES_FILE, {})
+    preferences.presets = type(preferences.presets) == "table" and preferences.presets or {}
+    preferences.alerts = type(preferences.alerts) == "table" and preferences.alerts or {}
+    preferences.alerts = {notification = preferences.alerts.notification ~= false, sound = preferences.alerts.sound == true}
+    local function savePreferences(nextValue)
+        assert(writeJson(PREFERENCES_FILE, nextValue), "No se pudieron guardar presets / alertas")
+        preferences = nextValue
+    end
+    local function matchAlert(title, message)
+        if preferences.alerts.notification then notify(title, message, 15) end
+        if preferences.alerts.sound then
+            local ok, err = pcall(function()
+                local sound = Instance.new("Sound")
+                sound.Name = "EggFinderAlert"; sound.SoundId = "rbxasset://sounds/electronicpingshort.wav"; sound.Volume = 0.5
+                sound.Parent = game:GetService("SoundService")
+                session.alertSound = sound
+                sound:Play(); game:GetService("Debris"):AddItem(sound, 5)
+            end)
+            if not ok then warn("[EggSearch] Sonido: " .. tostring(err)) end
+        end
+    end
     local function canContinueHop(automatic, generation)
         return session.alive and game.JobId == sessionStartJobId
             and (not automatic or (autoEnabled and session.hopAllowed
@@ -1151,13 +1311,13 @@ do
         setLabel("MATCH")
         setStatus(string.format("%s · %s/s · %s", match.name,
             eggSearch.FormatMinimum(match.income), match.area or "mapa"), COLORS.green)
-        notify("Egg " .. eggSearch.config.rarity .. " encontrado", string.format(
+        matchAlert("Egg " .. eggSearch.config.rarity .. " encontrado", string.format(
             "%s · %s/s · %s. Objetivo encontrado; Chilli puede continuar.",
-            match.name, eggSearch.FormatMinimum(match.income), match.area or "mapa"), 15)
+            match.name, eggSearch.FormatMinimum(match.income), match.area or "mapa"))
         print("[EggSearch] MATCH " .. HttpService:JSONEncode(match))
     end
     local function verifyMapBeforeHop()
-        local match, info = eggSearch.Scan()
+        local match, info = eggSearch.Scan(true)
         if match then finishEggMatch(match); return false end
         local mode = eggSearch.Decide(match, info)
         setSearchMode(mode)
@@ -1165,9 +1325,46 @@ do
     end
     hopperEnvironment.ChilliEggSearch = {
         Configure = function(filters) return eggSearch.Configure(filters) end,
-        Scan = function() return eggSearch.Scan() end,
+        Scan = function(fresh)
+            local match, info, matches = eggSearch.Scan(fresh)
+            return support.Copy(match), support.Copy(info), support.Copy(matches)
+        end,
         CycleStatus = function() return eggSearch.CycleStatus() end,
         RarityOptions = function() return eggSearch.RarityOptions() end,
+        Presets = function()
+            local list = {}
+            for name, config in pairs(preferences.presets) do
+                if type(name) == "string" and type(config) == "table" then table.insert(list, {name = name, config = support.Copy(config)}) end
+            end
+            table.sort(list, function(a,b) return a.name < b.name end); return list
+        end,
+        SavePreset = function(name, config)
+            assert(type(name) == "string", "Escribe un nombre")
+            name = name:match("^%s*(.-)%s*$")
+            assert(#name > 0 and #name <= 60 and not name:find("[%c]"), "Nombre de preset inválido (máximo 60 bytes)")
+            local nextValue = support.Copy(preferences)
+            local count = 0; for _ in pairs(nextValue.presets) do count += 1 end
+            assert(nextValue.presets[name] or count < 20, "Máximo 20 presets; borra uno para guardar otro")
+            nextValue.presets[name] = eggSearch.Validate(config or eggSearch.config)
+            savePreferences(nextValue); return name
+        end,
+        LoadPreset = function(name)
+            assert(preferences.presets[name], "Preset desconocido")
+            return eggSearch.Validate(support.Copy(preferences.presets[name]))
+        end,
+        DeletePreset = function(name)
+            local nextValue = support.Copy(preferences); nextValue.presets[name] = nil; savePreferences(nextValue)
+        end,
+        Alerts = function() return support.Copy(preferences.alerts) end,
+        ConfigureAlerts = function(patch)
+            local nextValue = support.Copy(preferences)
+            for key, value in pairs(patch) do
+                assert((key == "notification" or key == "sound") and type(value) == "boolean", "Opción de alerta inválida")
+                nextValue.alerts[key] = value
+            end
+            savePreferences(nextValue); return support.Copy(nextValue.alerts)
+        end,
+        TestAlert = function() matchAlert("Egg Finder", "Prueba de alerta: objetivo encontrado") end,
         Start = function()
             assert(session.alive, "Esta sesion ya termino")
             setAuto(true)
@@ -1176,7 +1373,10 @@ do
         GetStatus = function()
             return { active = autoEnabled and session.alive, jobId = game.JobId,
                 mode = session.searchMode, cycle = eggSearch.CycleStatus(),
-                config = table.clone(eggSearch.config), lastScan = eggSearch.lastScan }
+                config = support.Copy(eggSearch.config), lastScan = eggSearch.lastScan and {
+                    match = support.Copy(eggSearch.lastScan.match), info = support.Copy(eggSearch.lastScan.info),
+                    matches = support.Copy(eggSearch.lastScan.matches), revision = eggSearch.lastScan.revision },
+                stats = support.Copy(eggSearch.stats), teleport = session.attempt and session.attempt.state }
         end,
     }
 
@@ -1187,28 +1387,18 @@ do
 
     -- ---------------------------------------------------------------- el salto
     local function pickCandidates()
-        local servers, fetchError = fetchServers()
-        if not servers then
-            return nil, fetchError
-        end
-
-        local visited = readJson(VISITED_FILE, {})
+        local visited = support.PruneVisited(readJson(VISITED_FILE, {}), os.time(), VISITED_MAX_AGE)
         local now = os.time()
+        local servers, fetchError = support.Pages(fetchServers, function(server)
+            return type(server.id) == "string" and server.id ~= game.JobId
+                and tonumber(server.maxPlayers) == EXPECTED_CAPACITY
+                and (tonumber(server.playing) or 0) < EXPECTED_CAPACITY
+                and now - (tonumber(visited[server.id]) or 0) > VISITED_MAX_AGE
+        end, function() return session.alive and game.JobId == sessionStartJobId end, POOL_SIZE, 5)
+        if not servers then return nil, fetchError end
         local pool = {}
-
         for _, server in ipairs(servers) do
-            local id = server.id
-            local capacity = tonumber(server.maxPlayers) or 0
-            if id and id ~= game.JobId and capacity == EXPECTED_CAPACITY then
-                local seenAt = tonumber(visited[id]) or 0
-                if now - seenAt > VISITED_MAX_AGE then
-                    table.insert(pool, {
-                        id = id,
-                        ping = tonumber(server.ping) or -1,
-                        fps = tonumber(server.fps) or 0,
-                    })
-                end
-            end
+            table.insert(pool, {id = server.id, ping = tonumber(server.ping) or -1, fps = tonumber(server.fps) or 0})
         end
 
         if #pool == 0 then
@@ -1281,7 +1471,7 @@ do
     end
 
     local function markVisited(jobId)
-        local visited = readJson(VISITED_FILE, {})
+        local visited = support.PruneVisited(readJson(VISITED_FILE, {}), os.time(), VISITED_MAX_AGE)
         visited[jobId] = os.time()
         writeJson(VISITED_FILE, visited)
     end
@@ -1292,6 +1482,7 @@ do
     -- se consulta la lista en vivo. Al entrar NO se encadena: reportArrival mide
     -- y se para, aunque el servidor no sea optimo.
     local function hopUntilEntered(automatic, generation)
+        local owner = session.hopWorker
         local failedRounds = 0
         while canContinueHop(automatic, generation) do
             -- Si el JobId ya cambio, estamos en otro servidor: ni un teleport
@@ -1305,6 +1496,7 @@ do
             local pickError = nil
             if not pool or #pool == 0 then
                 pool, pickError = pickCandidates()
+                if not canContinueHop(automatic, generation) then return false end
                 if pool then
                     savePool(pool)
                 end
@@ -1317,7 +1509,10 @@ do
                         return true
                     end
 
-                    if not canContinueHop(automatic, generation) then setBusy(false); return false end
+                    if not canContinueHop(automatic, generation) then
+                        if session.hopWorker == owner then setBusy(false) end
+                        return false
+                    end
                     if automatic and not verifyMapBeforeHop() then return false end
                     local candidate = pool[index]
                     setLabel("Saltando...")
@@ -1331,103 +1526,33 @@ do
                         candidate.id
                     ))
 
-                    -- El estado se escribe ANTES de saltar: el script se
-                    -- re-ejecuta en el destino y necesita saber que hay que
-                    -- medir al llegar.
-                    writeJson(STATE_FILE, {
-                        pending = true,
-                        auto = autoEnabled,
-                        target = candidate.id,
-                        apiPing = candidate.ping,
-                        requestedAt = os.time(),
+                    local attempt = support.Attempt({
+                        alive = function() return session.alive and (not automatic or autoEnabled) end,
+                        save = function(state) return writeJson(STATE_FILE, state) end,
+                        time = os.time, clock = os.clock, wait = task.wait,
+                        job = function() return game.JobId end,
+                        automatic = autoEnabled, id = HttpService:GenerateGUID(false),
+                        player = player, place = PLACE_ID,
+                        timeout = TELEPORT_CONFIRM_SECONDS + TELEPORT_HARD_WAIT_SECONDS,
+                        connect = function(callback) return TeleportService.TeleportInitFailed:Connect(callback) end,
+                        send = function(target) TeleportService:TeleportToPlaceInstance(PLACE_ID, target, player) end,
                     })
-
-                    local failed = false
-                    local failReason = nil
-                    local connection = nil
-                    pcall(function()
-                        connection = TeleportService.TeleportInitFailed:Connect(function(_, result, message)
-                            failed = true
-                            failReason = tostring(result) .. " / " .. tostring(message)
-                        end)
-                    end)
-
-                    local startJobId = game.JobId
-                    pcall(function()
-                        TeleportService:TeleportToPlaceInstance(PLACE_ID, candidate.id, player)
-                    end)
-
-                    -- Fase 1: margen normal para que el teleport arranque.
-                    local firstDeadline = os.clock() + TELEPORT_CONFIRM_SECONDS
-                    while os.clock() < firstDeadline and not failed and game.JobId == startJobId do
-                        task.wait(0.25)
-                    end
-
-                    local movedToNewServer = game.JobId ~= startJobId
-
-                    if failed or movedToNewServer then
-                        if connection then
-                            pcall(function()
-                                connection:Disconnect()
-                            end)
-                        end
-
-                        if movedToNewServer then
-                            markVisited(candidate.id)
-                            return true
-                        end
-
-                        -- Fallo explicito de Roblox (GameFull, GameEnded...):
-                        -- se marca visitado para no volver a elegirlo y se
-                        -- prueba otro con una pausa mas larga (menos throttling).
-                        markVisited(candidate.id)
-                        writeJson(STATE_FILE, { pending = false })
-                        print(string.format(
-                            "[ServerHopButton] Candidato no disponible (%s); probando otro",
-                            tostring(failReason or "sin motivo")
-                        ))
+                    session.attempt = attempt
+                    local result, reason = attempt.Run(candidate.id)
+                    if not session.alive or result == "cancelled" then return false end
+                    if result == "moved" then markVisited(candidate.id); return true end
+                    if result == "failed" then
+                        -- Throttling is temporary; don't exclude that server for an hour.
+                        if not string.find(string.lower(reason or ""), "flood", 1, true) then markVisited(candidate.id) end
                         setStatus("rechazado; probando otro candidato...", COLORS.amber)
-                        task.wait(1.5)
+                        print("[ServerHopButton] Teleport rechazado: " .. tostring(reason))
+                        waitForHop(1.5, automatic, generation)
                     else
-                        -- Fase 2: sin senal ni de exito ni de fallo. NO se lanza
-                        -- otro teleport encima; se espera de largo por si el
-                        -- arranque simplemente esta tardando.
-                        setStatus("esperando confirmacion del teleport...", COLORS.muted)
-                        local hardDeadline = firstDeadline + TELEPORT_HARD_WAIT_SECONDS
-                        while os.clock() < hardDeadline and not failed and game.JobId == startJobId do
-                            task.wait(0.5)
-                        end
-
-                        if connection then
-                            pcall(function()
-                                connection:Disconnect()
-                            end)
-                        end
-
-                        if game.JobId ~= startJobId then
-                            markVisited(candidate.id)
-                            return true
-                        end
-
-                        if failed then
-                            markVisited(candidate.id)
-                            writeJson(STATE_FILE, { pending = false })
-                            print(string.format(
-                                "[ServerHopButton] Candidato no disponible (%s); probando otro",
-                                tostring(failReason or "sin motivo")
-                            ))
-                            setStatus("rechazado; probando otro candidato...", COLORS.amber)
-                            task.wait(1.5)
-                        else
-                            -- Ni exito ni fallo tras ~60 s: mejor parar que pisar
-                            -- un teleport que podria estar en camino.
-                            writeJson(STATE_FILE, { pending = false })
-                            setBusy(false)
-                            setLabel("Server Hop")
-                            setStatus("sin confirmar; pulsa otra vez", COLORS.amber)
-                            notify("Server Hop", "El teleport no se confirmo. Pulsa otra vez.", 6)
-                            return false
-                        end
+                        session.autoHopBlocked = true
+                        setBusy(false); setLabel("Server Hop")
+                        setStatus(result == "storage" and reason or "sin confirmar; pulsa Server Hop para reintentar", COLORS.amber)
+                        notify("Server Hop", result == "storage" and reason or "AUTO pausó los saltos: el teleport sigue sin confirmar.", 8)
+                        return false
                     end
                 end
 
@@ -1449,7 +1574,7 @@ do
             end
             waitForHop(roundWait, automatic, generation)
         end
-        if session.alive then setBusy(false) end
+        if session.alive and session.hopWorker == owner then setBusy(false) end
         return false
     end
 
@@ -1466,6 +1591,12 @@ do
                 return
             end
             if not canContinueHop(automatic, generation) then return end
+            local pending = readJson(STATE_FILE, nil)
+            if pending and pending.pending and pending.unconfirmed then
+                session.autoHopBlocked = true
+                setBusy(false); setStatus("salto sin confirmar; reintenta con Server Hop", COLORS.amber)
+                return
+            end
             setStatus("error: " .. tostring(err) .. " · reintentando...", COLORS.amber)
             waitForHop(RETRY_DELAY_SECONDS, automatic, generation)
         end
@@ -1475,6 +1606,7 @@ do
     -- doble clic no lance dos bucles a la vez.
     local function beginHop(automatic)
         automatic = automatic == true
+        if not automatic then session.hopWorker = {} end
         local generation = session.autoGeneration
         if not canContinueHop(automatic, generation) then return end
         if automatic and not verifyMapBeforeHop() then return end
@@ -1495,6 +1627,12 @@ do
         end
 
         local existing = readJson(STATE_FILE, nil)
+        if automatic and not support.AutoHopAllowed(existing, game.JobId, os.time(), false,
+            session.autoHopBlocked, PENDING_FRESH_SECONDS) then setBusy(false); return end
+        if not automatic and existing and existing.unconfirmed then
+            if not writeJson(STATE_FILE, {pending = false}) then setBusy(false); return end
+            existing = nil; session.autoHopBlocked = false
+        end
         -- Solo bloquea si hay un salto realmente en vuelo (el destino no es el
         -- servidor actual). Si estas en el destino midiendo, puedes volver a
         -- pulsar al momento para descartarlo y saltar a otro.
@@ -1543,6 +1681,7 @@ do
         task.spawn(function()
             local lastMode, lastRevision, lastPeriod
             while autoEnabled and session.alive and game.JobId == sessionStartJobId do
+                local watcherOk, watcherError = pcall(function()
                 if game.PlaceId ~= PLACE_ID then
                     setSearchMode("loading")
                 else
@@ -1552,7 +1691,7 @@ do
                     setSearchMode(mode)
                     if match then
                         finishEggMatch(match)
-                        break
+                        return
                     end
                     local revision = cycle and cycle.fieldRevision
                     local period = cycle and cycle.periodIndex
@@ -1562,10 +1701,8 @@ do
                         lastMode, lastRevision, lastPeriod = mode, revision, period
                     end
                     local state = readJson(STATE_FILE, nil)
-                    local inFlight = type(state) == "table" and state.pending == true
-                        and state.target ~= game.JobId
-                        and os.time() - (tonumber(state.requestedAt) or 0) < PENDING_FRESH_SECONDS
-                    if not busy and not inFlight then
+                    if support.AutoHopAllowed(state, game.JobId, os.time(), busy,
+                        session.autoHopBlocked, PENDING_FRESH_SECONDS) then
                         if mode == "loading" then
                             setLabel("Escaneando")
                             setStatus(info.reason or "esperando datos del mapa...", COLORS.amber)
@@ -1580,9 +1717,11 @@ do
                                 info.rarityCount, eggSearch.config.rarity), COLORS.green)
                             -- El vigilante sigue escaneando durante reintentos o renovaciones.
                             setBusy(true)
+                            local hopGeneration = session.autoGeneration
+                            local worker = {}; session.hopWorker = worker
                             task.spawn(function()
                                 local ok, err = pcall(beginHop, true)
-                                if session.alive and game.JobId == sessionStartJobId then
+                                if session.alive and game.JobId == sessionStartJobId and session.hopWorker == worker then
                                     setBusy(false)
                                     if not ok then warn("[EggSearch] Hop: " .. tostring(err)) end
                                 end
@@ -1590,7 +1729,9 @@ do
                         end
                     end
                 end
-                task.wait(AUTO_POLL_SECONDS)
+                end)
+                if not watcherOk then warn("[EggSearch] Vigilante: " .. tostring(watcherError)) end
+                task.wait(watcherOk and AUTO_POLL_SECONDS or 2)
             end
             autoWatcherStarted = false
             if autoEnabled and session.alive and game.JobId == sessionStartJobId then startAutoHopWatcher() end
@@ -1606,19 +1747,23 @@ do
             setStatus(eggSearch.Summary() .. " · revisando mapa...", COLORS.green)
             startAutoHopWatcher()
         else
+            if session.attempt and session.attempt.state == "pending" then
+                session.attempt.Cancel(); session.autoHopBlocked = true
+            end
+            setBusy(false)
             setLabel("Server Hop")
             setStatus("busqueda apagada · salto manual disponible", COLORS.muted)
         end
     end
 
-    autoChip.MouseButton1Click:Connect(function()
+    connect(autoChip.MouseButton1Click, function()
         if draggedRecently() then
             return
         end
         setAuto(not autoEnabled)
     end)
 
-    button.MouseButton1Click:Connect(function()
+    connect(button.MouseButton1Click, function()
         if draggedRecently() or busy then
             return
         end
@@ -1628,7 +1773,7 @@ do
 
         task.spawn(function()
             local ok, err = pcall(beginHop)
-            if not ok then
+            if not ok and session.alive then
                 setBusy(false)
                 setLabel("Server Hop")
                 setStatus("error: " .. tostring(err), COLORS.amber)
@@ -1655,6 +1800,11 @@ do
             return
         end
 
+        if not support.Arrived(state, game.JobId) then
+            session.autoHopBlocked = true
+            setStatus("salto anterior sin confirmar; pulsa Server Hop para reintentar", COLORS.amber)
+            return
+        end
         if os.time() - (tonumber(state.requestedAt) or 0) > 240 then
             writeJson(STATE_FILE, { pending = false })
             setStatus("salto caducado", COLORS.muted)
@@ -1687,17 +1837,19 @@ do
         setStatus("estabilizando la conexion...", COLORS.muted)
 
         task.wait(ARRIVE_STABILIZE_SECONDS)
+        if not session.alive then return end
 
         local players = #Players:GetPlayers()
         setStatus("midiendo ping real...", COLORS.muted)
 
         local ping = measurePing()
+        if not session.alive then return end
         local good = type(ping) == "number" and ping <= IDEAL_PING and players <= IDEAL_PLAYERS
 
         -- Si el estado ya no es el mismo salto (el usuario pulso otra vez
         -- mientras mediamos), este resultado se descarta sin tocar la UI.
         local current = readJson(STATE_FILE, nil)
-        if type(current) ~= "table"
+        if not session.alive or type(current) ~= "table"
             or current.pending ~= true
             or current.target ~= capturedTarget
             or current.requestedAt ~= capturedAt then
@@ -1715,7 +1867,7 @@ do
         if game.JobId ~= "" then
             visited[game.JobId] = now
         end
-        writeJson(VISITED_FILE, visited)
+        writeJson(VISITED_FILE, support.PruneVisited(visited, now, VISITED_MAX_AGE))
 
         writeJson(STATE_FILE, {
             pending = false,
@@ -1787,7 +1939,7 @@ do
         end
 
         local waitUntil = os.clock() + 20
-        while os.clock() < waitUntil and not chilliUiReady() do
+        while session.alive and os.clock() < waitUntil and not chilliUiReady() do
             task.wait(0.5)
         end
 
@@ -1795,7 +1947,7 @@ do
             if game.PlaceId == PLACE_ID and not busy then
                 local ok, err = pcall(function()
                     local pool = pickCandidates()
-                    if pool then
+                    if pool and session.alive and game.JobId == sessionStartJobId then
                         savePool(pool)
                         print(string.format(
                             "[ServerHopButton] Pool refrescado: %d candidatos",

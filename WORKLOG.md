@@ -39,3 +39,23 @@ Las pruebas de UI, reset real y hop mencionadas en `TESTING.md` son evidencia pr
 - Potassium verifico SendKeyEvent de LeftAlt: abrir/cerrar, persistencia, cerrar selector de especies, campo de minimo enfocado y ayuda sin recorte. RightAlt no alterna el panel.
 - Al reejecutar, comprobadas destruccion de la instancia anterior y una alternancia por evento. Durante esta comprobacion tambien se recargo la version publica anterior; por eso la candidata debe distribuirse por CI/CD para conservar el atajo en las siguientes ejecuciones.
 - Filtros conservados y AUTO activo al terminar la comprobacion; apertura cerrada como estaba.
+
+## 2026-10-06 · Mejoras integrales del finder (validacion en curso)
+
+- Implementados estados de teleport con persistencia previa, fallo inmediato, filtro de evento por jugador/destino y bloqueo automatico de intentos sin confirmar. Cancelacion de sesiones/conexiones y descarte de resultados antiguos; comprobacion fresca antes de cada intento.
+- Detector comparte analisis por snapshot/configuracion e ingresos por UID; invalida durante renovacion y no calcula otras rarezas con el panel cerrado. Panel usa el mismo snapshot, conserva tarjetas visibles por UID y libera modelos al cerrar; recursos opcionales con reintentos.
+- Agregados paginacion de servidores, reserva compartida para HTTP, timeout de observacion, persistencia verificada con backup/cache, historial acotado, Detalle con ingreso exacto/motivo, presets pendientes de aplicar y alertas configurables.
+- Build y compilacion de fuentes/bundle correctos; 45 regresiones locales pasan, incluidas simulaciones de fallo/cancelacion/timeout/paginacion/backup y recuperacion de modulos. Diff sin errores de whitespace.
+- Referencia previa del cliente: snapshot listo de 65 Slot, 30 llamadas Scan en 3,95 ms y 782 descendientes en EggCards. Son datos de esa sesion, no una garantia de FPS ni comparacion final; la primera medicion durante noche se descarto.
+- Se cargo una candidata inicial, pero los saltos manuales del usuario interrumpieron la validacion del panel y restauraron la version publica anterior. A solicitud del usuario se espera antes de continuar las pruebas del cliente. Pendientes: suite real UI/persistencia/atajo/reejecucion, renovacion/teleport real, comparacion final, PR/CI y publicacion.
+
+- Checkpoint de revision del coordinador: AutoHopAllowed compartido entre vigilante e inicio; 48 regresiones locales pasan. El PR #4 valida el codigo sin desplegarlo; su primera ejecucion CI 37555539630 paso. La validacion del cliente sigue esperando la indicacion del usuario.
+
+## 2026-10-06 · Mejoras verificadas para publicacion
+
+- Finalizada la validacion autorizada del cliente. Build y compilacion correctos, 50 regresiones y diff sin errores. CI de la candidata optimizada: [run 37556621519](https://github.com/diegotoruno/SAE-SCRIPT/actions/runs/37556621519). Integracion mediante [PR #4](https://github.com/diegotoruno/SAE-SCRIPT/pull/4); el workflow publica el artefacto aprobado en stable y Releases.
+- Corregido el coste inicial de serializar cada record: comparacion de campos y versiones por UID, limitada a la rareza seleccionada cuando AUTO no necesita filas completas. Detecta modificaciones en el mismo objeto y cambios del catalogo. 30 Scan con Divine >=7B en un snapshot de 65 Slot: 2,96 ms frente a 3,95 ms de referencia; con siete Common seleccionados: 5,43 ms. Sin afirmaciones de FPS.
+- Panel real: 65 filas Slot, siete tarjetas renderizadas y 106 descendientes frente a 782 de referencia. Orden, scroll final, UIScale 0,65, reutilizacion de tarjetas/modelos, liberacion al cerrar, Solo filtro y Detalle exacto pasan. Recursos opcionales fallando temporalmente en un panel aislado: imagenes disponibles y recuperacion de modelos por reintento.
+- Presets pendientes de aplicar, numeros exactos, guardar/cargar/borrar, alerta/sonido cargado y persistencia tras recarga verificados. Alt izquierdo con foco/popup, Alt derecho y una alternancia por evento pasan; sesion anterior destruida, cero conexiones propias antiguas y una GUI.
+- Coincidencia Common real: AUTO se apaga y se conserva el servidor. Renovacion real: loading durante noche, snapshot nuevo, revision 1 a 3, wait sin Divine y AUTO activo en el mismo servidor. Divine >=7B real no observado; limites exactos cubiertos por regresiones.
+- Teleport real mediante Server Hop: llegada al destino elegido y carga automatica de la candidata fijada al commit, pending=false, snapshot listo, filtros/preset/alertas/UI conservados y una GUI. Restaurados Divine >=7B, AUTO activo, criaturas, mejor rareza primero, panel cerrado y alertas por defecto; borrados presets temporales.
