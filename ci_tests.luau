@@ -255,6 +255,103 @@ test("paging rejects results from cancelled sessions and repeated cursors", func
         function() return true end, function() return true end, 8, 5)
     assert(calls == 2)
 end)
+test("occupancy outranks healthier and higher legacy ping servers", function()
+    local rows = {{id = "two", playing = 2, fps = 60, ping = 2000},
+        {id = "one", playing = 1, fps = 20, ping = 1},
+        {id = "empty", playing = 0, fps = 60, ping = 3000},
+        {id = "unknown", fps = 60, ping = 4000}}
+    local ranked = support.RankServers(rows, "LegacyPing")
+    assert(ranked[1].id == "one" and rows[1].id == "two")
+    assert(ranked[1].playing == 1 and rows[2].sourceRank == nil)
+    assert(#ranked == 2 and ranked[2].id == "two")
+end)
+test("legacy order keeps FPS then advertised ping within one-player group", function()
+    local rows = {{id = "slow", playing = 1, fps = 40, ping = 5000},
+        {id = "healthy-low", playing = "1", fps = 60, ping = 10},
+        {id = "healthy-high", playing = 1, fps = 55, ping = 2000},
+        {id = "other", playing = 2, fps = 60, ping = 9999}}
+    local ranked = support.RankServers(rows, "LegacyPing")
+    assert(ranked[1].id == "healthy-high" and ranked[2].id == "healthy-low")
+    assert(ranked[3].id == "slow" and ranked[4].id == "other")
+end)
+test("BestLatency preserves Roblox order inside occupancy groups", function()
+    local rows = {{id = "other-first", playing = 2, fps = 60, ping = 1},
+        {id = "one-first", playing = 1, fps = 10, ping = 1},
+        {id = "one-second", playing = 1, fps = 60, ping = 9999},
+        {id = "other-second", playing = 2, fps = 60, ping = 9999}}
+    local ranked = support.RankServers(rows, "BestLatency")
+    assert(ranked[1].id == "one-first" and ranked[2].id == "one-second")
+    assert(ranked[3].id == "other-first" and ranked[4].id == "other-second")
+end)
+test("BestLatency works without ping and handles no one-player servers", function()
+    local ranked = support.RankServers({{id = "b", playing = 3}, {id = "a", playing = 2}}, "BestLatency")
+    assert(ranked[1].id == "a" and ranked[2].id == "b")
+    assert(#support.RankServers({}, "BestLatency") == 0)
+    assert(not pcall(support.RankServers, {}, "Asc"))
+end)
+test("cached candidates keep one-player priority after JSON-like roundtrip", function()
+    local ranked = support.RankServers({{id = "two", playing = 2, fps = 60, ping = 9000},
+        {id = "one", playing = 1, fps = 60, ping = 10}}, "LegacyPing")
+    local cached = support.Copy(ranked)
+    table.remove(cached, 1)
+    assert(support.RankServers(cached, "LegacyPing")[1].id == "two")
+    table.insert(cached, {id = "new-one", playing = 1, fps = 60, ping = 1})
+    assert(support.RankServers(cached, "LegacyPing")[1].id == "new-one")
+end)
+test("BestLatency orders all six occupancies and preserves native ties", function()
+    local rows = {{id = "six", playing = 6}, {id = "three-first", playing = 3},
+        {id = "five", playing = 5}, {id = "two-first", playing = 2},
+        {id = "four", playing = 4}, {id = "one", playing = 1},
+        {id = "two-second", playing = 2}, {id = "three-second", playing = 3}}
+    local ranked = support.RankServers(rows, "BestLatency")
+    local expected = {"one", "two-first", "two-second", "three-first", "three-second", "four", "five", "six"}
+    for i, id in ipairs(expected) do assert(ranked[i].id == id) end
+end)
+test("invalid occupancy cannot enter any hop group", function()
+    local rows = {{id = "zero", playing = 0}, {id = "negative", playing = -1},
+        {id = "full", playing = 7}, {id = "fraction", playing = 1.5},
+        {id = "unknown"}, {id = "nan", playing = 0/0}, {id = "infinite", playing = math.huge}}
+    assert(#support.RankServers(rows, "LegacyPing") == 0)
+end)
+test("native partial pages cannot advance to a higher occupancy", function()
+    local rows = {{id = "three", playing = 3}, {id = "two", playing = 2}}
+    local pool, reason = support.OccupancyGroup(rows, "BestLatency", false)
+    assert(pool == nil and type(reason) == "string")
+    pool = support.OccupancyGroup(rows, "BestLatency", true)
+    assert(#pool == 1 and pool[1].id == "two")
+    table.insert(rows, {id = "one", playing = 1})
+    pool = support.OccupancyGroup(rows, "BestLatency", false)
+    assert(#pool == 1 and pool[1].id == "one")
+end)
+test("short cache exhaustion re-queries remaining single-player servers before two", function()
+    local all, visited = {}, {}
+    for i = 1, 9 do table.insert(all, {id = "one-" .. i, playing = 1, fps = 60, ping = 100 - i}) end
+    table.insert(all, {id = "two", playing = 2, fps = 60, ping = 9000})
+    local calls = 0
+    local function query()
+        local rows = support.Pages(function()
+            calls += 1; return {data = all}
+        end, function(row) return not visited[row.id] end, function() return true end, 8, 5)
+        return support.OccupancyGroup(rows, "LegacyPing", true)
+    end
+    local pool = query()
+    for i = 1, 8 do visited[pool[i].id] = true end
+    pool = query()
+    assert(#pool == 1 and pool[1].id == "one-9")
+    visited[pool[1].id] = true
+    pool = query()
+    assert(#pool == 1 and pool[1].id == "two" and calls == 3)
+end)
+test("visited ascending pages are scanned before entering the next group", function()
+    local calls = 0
+    local rows = support.Pages(function(cursor)
+        calls += 1
+        if not cursor then return {data = {{id = "visited-one", playing = 1}}, nextPageCursor = "next"} end
+        return {data = {{id = "two", playing = 2}, {id = "three", playing = 3}}}
+    end, function(row) return row.id ~= "visited-one" end, function() return true end, 8, 5)
+    local pool = support.OccupancyGroup(rows, "LegacyPing", true)
+    assert(calls == 2 and #pool == 1 and pool[1].id == "two")
+end)
 local function fakeAttempt(overrides)
     local clock, connected, disconnected, sent = 0, nil, 0, 0
     local states, alive, job = {}, true, "origin"
@@ -270,6 +367,57 @@ local function fakeAttempt(overrides)
         cancel = function() alive = false end, move = function() job = "destination" end,
         sent = function() return sent end, disconnected = function() return disconnected end}
 end
+local function nativeResponse(rows, complete)
+    return {schema = 1, placeId = 107778070777162, orderBy = "BestLatency",
+        requestId = "new-hop", updatedAt = 1000, scanStartedAt = 990,
+        state = "ready", complete = complete, servers = rows}
+end
+local function nativeRow(id, playing, rank)
+    return {id = id, playing = playing, maxPlayers = 7, nativeRank = rank, observedAt = 995}
+end
+test("native connection consumes authenticated order without legacy ping", function()
+    local pool = support.NativePool(nativeResponse({nativeRow("first", 1, 20), nativeRow("second", 1, 80)}, false),
+        "new-hop", 1000, "current", {})
+    assert(#pool == 2 and pool[1].id == "first" and pool[2].id == "second")
+end)
+test("native connection rejects old hop wrong place and expired response", function()
+    local data = nativeResponse({nativeRow("one", 1, 20)}, false)
+    assert(support.NativePool(data, "other-hop", 1000, "current", {}) == nil)
+    data.placeId = 123; assert(support.NativePool(data, "new-hop", 1000, "current", {}) == nil)
+    data.placeId = 107778070777162
+    assert(support.NativePool(data, "new-hop", 1011, "current", {}) == nil)
+end)
+test("native connection excludes current and visited candidates and waits on exhaustion", function()
+    local data = nativeResponse({nativeRow("current", 1, 1), nativeRow("visited", 1, 2), nativeRow("new", 1, 3)}, false)
+    local pool = support.NativePool(data, "new-hop", 1000, "current", {visited = 999})
+    assert(#pool == 1 and pool[1].id == "new")
+    assert(support.NativePool(data, "new-hop", 1000, "current", {visited = 999, new = 999}) == nil)
+end)
+test("native connection cannot advance with partial or stale completion proof", function()
+    local data = nativeResponse({nativeRow("two", 2, 1)}, false)
+    assert(support.NativePool(data, "new-hop", 1000, "current", {}) == nil)
+    data.complete = true
+    assert(support.NativePool(data, "new-hop", 1000, "current", {})[1].id == "two")
+    data.scanStartedAt = 100
+    assert(support.NativePool(data, "new-hop", 1000, "current", {}) == nil)
+end)
+test("native connection does not use errored stale or reordered server rows", function()
+    local data = nativeResponse({nativeRow("one", 1, 2), nativeRow("other", 1, 1)}, false)
+    assert(support.NativePool(data, "new-hop", 1000, "current", {}) == nil)
+    data.servers = {nativeRow("one", 1, 2)}; data.servers[1].observedAt = 1
+    assert(support.NativePool(data, "new-hop", 1000, "current", {}) == nil)
+    data.servers[1].observedAt = 995; data.state = "error"; data.error = "authentication"
+    assert(support.NativePool(data, "new-hop", 1000, "current", {}) == nil)
+end)
+test("ascending occupancy evidence permits higher groups with native partial pages", function()
+    local data = nativeResponse({nativeRow("two", 2, 19)}, false)
+    data.lowestOccupancy = 2; data.occupancyCheckedAt = 990
+    assert(support.NativePool(data, "new-hop", 1000, "current", {})[1].id == "two")
+    data.lowestOccupancy = 1
+    assert(support.NativePool(data, "new-hop", 1000, "current", {}) == nil)
+    data.lowestOccupancy = 2; data.occupancyCheckedAt = 900
+    assert(support.NativePool(data, "new-hop", 1000, "current", {}) == nil)
+end)
 test("immediate teleport exception fails without waiting", function()
     local attempt, fake = fakeAttempt({send = function() error("immediate failure") end})
     local state, reason = attempt.Run("target")
@@ -866,5 +1014,214 @@ test("higher rarity hunt cannot bypass the empty destination load wait", functio
     loadClock = 30
     local mode, info = scanDestination()
     assert(mode == "hop" and info.continuingCycle and info.rarityCount == 0)
+end)
+test("cookie parser rejects headers multiple cookies controls and oversize input", function()
+    assert(support.NormalizeCookie("  .ROBLOSECURITY=fake-secret;\n") == "fake-secret")
+    for _, value in ipairs({"", "Cookie: .ROBLOSECURITY=fake", "a;b", "a\nb", "a b", string.rep("a", 16385)}) do
+        assert(support.NormalizeCookie(value) == nil)
+    end
+end)
+local function credentialFixture(owner, files)
+    files = files or {}
+    local io = {read = function(path) assert(files[path]); return files[path] end,
+        write = function(path, raw) files[path] = raw end,
+        erase = function(path) files[path] = nil end,
+        encode = function(value) return tostring(value.owner) .. ":" .. value.cookie end,
+        decode = function(raw) local id, cookie = raw:match("^(%d+):(.+)$"); return {owner = tonumber(id), cookie = cookie} end}
+    return support.DeviceCookie(io, owner), files, io
+end
+test("device cookie survives hop only after explicit local save and is account scoped", function()
+    local first, files = credentialFixture(101)
+    assert(first.Set("fake-secret", true))
+    local destination = credentialFixture(101, files)
+    assert(destination.Restore() and destination.Read() == "fake-secret")
+    local other = credentialFixture(202, files)
+    assert(not other.Restore() and other.Read() == nil)
+    local status = destination.Status()
+    assert(status.configured and status.remembered and status.cookie == nil)
+    assert(first.Set("session-secret", false) and not first.Status().remembered)
+    destination = credentialFixture(101, files)
+    assert(not destination.Restore())
+    first.Destroy(); assert(first.Read() == nil)
+end)
+test("forget removes saved cookie and unwritable storage never pretends success", function()
+    local device, files, io = credentialFixture(101)
+    assert(device.Set("fake-secret", true)); assert(device.Forget())
+    assert(next(files) == nil and device.Read() == nil)
+    io.write = function() error("fake-secret") end
+    local ok, reason = device.Set("fake-secret", true)
+    assert(not ok and not reason:find("fake-secret", 1, true) and device.Read() == nil)
+    io.erase = function() error("fake-secret") end
+    assert(not device.Forget() and not device.Status().configured)
+end)
+test("authenticated cookie request is fixed to Roblox and occupancy carries no cookie", function()
+    local calls = {}
+    local env = {encode = function(value) return value end, decode = function() return {data = {}} end,
+        send = function(options)
+            table.insert(calls, {url = options.Url, cookie = options.Headers.Cookie, redirect = options.Redirect})
+            return {StatusCode = 200, Body = "fixture"}
+        end}
+    assert(support.CookiePage(env, "BestLatency", nil, "fake-secret"))
+    assert(calls[1].url:find("https://games.roblox.com/v2/games/107778070777162/servers/Public", 1, true) == 1)
+    assert(calls[1].cookie == ".ROBLOSECURITY=fake-secret" and calls[1].redirect == false)
+    assert(support.CookiePage(env, "OccupancyAsc", nil, "fake-secret"))
+    assert(calls[2].cookie == nil)
+    assert(not support.CookiePage(env, "https://another.example", nil, "fake-secret") and #calls == 2)
+end)
+test("cookie HTTP errors redirects and decoder failures never disclose credential", function()
+    local env = {encode = function(v) return v end, decode = function() error("fake-secret") end,
+        send = function() error("fake-secret") end}
+    local function rejected()
+        local page, reason = support.CookiePage(env, "BestLatency", nil, "fake-secret")
+        assert(page == nil and not reason:find("fake-secret", 1, true))
+    end
+    rejected()
+    for _, status in ipairs({200, 302, 400, 401, 403, 429, 500}) do
+        env.send = function() return {StatusCode = status, Body = "fake-secret", Headers = {Cookie = "fake-secret"}} end
+        rejected()
+    end
+    env.send = function() return {StatusCode = 200, Url = "https://another.example/", Body = "fixture"} end
+    rejected()
+end)
+local function deviceNativeFixture(pages)
+    local index, clock, active, calls = 0, 100, true, {}
+    local native = support.DeviceNative({now = function() return clock end, alive = function() return active end,
+        fetch = function(order, cursor)
+            index += 1; table.insert(calls, {order = order, cursor = cursor})
+            local entry = pages[index]
+            if not entry then return nil, "fixture exhausted" end
+            if entry.cancel then active = false end
+            return entry.page, entry.error
+        end})
+    return native, calls, function(value) clock = value end
+end
+local function nativePage(rows, cursor)
+    local result = {data = {}, nextPageCursor = cursor}
+    for _, row in ipairs(rows) do table.insert(result.data, {id = row[1], playing = row[2], maxPlayers = 7}) end
+    return result
+end
+test("device uses minimum occupancy proof and native order across consumed groups", function()
+    local native, calls = deviceNativeFixture({
+        {page = nativePage({{"one", 1}, {"two-a", 2}})},
+        {page = nativePage({{"two-b", 2}, {"one", 1}, {"two-a", 2}}, "later")},
+        {page = nativePage({{"one", 1}, {"two-a", 2}, {"two-b", 2}})},
+    })
+    local first = native.Pick("current", {})
+    assert(#first == 1 and first[1].id == "one")
+    local nextGroup = native.Pick("current", {one = 100})
+    assert(#nextGroup == 2 and nextGroup[1].id == "two-b" and nextGroup[2].id == "two-a")
+    assert(calls[1].order == "OccupancyAsc" and calls[2].order == "BestLatency" and calls[3].order == "OccupancyAsc")
+end)
+test("device partial latency page never overrides lower occupancy proof", function()
+    local pages = {{page = nativePage({{"one", 1}, {"two", 2}})}}
+    for i = 1, 5 do table.insert(pages, {page = nativePage({{"two", 2}}, "page" .. i)}) end
+    local native = deviceNativeFixture(pages)
+    assert(native.Pick("current", {}) == nil)
+end)
+test("device malformed proof repeated cursors cancellation and errors wait", function()
+    for _, pages in ipairs({
+        {{page = nativePage({{"two", 2}, {"one", 1}})}},
+        {{error = "authentication"}},
+        {{cancel = true, page = nativePage({{"one", 1}})}},
+        {{page = nativePage({{"visited", 1}}, "same")}, {page = nativePage({{"visited", 1}}, "same")}},
+        {{page = nativePage({{"one", 1}})}, {page = nativePage({{"two", 2}}, "same")}, {page = nativePage({{"two", 2}}, "same")}},
+    }) do
+        local native = deviceNativeFixture(pages)
+        assert(native.Pick("current", {visited = 100}) == nil)
+    end
+end)
+test("device expired catalogue cannot reuse servers from the previous arrival", function()
+    local native, _, clock = deviceNativeFixture({
+        {page = nativePage({{"one", 1}})}, {page = nativePage({{"one", 1}})},
+        {page = nativePage({{"two", 2}})}, {page = nativePage({{"two", 2}})},
+    })
+    assert(native.Pick("current", {})[1].id == "one")
+    clock(281)
+    assert(native.Pick("current", {})[1].id == "two")
+end)
+local function requestFixture(shared, delay)
+    local clock, live, queued = 100, true, {}
+    local env = {now = function() return clock end, clock = function() return clock end,
+        spawn = function(callback) table.insert(queued, {at = clock + (delay or 0), callback = callback}) end,
+        wait = function(seconds)
+            clock += seconds
+            for index = #queued, 1, -1 do
+                if queued[index].at <= clock then local work = table.remove(queued, index); work.callback() end
+            end
+        end}
+    local transport = support.DeviceRequest(env, shared)
+    return transport, env, function() return live end, function() live = false end
+end
+test("account validation waits through the full saved sixty second cooldown", function()
+    local shared = {last = 100, cooldown = 160}
+    local transport, env, alive = requestFixture(shared)
+    local calls, updates = 0, {}
+    local page = transport.Run(function()
+        calls += 1; assert(env.now() >= 160); return {data = {}}, nil, 200
+    end, alive, function(state) table.insert(updates, state) end)
+    assert(page and calls == 1 and not shared.busy)
+    assert(updates[1].kind == "rate_limit" and updates[1].seconds == 60)
+    assert(env.now() >= 160 and env.now() < 161)
+end)
+test("normal spacing reports interval without inventing Roblox rate limiting", function()
+    local shared = {last = 100, cooldown = 0}
+    local transport, env, alive = requestFixture(shared)
+    local state
+    assert(transport.Run(function() assert(env.now() >= 115); return {data = {}}, nil, 200 end, alive,
+        function(value) state = state or value end))
+    assert(state.kind == "interval" and state.seconds == 15)
+    assert(not support.DeviceWaitMessage(state):find("429", 1, true))
+end)
+test("429 retry waits sixty seconds and retains a single request reservation", function()
+    local shared = {last = 0, cooldown = 0}
+    local transport, env, alive = requestFixture(shared)
+    local _, _, status = transport.Run(function() return nil, "rate limited", 429 end, alive)
+    assert(status == 429 and shared.cooldown >= 160 and not shared.busy)
+    local calls = 0
+    local page = transport.Run(function() calls += 1; assert(env.now() >= shared.cooldown); return {data = {}}, nil, 200 end, alive)
+    assert(page and calls == 1 and transport.State().lastHttpStatus == 200)
+end)
+test("pending native HTTP stays locked on timeout until it actually finishes", function()
+    local shared = {last = 0, cooldown = 0}
+    local transport, env, alive = requestFixture(shared, 45)
+    local calls = 0
+    local function send() calls += 1; return {data = {}}, nil, 200 end
+    local page, reason = transport.Run(send, alive)
+    assert(not page and shared.busy and calls == 0 and reason:find("executor", 1, true))
+    page, reason = transport.Run(send, alive)
+    assert(not page and calls == 0 and shared.busy and not reason:find("Roblox respondio HTTP 429", 1, true))
+    env.wait(15)
+    assert(calls == 1 and not shared.busy)
+end)
+test("executor exception and spawn failure release reservation without secret errors", function()
+    local shared = {last = 0, cooldown = 0}
+    local transport, env, alive = requestFixture(shared)
+    local page, reason = transport.Run(function() error("fake-secret") end, alive)
+    assert(not page and not shared.busy and not reason:find("fake-secret", 1, true))
+    shared.last = 0
+    env.spawn = function() error("fake-secret") end
+    page, reason = transport.Run(function() return {} end, alive)
+    assert(not page and not shared.busy and not reason:find("fake-secret", 1, true))
+end)
+test("cancelled initial validation during cooldown sends no credential", function()
+    local shared = {last = 100, cooldown = 160}
+    local transport, _, alive, cancel = requestFixture(shared)
+    local calls = 0
+    local page = transport.Run(function() calls += 1; return {} end, alive, function() cancel() end)
+    assert(not page and calls == 0 and not shared.busy)
+end)
+test("legacy pending request on rerun waits but never clears another reservation", function()
+    local shared = {last = 100, cooldown = 0, busy = true}
+    local transport, _, alive = requestFixture(shared)
+    local calls = 0
+    local page, reason = transport.Run(function() calls += 1; return {} end, alive)
+    assert(not page and shared.busy == true and calls == 0 and reason:find("executor", 1, true))
+end)
+test("completion cannot unlock an unrelated newer reservation", function()
+    local shared = {last = 0, cooldown = 0}
+    local transport, _, alive = requestFixture(shared)
+    local replacement = {started = 110}
+    assert(transport.Run(function() shared.busy = replacement; return {data = {}}, nil, 200 end, alive))
+    assert(shared.busy == replacement)
 end)
 print(string.format("%d regression tests passed", passed))

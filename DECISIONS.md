@@ -2,6 +2,17 @@
 
 | Decision | Motivo y consecuencia |
 | --- | --- |
+| Una distribucion comun para Delta y Potassium | Usuario solicita conservar main/chilli_hopper.luau en todas las PC y usarlo tambien en iPad. CI publica el mismo bundle en stable tras validar; cookies/filtros son locales. Un script abierto conserva su version hasta recargar. Previews o SHA de prueba no se usan como distribucion permanente. |
+| Separar pausa propia, HTTP 429 y peticion pendiente | Usuario observa pausa al guardar desde Delta. La espera anterior de 35s no cubria cooldown 60s y descartaba el borrador. Prioridad a validacion, contador, un reintento 429 y borrador en memoria mientras formulario abierto. Una peticion colgada sigue bloqueada hasta terminar, sin forzar duplicados. |
+| Cookie propia introducida en Delta/Potassium | Usuario quiere probar iPad como otra persona. Peticion directa al host Roblox desde cada dispositivo; el autor no recibe credenciales. No requiere su PC. |
+| Guardado opcional local por cuenta y sin cifrado | Executor movil no ofrece almacen cifrado verificado. Guardar y usar AUTO informa el alcance; solo sesion no persiste al hop. Borrar elimina/sobrescribe el secreto y apaga AUTO, sin fallback. |
+| Launcher fijo y segunda entrada en Opciones | Cerrar por accidente debe permitir reabrir, independientemente de plegado/arrastre del hopper. |
+| Conectar Best Ping mediante proceso local | Cookie solo en PC/Roblox, fuera del cliente/bundle/Git. JSON sanitizado en workspace, sin listener de red. Configuracion explicita; error/ausencia de proceso esperan sin fallback silencioso. |
+| OccupancyAsc confirma grupos menores antes de avanzar | Permite seleccionar 2..6 sin recorrer toda la lista BestLatency. Prueba ligada a exclusiones y maximo 90s; desempate siempre del orden nativo y filas con maximo 180s. |
+| Instalacion local de prueba sustituida por cargador comun | Las pruebas previas usaron un bundle del workspace con autoexec respaldado. La distribucion solicitada usa main/stable mediante CI en todos los dispositivos. El proceso de PC existente debe reiniciarse despues de reiniciar Windows. |
+| Ocupacion 1/7 -> 2/7 -> ... -> 6/7 entre hops | Aclaracion del usuario: la ocupacion manda antes de Best Ping. Pool de un solo grupo; al agotarse se consulta de nuevo. Antes de usar 2..6 se revisan otra vez grupos menores; caches antiguas/mezcladas invalidas. Actual y visitados recientes quedan excluidos. |
+| Una muestra BestLatency no prueba agotamiento | Con paginas pendientes, agotar candidatos observados de 1/7 no autoriza avanzar a 2/7. OccupancyGroup exige evidencia de grupos menores completos para seleccionar 2..6. No interpretar maximo de paginas, cursor repetido o fallo HTTP como fin de la lista. |
+| BestLatency debe venir del orden nativo | No sustituirlo por ping anunciado ascendente/descendente. V2 requiere autenticacion; el proceso privado ya conecta listas al runtime sin transmitir la cookie. |
 | Solo huevos libres del mapa | El usuario excluyo bases. Usar FieldEggs/Slot, sin inventarios ni PlotState como fuente de candidatos. |
 | Divine y minimo 7B/s por defecto | Requisito original; el panel permite ajustar los filtros sin alterar la precision de comparacion. |
 | Sin Divine ni observacion vigente esperar; Divine insuficiente inicia hops | Una observacion en ese ciclo permite continuar aunque falte en otro servidor por robo/recogida. No inventar presencia actual ni aceptar bases/inventarios como evidencia. |

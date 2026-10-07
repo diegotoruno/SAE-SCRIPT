@@ -1,5 +1,57 @@
 # Estado del trabajo
 
+## 2026-10-07 - Distribucion comun solicitada
+
+- Usuario reporta CUENTA GUARDADA en Delta/iPad y autoriza actualizar main/chilli_hopper.luau para todos. Conserva una sola version de distribucion con cookies/filtros locales; requiere cambiar previews antiguos a main una sola vez.
+- Codigo 7658660 aprobado por CI 37601500836: compilacion/125 regresiones Luau/diez tests Python. Documentacion actualizada para uso comun, feedback real reportado y limites de evidencia. Se prepara PR #10 para integrar y publicar mediante CI, sin modificar stable directamente ni divulgar credenciales.
+
+## 2026-10-07 - Guardado visible y preview actualizable
+
+- Usuario pregunta como saber si se guardo y confirma cargador con SHA e0f669..., que no puede cambiar. Documentado preview de rama actualizable con sustitucion unica del cargador; no requiere cambiar cookie ya persistida.
+- Formulario deja confirmacion de guardado verificado visible en vez de cerrarse, botones distinguen comprobacion, launcher indica GUARDADA/SOLO SESION y reapertura informa estado. API de estado agrega connecting/message sin secretos. AUTO y detector intactos.
+- Build/compilacion y las 125 regresiones existentes pasan. Feedback real en Delta y autenticacion/paste/persistencia aun no confirmados; se conserva el preview y stable no cambia.
+
+## 2026-10-07 - Espera al guardar cookie en Delta
+
+- Usuario reporta pausa y confirma trigger Guardar y usar AUTO. Mensaje provenia del gate propio y no confirma 429. Hallado deadline 35s menor que cooldown 60s y perdida de borrador al fallar comprobacion.
+- Implementado DeviceRequest testable con token/reserva, progreso distinguido entre intervalo/429/pendiente y manejo de excepciones. Cola hasta 95s; request nativo que excede 30s mantiene bloqueo hasta terminar, sin duplicados. Guardar suspende prefetch, reintenta una vez ante 429, conserva borrador oculto con formulario abierto y expone solo estado sanitizado.
+- Build/compilacion y 125 regresiones correctos. Ocho casos nuevos prueban cooldown completo/intervalo/reintento/timeout/excepciones/cancelacion/legacy busy/finalizacion tardia. Auth de Delta pendiente, PR #10 mantiene borrador y stable no cambia.
+
+## 2026-10-07 - Cookie local por usuario y formulario recuperable
+
+- Usuario requiere opcion en Delta/iPad y Potassium, sin acceso del autor a cookies. Implementado transporte directo optativo DeviceCookie, validacion BestLatency antes de guardar, persistencia por UserId solo tras Guardar y usar AUTO, sesion sin guardado y borrar/desconectar. Archivo local sin cifrado explicitado en formulario; nunca API/logs/teleport/bridge/Git.
+- Usuario senala que cerrar debe permitir recuperar. Launcher CUENTA / BEST PING independiente del marco plegable/arrastrable, segunda entrada en Opciones y API segura de abrir/cerrar/estado.
+- Build/compilacion y 117 regresiones Luau pasan; diez tests Python pasan. UI aislada en Potassium con archivos ficticios/request bloqueado: reapertura doble desde identidad baja, limites de pantalla/escalas, opcion secundaria y limpieza de 30 conexiones correctos. AUTO/filtros/JobId reales conservados, sin teleports ni cookies reales. Captura no disponible por pipe nativo de Computer Use; paste/toques/auth/persistencia reales de Delta pendientes.
+- Rama codex/cookie-local-dispositivo sobre la conexion anterior; la sesion/autoexec real de esta PC conserva el bridge previo. Se prepara preview generado por build.py para prueba del usuario; stable sigue anterior.
+
+## 2026-10-07 - Conexion local Best Ping activa
+
+- Usuario pidio conectar. Agregados proceso Python local, launcher oculto, intercambio JSON sanitizado, configuracion BestLatency y NativePool; no cookies en runtime/bundle. Mantiene cursor entre hops y confirma grupo minimo con OccupancyAsc antes de avanzar a 2..6. Modo nativo espera ante fallos, sin fallback.
+- Build/compilacion y 108 regresiones Luau correctos; diez tests Python offline correctos, agregados a CI. Configuracion/API/distribucion documentadas en BEST_PING.md.
+- Activado en Potassium/Windows con AUTO Eternal >=7B/s; autoexec local lee bundle validado y original queda respaldado. Reejecucion retira 23 conexiones/sesion anterior, no duplica Chilli.
+- Un salto real llego a candidato 1/7 seleccionado por BestLatency; autoexec conserva conexion en destino y renueva pool excluyendo visitado. Mediana posterior 70.26 ms, tres jugadores al medir, pending=false. Configuracion/AUTO intactos. Error auxiliar de GUI corregido sin teleport previo ni inputs sinteticos; evidencia privada en verification/best-ping/connection-live-report.json del workspace principal.
+- Stable sin publicar; activo solo en esta PC. Reiniciar proceso tras reiniciar Windows. Grupos 2..6 reales y otros dispositivos no probados.
+
+## 2026-10-07 - Progresion 1/7 -> 2/7 -> ... -> 6/7
+
+- Aclaracion del usuario aplicada en codex/best-ping-un-jugador: orden numerico de todas las ocupaciones antes del desempate, registros invalidos excluidos y pool de un solo grupo con politica occupancy-groups-v2. Agotar la cache vuelve a consultar; cada hop de grupos 2..6 revisa de nuevo si hay candidatos menores.
+- Build/compilacion y 102 regresiones correctos. Probe privado: seis regresiones offline de paginacion/ocupacion, sin nuevas peticiones autenticadas.
+- Helper exacto verificado aislado en Potassium con los 488 candidatos sanitizados de la consulta anterior: grupos 1..6 y BestLatency interno correctos, pool de tres con una persona, avance a dos bloqueado al agotarlos porque quedan paginas. Progresion 2..6 solo en simulacion completa. Filtros/AUTO/JobId conservados, cero teleports.
+- Candidata sin cargar/publicar. BestLatency sigue sin conectar al runtime automatico; no afirmar que la version activa ya usa el orden nativo. Datos/evidencia privados en verification/best-ping del workspace principal.
+
+## 2026-10-07 - Orden BestLatency real confirmado
+
+- Probe privado con cookie actualizada: cinco paginas HTTP 200, 500 registros, 488 candidatos unicos, tres playing=1 primero (posiciones originales 22/210/259). Consultas espaciadas 15s, muestra incompleta porque quedan mas paginas.
+- Helper exacto de candidata probado aislado en Potassium con todos esos candidatos: orden nativo preservado dentro de los grupos, prioridad de una persona correcta. Filtros/AUTO/JobId intactos, cero teleports y cookie solo en el probe de PC/endpoint Roblox, fuera de Git y del cliente.
+- No cambian Luau/bundle ni las 97 regresiones existentes. Evidencia privada en verification/best-ping del workspace principal. Candidata sin activar/publicar; fuente nativa aun no conectada al runtime y falta salto real/medicion de ping/persistencia de pool.
+
+## 2026-10-07 - Pruebas de Best Ping y prioridad de una persona
+
+- Rama aislada `codex/best-ping-un-jugador` sobre main publicado `6c996a1`; conserva arrastre, UI, rareza minima y barrera de carga. Pool ordenado primero por playing=1, conteo persistido y cache antigua invalidada. BestLatency experimental conserva el orden de entrada; runtime sigue usando la heuristica legacy dentro de cada grupo.
+- Build/compilacion y 97 regresiones correctas. Helper exacto ejecutado aislado con 200 servidores reales: 97 elegibles con una persona antes de 100 con seis; top 8 con una persona. Filtros/AUTO/JobId iguales; sin teleports ni carga del bundle.
+- Endpoint nativo identificado en JS publico de Roblox, pero BestLatency devuelve HTTP 400/codigo 7/Guest users are not allowed desde request. Usuario confirma opcion en la aplicacion; no se verifico la llamada de esa interfaz. HttpRbxApiService bloqueado por executor; no se elude. Un 429 del primer muestreo se respeto y la repeticion paso.
+- Evidencia privada en verification/best-ping del workspace principal. Candidata sin publicar ni activar. Pendientes autenticacion soportada, pool/UI en cliente y ping real de destino.
+
 ## 2026-10-07 - Confirmacion manual del arrastre en Windows
 
 - Tras el reporte de que no se movia, el cliente tenia la version publicada anterior (seis conexiones): AUTO habia saltado y autoexec recargo stable, donde el arreglo aun no estaba publicado.

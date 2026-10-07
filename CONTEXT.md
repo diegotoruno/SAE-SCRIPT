@@ -1,5 +1,31 @@
 # Contexto del proyecto
 
+## Unificar distribucion en main/stable (2026-10-07)
+
+Usuario confirma CUENTA GUARDADA en Delta/iPad y solicita publicar para que todos usen exclusivamente main/chilli_hopper.luau. Se prepara integracion de PR #10 y publicacion mediante CI; stable no se edita manualmente. CI del codigo 7658660 paso compilacion, 125 regresiones Luau y diez tests Python (run 37601500836). La confirmacion reportada indica validacion inicial/escritura/relectura completadas; no demuestra aun continuidad DeviceCookie entre hops ni Redirect=false. PC e iPad usan el mismo cargador de main en autoexec, conservando cookies/filtros locales. Previews y SHA antiguos requieren sustitucion unica por main. Los siguientes apartados describen las pruebas previas y sus limites en ese momento.
+
+## Confirmacion de guardado y cargador actualizable (2026-10-07)
+
+Usuario no distingue si Guardar funciono y pide actualizar el enlace que ya pego. Confirma que usa el SHA e0f669...: es inmutable y necesita una sustitucion unica por la rama preview, sin reemplazar la cookie local. Formulario ahora conserva confirmacion explicita tras escritura/relectura, muestra comprobacion en botones y refleja GUARDADA/SOLO SESION en launcher; reapertura/restauracion comunica estado. No cambia detector ni stable. Autenticacion Delta sigue pendiente.
+
+## Pausa al guardar en Delta (2026-10-07)
+
+Usuario confirma que "Best Ping en pausa; espera el limite de Roblox" aparece al pulsar Guardar y usar AUTO. Ese texto propio no demuestra HTTP 429. Corregido deadline 35s que era menor al cooldown 60s; DeviceRequest da progreso/contador y distingue intervalo, 429 y native request pendiente, con excepciones sanitizadas y reserva hasta terminacion real. Guardar tiene prioridad sobre prefetch, reintenta una vez ante 429 y conserva borrador oculto si falla mientras ventana abierta. Build/125 regresiones pasan. Auth real de Delta sigue sin confirmacion; conservar preview y PR #10 en borrador.
+
+## Cookie propia por dispositivo (2026-10-07)
+
+Rama codex/cookie-local-dispositivo, sobre la conexion Best Ping previa. Usuario requiere pegar la cookie dentro del script en Delta/iPad; conocidos usan Potassium. Nuevo formulario con launcher fijo CUENTA / BEST PING y acceso desde Opciones; cerrar no impide reabrir. Guardado local opcional sin cifrado por UserId para sobrevivir hops, sin PC/proxy ni credenciales en API/logs/Git. Alternativa de sesion sola y borrado/desconexion. Build/117 regresiones y diez tests Python pasan. Montaje/cierre/reapertura/limpieza comprobados aislados en Potassium con almacenamiento simulado; no autenticar desde Delta ni declarar soporte de redirects probado. Ver BEST_PING.md. Version activa/autoexec de esta PC sigue usando el bridge anterior; no se ha sustituido stable.
+
+## Pruebas de seleccion de servidores (2026-10-07)
+
+Estado actual: el usuario pidio hacer la conexion. BestLatency ya esta conectado/activado en esta PC mediante best_ping_bridge.py y el intercambio de JSON sanitizados en el workspace de Potassium. La cookie permanece en el TXT privado del PC; el runtime solo recibe registros. El autoexec local de prueba lee el bundle validado para conservar la conexion entre hops; original respaldado, stable sin publicar. Un hop real llego al candidato anunciado 1/7, con mediana posterior de 70.26 ms y tres jugadores al medir. AUTO/Eternal >=7B/s intactos; conexion y renovacion de pool confirmadas en el destino.
+
+El proceso guarda el cursor BestLatency entre hops. Para habilitar ocupaciones 2..6 sin recorrer toda la lista nativa, OccupancyAsc comprueba el primer grupo no visitado, con prueba vigente ligada al conjunto de exclusiones. Respuestas vencidas/parciales sin esa prueba y errores esperan; no hay fallback silencioso. Inicio del proceso documentado en BEST_PING.md; tras reiniciar Windows debe iniciarse otra vez. Las observaciones de los parrafos siguientes son historia previa a la conexion.
+
+El usuario pidio probar Best Ping y aclaro el orden entre hops: agotar candidatos elegibles de 1/7 antes de pasar a 2/7, luego 3/7 y asi hasta 6/7. playing se refiere a ocupacion antes de entrar. Esta candidata aplica ocupacion ascendente antes de cualquier desempate y guarda un solo grupo en el pool; agotarlo requiere consultar de nuevo. Antes de usar grupos 2..6 se vuelve a consultar para detectar nuevos candidatos menores. Dentro de cada grupo el runtime aun conserva la heuristica anterior de FPS/ping anunciado. La consulta v2 sin autenticacion desde Potassium devuelve HTTP 400, codigo 7, Guest users are not allowed. Por solicitud del usuario, un probe privado de PC lee una cookie de su TXT .private fuera de Git y ya obtuvo BestLatency con HTTP 200. Esa fuente aun no se conecta al runtime; no incluir credenciales en el bundle ni transmitirlas al cliente. No se publico ni cargo el bundle candidato.
+
+El helper experimental conserva BestLatency recibido de Roblox dentro de cada ocupacion. Se verifico aislado en Potassium con cinco paginas/500 registros y 488 candidatos unicos: orden 1..6 y desempates nativos correctos, pool de tres candidatos con una persona. Como quedan paginas, agotarlos no demuestra ausencia de otros con una persona; OccupancyGroup bloquea avanzar a 2..6 sin evidencia de que los grupos inferiores estan completos. La fuente v1 Occupancy Asc permite identificar el primer grupo elegible; una muestra parcial BestLatency no. No se probo el ping de destino ni un salto real. El conteo playing puede cambiar antes de llegar.
+
 Fecha de consolidacion: 2026-10-06. Este documento resume los requisitos y las decisiones de la conversacion para continuar desde Visual Studio Code sin depender del historial del chat.
 
 ## Objetivo
