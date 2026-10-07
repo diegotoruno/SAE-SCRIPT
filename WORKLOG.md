@@ -1,5 +1,19 @@
 # Estado del trabajo
 
+## 2026-10-07 - Confirmacion manual del arrastre en Windows
+
+- Tras el reporte de que no se movia, el cliente tenia la version publicada anterior (seis conexiones): AUTO habia saltado y autoexec recargo stable, donde el arreglo aun no estaba publicado.
+- Recargada la candidata en el servidor actual; el usuario confirmo que ya se mueve. Observacion pasiva de inputs reales desde plegado/texto y cambios de Position; filtros Eternal >=7B/s y AUTO conservados. Sin inputs sinteticos ni llamadas a conexiones.
+- Preparado PR #9, rama codex/boton-rojo-movible. Publicacion por CI pendiente en este punto; autoexec conserva el cargador habitual. Evidencia privada en verification/movable-button-manual.json. iPad/tactil no probado.
+
+## 2026-10-07 - Boton rojo movible
+
+- Arrastre registrado en toda la superficie del hopper, incluidos texto, AUTO y plegado. Conserva umbral de 6px y guardado existente; sigue solo el toque inicial y bloquea clics durante el arrastre y 250ms despues de soltar, incluso si se mantuvo quieto. Perder foco termina el gesto; listeners retirados con la sesion.
+- Cambio aplicado en esta carpeta sin sobrescribir pendientes anteriores y preparado sobre main `3407543` en `codex/boton-rojo-movible`, worktree `verification/movable-button`. Detector y panel publicados conservados. Build/compilacion y 61/92 regresiones pasan respectivamente.
+- Potassium: candidata cargada, una GUI, seis conexiones anteriores desconectadas y 23 nuevas; listeners en boton/texto/chips/estado. Conservados Eternal >=7B/s, AUTO, posicion, plegado y preferencias; panel sin error, Chilli reutilizado. Reporte privado en `verification/movable-button-live.json`.
+- El primer intento coincidió con una reconexion y fallo en el auxiliar antes de cargar la candidata (No active finder); se repitio durante loading y paso. Logs conservados. No se simularon gestos ni se dispararon conexiones; arrastre fisico y persistencia tras un gesto real pendientes de prueba manual. AUTO siguio sus hops naturales. Autoexec sin modificar; version publica aun anterior.
+
+
 ## 2026-10-07 - UI integrada sobre build 21
 
 - Integrado el estilo pendiente del Egg Finder en `codex/ui-integrada`, worktree aislado `verification/ui-publish`, sobre main `ff8ea38`. Solo se modifica el panel y su documentacion; detector y runtime permanecen identicos a build 21, con rareza minima inclusiva y espera de carga.
