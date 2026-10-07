@@ -7,6 +7,54 @@ local function createMapEggSearch(readJson, writeJson)
     local CYCLE_FILE = "chilli_egg_search_cycle.json"
     local search = { ready = false, error = nil, lastScan = nil, fieldRevision = 0,
         stats = { scans = 0, analyses = 0, incomeReads = 0, cacheHits = 0, lastMs = 0 } }
+    -- HasFieldSnapshot can become true before the initial replication finishes.
+    -- Wait from the first usable read, then require unchanged Slot inputs in
+    -- separate polls. This gate belongs to this session/cycle, never to disk.
+    local LOAD_SECONDS, QUIET_SECONDS = 10, 3
+    local snapshotLoad
+    local function copyInputs(value)
+        if type(value) ~= "table" then return value end
+        local copy = {}
+        for key, item in pairs(value) do copy[key] = copyInputs(item) end
+        return copy
+    end
+    local function sameInputs(a, b)
+        if type(a) ~= type(b) then return false end
+        if type(a) ~= "table" then return a == b end
+        for key, value in pairs(a) do if not sameInputs(value, b[key]) then return false end end
+        for key in pairs(b) do if a[key] == nil then return false end end
+        return true
+    end
+    local function clearSnapshotLoad()
+        snapshotLoad = nil
+    end
+    local function snapshotReady(records, directory, cycle)
+        if not game:IsLoaded() then clearSnapshotLoad(); return false end
+        local now = os.clock()
+        local stamp = {period = cycle and cycle.periodIndex,
+            reset = cycle and cycle.nextReset, seconds = cycle and cycle.periodSeconds,
+            night = cycle and cycle.nightSeconds}
+        if snapshotLoad and (snapshotLoad.modules ~= search.modules
+            or not sameInputs(snapshotLoad.stamp, stamp)) then clearSnapshotLoad() end
+        if snapshotLoad and snapshotLoad.ready then return true end
+        local inputs = {}
+        for key, egg in pairs(records) do
+            if egg.State == "Slot" then
+                local catalog = directory[egg.AssetCategory]
+                inputs[key] = {egg = copyInputs(egg), rarity = copyInputs(catalog and catalog.Rarity),
+                    rate = catalog and catalog.EarningRate, name = catalog and catalog.DisplayName}
+            end
+        end
+        if not snapshotLoad then
+            snapshotLoad = {modules = search.modules, stamp = stamp, firstAt = now, stableAt = now,
+                revision = search.fieldRevision, inputs = inputs}
+        elseif snapshotLoad.revision ~= search.fieldRevision or not sameInputs(snapshotLoad.inputs, inputs) then
+            snapshotLoad.stableAt, snapshotLoad.revision, snapshotLoad.inputs = now, search.fieldRevision, inputs
+        end
+        snapshotLoad.ready = now - snapshotLoad.firstAt >= LOAD_SECONDS
+            and now - snapshotLoad.stableAt >= QUIET_SECONDS
+        return snapshotLoad.ready
+    end
     local remembered = readJson(CYCLE_FILE, {})
     if type(remembered) ~= "table" then remembered = {} end
     local function finite(value)
@@ -48,6 +96,7 @@ local function createMapEggSearch(readJson, writeJson)
     local connections = {}
     function search.Dispose()
         search.disposed = true
+        clearSnapshotLoad()
         for _, connection in ipairs(connections) do connection:Disconnect() end
         table.clear(connections)
     end
@@ -388,6 +437,7 @@ local function createMapEggSearch(readJson, writeJson)
                 end))
                 table.insert(connections, modules.eggs.ResetCountdown:Connect(function()
                     search.resetting = true
+                    clearSnapshotLoad()
                 end))
                 table.insert(connections, modules.eggs.RarityRevealed:Connect(function()
                     search.resetting = false
@@ -432,12 +482,18 @@ local function createMapEggSearch(readJson, writeJson)
         local modules = search.modules
         if not modules then return publish(nil, {ready = false, reason = "cargando datos del mapa"}) end
         local scanOk, match, info, all, rows = pcall(function()
+            if not game:IsLoaded() then
+                clearSnapshotLoad()
+                return nil, {ready = false, reason = "esperando carga del juego"}
+            end
             if search.resetting or modules.cycle.IsNightPhase(workspace:GetServerTimeNow()) then
+                clearSnapshotLoad()
                 table.clear(incomeCache)
                 analysisKey, analysisResult = nil, nil
                 return nil, {ready = false, reason = "renovando huevos; esperando snapshot nuevo"}
             end
             if not modules.eggs.HasFieldSnapshot() then
+                clearSnapshotLoad()
                 table.clear(incomeCache)
                 analysisKey, analysisResult = nil, nil
                 return nil, {ready = false, reason = "esperando spawns del mapa"}
@@ -524,13 +580,21 @@ local function createMapEggSearch(readJson, writeJson)
                 or snapshotCycle.nextReset ~= afterCycle.nextReset or snapshotCycle.periodSeconds ~= afterCycle.periodSeconds
                 or snapshotCycle.nightSeconds ~= afterCycle.nightSeconds or afterCycle.night or search.resetting) then
                 analysisKey, analysisResult = nil, nil
+                clearSnapshotLoad()
                 return nil, {ready = false, reason = "renovación durante el scan; esperando snapshot nuevo"}
             end
             details = table.clone(details)
             details.cycle = snapshotCycle
+            if not details.ready then
+                clearSnapshotLoad()
+            elseif not snapshotReady(snapshot.Records, modules.assets.Directory, snapshotCycle) then
+                details.ready = false
+                details.reason = "cargando huevos del servidor; esperando datos estables (mínimo 10 s)"
+                return nil, details, {}, mapRows
+            end
             return best, details, matches, mapRows
         end)
-        if not scanOk then return publish(nil, {ready = false, reason = tostring(match)}) end
+        if not scanOk then clearSnapshotLoad(); return publish(nil, {ready = false, reason = tostring(match)}) end
         local result, details, matches, mapRows = publish(match, info, all, rows)
         search.lastScan.mapIncome = includeMapIncome == true
         return result, details, matches, mapRows
