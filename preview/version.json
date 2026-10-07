@@ -1,0 +1,7 @@
+{
+  "source_commit": "f4f04149c3f50efec89b45c1674c6da6feed7e74",
+  "run": "local",
+  "sha256": "6d1548e660f5d9ed64508e3c849916843cb1c705b57e8d2bcd09e02e5b7b820a",
+  "bytes": 203622,
+  "luau": "0.741"
+}
