@@ -2472,6 +2472,7 @@ do
 
     local dragging = false
     local pendingDrag = false
+    local dragInput = nil
     local dragStart = nil
     local startPosition = nil
     local lastDragAt = -math.huge
@@ -2491,7 +2492,7 @@ do
     end
 
     local function draggedRecently()
-        return (os.clock() - lastDragAt) < 0.25
+        return dragging or (os.clock() - lastDragAt) < 0.25
     end
 
     -- Chip de plegar/desplegar, en la esquina superior derecha del boton.
@@ -2582,24 +2583,34 @@ do
         toggleLabel.Text = value and ARROW_UP or ARROW_DOWN
     end
 
-    -- Arrastrar: desde cualquier punto, con umbral para no confundir un clic
-    -- normal con un arrastre, y guardando la posicion al soltar.
-    connect(holder.InputBegan, function(input)
+    -- Los eventos del marco no reciben necesariamente los de sus controles.
+    -- Registrar toda la superficie roja, incluidos texto, AUTO y plegado.
+    local function beginDrag(input)
+        if pendingDrag then return end
         if input.UserInputType == Enum.UserInputType.MouseButton1
             or input.UserInputType == Enum.UserInputType.Touch then
             pendingDrag = true
             dragging = false
+            dragInput = input
             dragStart = input.Position
             startPosition = holder.Position
         end
-    end)
+    end
+
+    connect(holder.InputBegan, beginDrag)
+    for _, surface in ipairs(holder:GetDescendants()) do
+        if surface:IsA("GuiObject") then
+            connect(surface.InputBegan, beginDrag)
+        end
+    end
 
     connect(UserInputService.InputChanged, function(input)
         if not pendingDrag or not dragStart then
             return
         end
-        if input.UserInputType ~= Enum.UserInputType.MouseMovement
-            and input.UserInputType ~= Enum.UserInputType.Touch then
+        if dragInput.UserInputType == Enum.UserInputType.Touch then
+            if input ~= dragInput then return end
+        elseif input.UserInputType ~= Enum.UserInputType.MouseMovement then
             return
         end
 
@@ -2618,16 +2629,25 @@ do
         )
     end)
 
+    local function finishDrag()
+        if dragging then
+            -- Tambien cubrir un arrastre que se mantuvo quieto antes de soltar.
+            lastDragAt = os.clock()
+            saveUi()
+        end
+        pendingDrag = false
+        dragging = false
+        dragInput, dragStart, startPosition = nil, nil, nil
+    end
+
     connect(UserInputService.InputEnded, function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1
-            or input.UserInputType == Enum.UserInputType.Touch then
-            if dragging then
-                saveUi()
-            end
-            pendingDrag = false
-            dragging = false
+        if not dragInput then return end
+        if input == dragInput or (dragInput.UserInputType == Enum.UserInputType.MouseButton1
+            and input.UserInputType == Enum.UserInputType.MouseButton1) then
+            finishDrag()
         end
     end)
+    connect(UserInputService.WindowFocusReleased, finishDrag)
 
     connect(toggle.MouseButton1Click, function()
         if draggedRecently() then
