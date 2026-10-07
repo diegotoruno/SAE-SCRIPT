@@ -1,5 +1,15 @@
 # Contexto del proyecto
 
+## Pruebas de seleccion de servidores (2026-10-07)
+
+Estado actual: el usuario pidio hacer la conexion. BestLatency ya esta conectado/activado en esta PC mediante best_ping_bridge.py y el intercambio de JSON sanitizados en el workspace de Potassium. La cookie permanece en el TXT privado del PC; el runtime solo recibe registros. El autoexec local de prueba lee el bundle validado para conservar la conexion entre hops; original respaldado, stable sin publicar. Un hop real llego al candidato anunciado 1/7, con mediana posterior de 70.26 ms y tres jugadores al medir. AUTO/Eternal >=7B/s intactos; conexion y renovacion de pool confirmadas en el destino.
+
+El proceso guarda el cursor BestLatency entre hops. Para habilitar ocupaciones 2..6 sin recorrer toda la lista nativa, OccupancyAsc comprueba el primer grupo no visitado, con prueba vigente ligada al conjunto de exclusiones. Respuestas vencidas/parciales sin esa prueba y errores esperan; no hay fallback silencioso. Inicio del proceso documentado en BEST_PING.md; tras reiniciar Windows debe iniciarse otra vez. Las observaciones de los parrafos siguientes son historia previa a la conexion.
+
+El usuario pidio probar Best Ping y aclaro el orden entre hops: agotar candidatos elegibles de 1/7 antes de pasar a 2/7, luego 3/7 y asi hasta 6/7. playing se refiere a ocupacion antes de entrar. Esta candidata aplica ocupacion ascendente antes de cualquier desempate y guarda un solo grupo en el pool; agotarlo requiere consultar de nuevo. Antes de usar grupos 2..6 se vuelve a consultar para detectar nuevos candidatos menores. Dentro de cada grupo el runtime aun conserva la heuristica anterior de FPS/ping anunciado. La consulta v2 sin autenticacion desde Potassium devuelve HTTP 400, codigo 7, Guest users are not allowed. Por solicitud del usuario, un probe privado de PC lee una cookie de su TXT .private fuera de Git y ya obtuvo BestLatency con HTTP 200. Esa fuente aun no se conecta al runtime; no incluir credenciales en el bundle ni transmitirlas al cliente. No se publico ni cargo el bundle candidato.
+
+El helper experimental conserva BestLatency recibido de Roblox dentro de cada ocupacion. Se verifico aislado en Potassium con cinco paginas/500 registros y 488 candidatos unicos: orden 1..6 y desempates nativos correctos, pool de tres candidatos con una persona. Como quedan paginas, agotarlos no demuestra ausencia de otros con una persona; OccupancyGroup bloquea avanzar a 2..6 sin evidencia de que los grupos inferiores estan completos. La fuente v1 Occupancy Asc permite identificar el primer grupo elegible; una muestra parcial BestLatency no. No se probo el ping de destino ni un salto real. El conteo playing puede cambiar antes de llegar.
+
 Fecha de consolidacion: 2026-10-06. Este documento resume los requisitos y las decisiones de la conversacion para continuar desde Visual Studio Code sin depender del historial del chat.
 
 ## Objetivo

@@ -1,5 +1,33 @@
 # Estado del trabajo
 
+## 2026-10-07 - Conexion local Best Ping activa
+
+- Usuario pidio conectar. Agregados proceso Python local, launcher oculto, intercambio JSON sanitizado, configuracion BestLatency y NativePool; no cookies en runtime/bundle. Mantiene cursor entre hops y confirma grupo minimo con OccupancyAsc antes de avanzar a 2..6. Modo nativo espera ante fallos, sin fallback.
+- Build/compilacion y 108 regresiones Luau correctos; diez tests Python offline correctos, agregados a CI. Configuracion/API/distribucion documentadas en BEST_PING.md.
+- Activado en Potassium/Windows con AUTO Eternal >=7B/s; autoexec local lee bundle validado y original queda respaldado. Reejecucion retira 23 conexiones/sesion anterior, no duplica Chilli.
+- Un salto real llego a candidato 1/7 seleccionado por BestLatency; autoexec conserva conexion en destino y renueva pool excluyendo visitado. Mediana posterior 70.26 ms, tres jugadores al medir, pending=false. Configuracion/AUTO intactos. Error auxiliar de GUI corregido sin teleport previo ni inputs sinteticos; evidencia privada en verification/best-ping/connection-live-report.json del workspace principal.
+- Stable sin publicar; activo solo en esta PC. Reiniciar proceso tras reiniciar Windows. Grupos 2..6 reales y otros dispositivos no probados.
+
+## 2026-10-07 - Progresion 1/7 -> 2/7 -> ... -> 6/7
+
+- Aclaracion del usuario aplicada en codex/best-ping-un-jugador: orden numerico de todas las ocupaciones antes del desempate, registros invalidos excluidos y pool de un solo grupo con politica occupancy-groups-v2. Agotar la cache vuelve a consultar; cada hop de grupos 2..6 revisa de nuevo si hay candidatos menores.
+- Build/compilacion y 102 regresiones correctos. Probe privado: seis regresiones offline de paginacion/ocupacion, sin nuevas peticiones autenticadas.
+- Helper exacto verificado aislado en Potassium con los 488 candidatos sanitizados de la consulta anterior: grupos 1..6 y BestLatency interno correctos, pool de tres con una persona, avance a dos bloqueado al agotarlos porque quedan paginas. Progresion 2..6 solo en simulacion completa. Filtros/AUTO/JobId conservados, cero teleports.
+- Candidata sin cargar/publicar. BestLatency sigue sin conectar al runtime automatico; no afirmar que la version activa ya usa el orden nativo. Datos/evidencia privados en verification/best-ping del workspace principal.
+
+## 2026-10-07 - Orden BestLatency real confirmado
+
+- Probe privado con cookie actualizada: cinco paginas HTTP 200, 500 registros, 488 candidatos unicos, tres playing=1 primero (posiciones originales 22/210/259). Consultas espaciadas 15s, muestra incompleta porque quedan mas paginas.
+- Helper exacto de candidata probado aislado en Potassium con todos esos candidatos: orden nativo preservado dentro de los grupos, prioridad de una persona correcta. Filtros/AUTO/JobId intactos, cero teleports y cookie solo en el probe de PC/endpoint Roblox, fuera de Git y del cliente.
+- No cambian Luau/bundle ni las 97 regresiones existentes. Evidencia privada en verification/best-ping del workspace principal. Candidata sin activar/publicar; fuente nativa aun no conectada al runtime y falta salto real/medicion de ping/persistencia de pool.
+
+## 2026-10-07 - Pruebas de Best Ping y prioridad de una persona
+
+- Rama aislada `codex/best-ping-un-jugador` sobre main publicado `6c996a1`; conserva arrastre, UI, rareza minima y barrera de carga. Pool ordenado primero por playing=1, conteo persistido y cache antigua invalidada. BestLatency experimental conserva el orden de entrada; runtime sigue usando la heuristica legacy dentro de cada grupo.
+- Build/compilacion y 97 regresiones correctas. Helper exacto ejecutado aislado con 200 servidores reales: 97 elegibles con una persona antes de 100 con seis; top 8 con una persona. Filtros/AUTO/JobId iguales; sin teleports ni carga del bundle.
+- Endpoint nativo identificado en JS publico de Roblox, pero BestLatency devuelve HTTP 400/codigo 7/Guest users are not allowed desde request. Usuario confirma opcion en la aplicacion; no se verifico la llamada de esa interfaz. HttpRbxApiService bloqueado por executor; no se elude. Un 429 del primer muestreo se respeto y la repeticion paso.
+- Evidencia privada en verification/best-ping del workspace principal. Candidata sin publicar ni activar. Pendientes autenticacion soportada, pool/UI en cliente y ping real de destino.
+
 ## 2026-10-07 - Confirmacion manual del arrastre en Windows
 
 - Tras el reporte de que no se movia, el cliente tenia la version publicada anterior (seis conexiones): AUTO habia saltado y autoexec recargo stable, donde el arreglo aun no estaba publicado.

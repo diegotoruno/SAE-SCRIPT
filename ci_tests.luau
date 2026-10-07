@@ -255,6 +255,103 @@ test("paging rejects results from cancelled sessions and repeated cursors", func
         function() return true end, function() return true end, 8, 5)
     assert(calls == 2)
 end)
+test("occupancy outranks healthier and higher legacy ping servers", function()
+    local rows = {{id = "two", playing = 2, fps = 60, ping = 2000},
+        {id = "one", playing = 1, fps = 20, ping = 1},
+        {id = "empty", playing = 0, fps = 60, ping = 3000},
+        {id = "unknown", fps = 60, ping = 4000}}
+    local ranked = support.RankServers(rows, "LegacyPing")
+    assert(ranked[1].id == "one" and rows[1].id == "two")
+    assert(ranked[1].playing == 1 and rows[2].sourceRank == nil)
+    assert(#ranked == 2 and ranked[2].id == "two")
+end)
+test("legacy order keeps FPS then advertised ping within one-player group", function()
+    local rows = {{id = "slow", playing = 1, fps = 40, ping = 5000},
+        {id = "healthy-low", playing = "1", fps = 60, ping = 10},
+        {id = "healthy-high", playing = 1, fps = 55, ping = 2000},
+        {id = "other", playing = 2, fps = 60, ping = 9999}}
+    local ranked = support.RankServers(rows, "LegacyPing")
+    assert(ranked[1].id == "healthy-high" and ranked[2].id == "healthy-low")
+    assert(ranked[3].id == "slow" and ranked[4].id == "other")
+end)
+test("BestLatency preserves Roblox order inside occupancy groups", function()
+    local rows = {{id = "other-first", playing = 2, fps = 60, ping = 1},
+        {id = "one-first", playing = 1, fps = 10, ping = 1},
+        {id = "one-second", playing = 1, fps = 60, ping = 9999},
+        {id = "other-second", playing = 2, fps = 60, ping = 9999}}
+    local ranked = support.RankServers(rows, "BestLatency")
+    assert(ranked[1].id == "one-first" and ranked[2].id == "one-second")
+    assert(ranked[3].id == "other-first" and ranked[4].id == "other-second")
+end)
+test("BestLatency works without ping and handles no one-player servers", function()
+    local ranked = support.RankServers({{id = "b", playing = 3}, {id = "a", playing = 2}}, "BestLatency")
+    assert(ranked[1].id == "a" and ranked[2].id == "b")
+    assert(#support.RankServers({}, "BestLatency") == 0)
+    assert(not pcall(support.RankServers, {}, "Asc"))
+end)
+test("cached candidates keep one-player priority after JSON-like roundtrip", function()
+    local ranked = support.RankServers({{id = "two", playing = 2, fps = 60, ping = 9000},
+        {id = "one", playing = 1, fps = 60, ping = 10}}, "LegacyPing")
+    local cached = support.Copy(ranked)
+    table.remove(cached, 1)
+    assert(support.RankServers(cached, "LegacyPing")[1].id == "two")
+    table.insert(cached, {id = "new-one", playing = 1, fps = 60, ping = 1})
+    assert(support.RankServers(cached, "LegacyPing")[1].id == "new-one")
+end)
+test("BestLatency orders all six occupancies and preserves native ties", function()
+    local rows = {{id = "six", playing = 6}, {id = "three-first", playing = 3},
+        {id = "five", playing = 5}, {id = "two-first", playing = 2},
+        {id = "four", playing = 4}, {id = "one", playing = 1},
+        {id = "two-second", playing = 2}, {id = "three-second", playing = 3}}
+    local ranked = support.RankServers(rows, "BestLatency")
+    local expected = {"one", "two-first", "two-second", "three-first", "three-second", "four", "five", "six"}
+    for i, id in ipairs(expected) do assert(ranked[i].id == id) end
+end)
+test("invalid occupancy cannot enter any hop group", function()
+    local rows = {{id = "zero", playing = 0}, {id = "negative", playing = -1},
+        {id = "full", playing = 7}, {id = "fraction", playing = 1.5},
+        {id = "unknown"}, {id = "nan", playing = 0/0}, {id = "infinite", playing = math.huge}}
+    assert(#support.RankServers(rows, "LegacyPing") == 0)
+end)
+test("native partial pages cannot advance to a higher occupancy", function()
+    local rows = {{id = "three", playing = 3}, {id = "two", playing = 2}}
+    local pool, reason = support.OccupancyGroup(rows, "BestLatency", false)
+    assert(pool == nil and type(reason) == "string")
+    pool = support.OccupancyGroup(rows, "BestLatency", true)
+    assert(#pool == 1 and pool[1].id == "two")
+    table.insert(rows, {id = "one", playing = 1})
+    pool = support.OccupancyGroup(rows, "BestLatency", false)
+    assert(#pool == 1 and pool[1].id == "one")
+end)
+test("short cache exhaustion re-queries remaining single-player servers before two", function()
+    local all, visited = {}, {}
+    for i = 1, 9 do table.insert(all, {id = "one-" .. i, playing = 1, fps = 60, ping = 100 - i}) end
+    table.insert(all, {id = "two", playing = 2, fps = 60, ping = 9000})
+    local calls = 0
+    local function query()
+        local rows = support.Pages(function()
+            calls += 1; return {data = all}
+        end, function(row) return not visited[row.id] end, function() return true end, 8, 5)
+        return support.OccupancyGroup(rows, "LegacyPing", true)
+    end
+    local pool = query()
+    for i = 1, 8 do visited[pool[i].id] = true end
+    pool = query()
+    assert(#pool == 1 and pool[1].id == "one-9")
+    visited[pool[1].id] = true
+    pool = query()
+    assert(#pool == 1 and pool[1].id == "two" and calls == 3)
+end)
+test("visited ascending pages are scanned before entering the next group", function()
+    local calls = 0
+    local rows = support.Pages(function(cursor)
+        calls += 1
+        if not cursor then return {data = {{id = "visited-one", playing = 1}}, nextPageCursor = "next"} end
+        return {data = {{id = "two", playing = 2}, {id = "three", playing = 3}}}
+    end, function(row) return row.id ~= "visited-one" end, function() return true end, 8, 5)
+    local pool = support.OccupancyGroup(rows, "LegacyPing", true)
+    assert(calls == 2 and #pool == 1 and pool[1].id == "two")
+end)
 local function fakeAttempt(overrides)
     local clock, connected, disconnected, sent = 0, nil, 0, 0
     local states, alive, job = {}, true, "origin"
@@ -270,6 +367,57 @@ local function fakeAttempt(overrides)
         cancel = function() alive = false end, move = function() job = "destination" end,
         sent = function() return sent end, disconnected = function() return disconnected end}
 end
+local function nativeResponse(rows, complete)
+    return {schema = 1, placeId = 107778070777162, orderBy = "BestLatency",
+        requestId = "new-hop", updatedAt = 1000, scanStartedAt = 990,
+        state = "ready", complete = complete, servers = rows}
+end
+local function nativeRow(id, playing, rank)
+    return {id = id, playing = playing, maxPlayers = 7, nativeRank = rank, observedAt = 995}
+end
+test("native connection consumes authenticated order without legacy ping", function()
+    local pool = support.NativePool(nativeResponse({nativeRow("first", 1, 20), nativeRow("second", 1, 80)}, false),
+        "new-hop", 1000, "current", {})
+    assert(#pool == 2 and pool[1].id == "first" and pool[2].id == "second")
+end)
+test("native connection rejects old hop wrong place and expired response", function()
+    local data = nativeResponse({nativeRow("one", 1, 20)}, false)
+    assert(support.NativePool(data, "other-hop", 1000, "current", {}) == nil)
+    data.placeId = 123; assert(support.NativePool(data, "new-hop", 1000, "current", {}) == nil)
+    data.placeId = 107778070777162
+    assert(support.NativePool(data, "new-hop", 1011, "current", {}) == nil)
+end)
+test("native connection excludes current and visited candidates and waits on exhaustion", function()
+    local data = nativeResponse({nativeRow("current", 1, 1), nativeRow("visited", 1, 2), nativeRow("new", 1, 3)}, false)
+    local pool = support.NativePool(data, "new-hop", 1000, "current", {visited = 999})
+    assert(#pool == 1 and pool[1].id == "new")
+    assert(support.NativePool(data, "new-hop", 1000, "current", {visited = 999, new = 999}) == nil)
+end)
+test("native connection cannot advance with partial or stale completion proof", function()
+    local data = nativeResponse({nativeRow("two", 2, 1)}, false)
+    assert(support.NativePool(data, "new-hop", 1000, "current", {}) == nil)
+    data.complete = true
+    assert(support.NativePool(data, "new-hop", 1000, "current", {})[1].id == "two")
+    data.scanStartedAt = 100
+    assert(support.NativePool(data, "new-hop", 1000, "current", {}) == nil)
+end)
+test("native connection does not use errored stale or reordered server rows", function()
+    local data = nativeResponse({nativeRow("one", 1, 2), nativeRow("other", 1, 1)}, false)
+    assert(support.NativePool(data, "new-hop", 1000, "current", {}) == nil)
+    data.servers = {nativeRow("one", 1, 2)}; data.servers[1].observedAt = 1
+    assert(support.NativePool(data, "new-hop", 1000, "current", {}) == nil)
+    data.servers[1].observedAt = 995; data.state = "error"; data.error = "authentication"
+    assert(support.NativePool(data, "new-hop", 1000, "current", {}) == nil)
+end)
+test("ascending occupancy evidence permits higher groups with native partial pages", function()
+    local data = nativeResponse({nativeRow("two", 2, 19)}, false)
+    data.lowestOccupancy = 2; data.occupancyCheckedAt = 990
+    assert(support.NativePool(data, "new-hop", 1000, "current", {})[1].id == "two")
+    data.lowestOccupancy = 1
+    assert(support.NativePool(data, "new-hop", 1000, "current", {}) == nil)
+    data.lowestOccupancy = 2; data.occupancyCheckedAt = 900
+    assert(support.NativePool(data, "new-hop", 1000, "current", {}) == nil)
+end)
 test("immediate teleport exception fails without waiting", function()
     local attempt, fake = fakeAttempt({send = function() error("immediate failure") end})
     local state, reason = attempt.Run("target")

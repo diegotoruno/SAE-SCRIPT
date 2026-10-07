@@ -2,6 +2,12 @@
 
 | Decision | Motivo y consecuencia |
 | --- | --- |
+| Conectar Best Ping mediante proceso local | Cookie solo en PC/Roblox, fuera del cliente/bundle/Git. JSON sanitizado en workspace, sin listener de red. Configuracion explicita; error/ausencia de proceso esperan sin fallback silencioso. |
+| OccupancyAsc confirma grupos menores antes de avanzar | Permite seleccionar 2..6 sin recorrer toda la lista BestLatency. Prueba ligada a exclusiones y maximo 90s; desempate siempre del orden nativo y filas con maximo 180s. |
+| Instalacion local entre hops | Autoexec de esta PC lee bundle validado del workspace; original respaldado. Stable no se edita ni se publica durante estas pruebas. Proceso debe reiniciarse despues de reiniciar Windows. |
+| Ocupacion 1/7 -> 2/7 -> ... -> 6/7 entre hops | Aclaracion del usuario: la ocupacion manda antes de Best Ping. Pool de un solo grupo; al agotarse se consulta de nuevo. Antes de usar 2..6 se revisan otra vez grupos menores; caches antiguas/mezcladas invalidas. Actual y visitados recientes quedan excluidos. |
+| Una muestra BestLatency no prueba agotamiento | Con paginas pendientes, agotar candidatos observados de 1/7 no autoriza avanzar a 2/7. OccupancyGroup exige evidencia de grupos menores completos para seleccionar 2..6. No interpretar maximo de paginas, cursor repetido o fallo HTTP como fin de la lista. |
+| BestLatency debe venir del orden nativo | No sustituirlo por ping anunciado ascendente/descendente. V2 requiere autenticacion; el proceso privado ya conecta listas al runtime sin transmitir la cookie. |
 | Solo huevos libres del mapa | El usuario excluyo bases. Usar FieldEggs/Slot, sin inventarios ni PlotState como fuente de candidatos. |
 | Divine y minimo 7B/s por defecto | Requisito original; el panel permite ajustar los filtros sin alterar la precision de comparacion. |
 | Sin Divine ni observacion vigente esperar; Divine insuficiente inicia hops | Una observacion en ese ciclo permite continuar aunque falte en otro servidor por robo/recogida. No inventar presencia actual ni aceptar bases/inventarios como evidencia. |

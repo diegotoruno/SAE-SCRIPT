@@ -1,5 +1,43 @@
 # Pruebas y validacion
 
+## Best Ping conectado y salto real (2026-10-07)
+
+Build/compilacion y 108 regresiones Luau pasan; diez pruebas Python offline pasan y forman parte de CI. NativePool rechaza respuestas de otro hop/PlaceId, filas vencidas/reordenadas, errores y ocupaciones superiores sin prueba vigente. El proceso conserva cursor, deduplica, excluye visitados y determina el grupo minimo via OccupancyAsc sin requerir fin del stream BestLatency; pruebas cubren vencimiento/cambio de exclusiones/orden ascendente invalido.
+
+Proceso local activo con cookie en TXT privado. Candidata instalada en workspace Potassium y autoexec local sustituido por lectura de ese bundle, original respaldado. Reejecucion: filtros Eternal >=7B/s y AUTO intactos, sesion anterior detenida y 23 conexiones retiradas; Chilli existente reutilizado.
+
+RefreshServers recibio/persistio pool real orderBy=BestLatency, cuatro candidatos playing=1 y primer ID 01ab2d8f-2330-4047-b690-c12003ea206d. API Hop inicio teleport real y llego exactamente a ese JobId desde 452bc3ed-bc19-4eed-8672-65616180b403. Autoexec recargo BestLatency, pending=false, filtros/AUTO intactos, barrera de carga respetada y pool renovado excluyendo el destino. Medicion independiente despues de asentamiento: ocho muestras, mediana 70.2623 ms, tres jugadores al medir. No demuestra el minimo ping global ni ocupacion fija.
+
+El primer auxiliar se detuvo antes del teleport porque contaba solo gethui; la unica GUI estaba en PlayerGui. Corregida comprobacion para contar todas las superficies sin duplicar parents, resultado una GUI. No se dispararon conexiones ni inputs sinteticos. No se borro consola. Pruebas finales del proceso/ocupacion agregadas despues del salto, bundle final recargado conservando estado y 23 conexiones retiradas.
+
+Evidencia privada en verification/best-ping/connection-live-report.json del workspace principal, copias sanitizadas de los reportes de llegada y autoexec original en connection-backup. Best Ping esta activado solo en esta PC; no publicado. Progreso real a 2..6, Windows tras reinicio y otros dispositivos pendientes de prueba. El proceso se inicia otra vez al reiniciar Windows. Secciones siguientes son historial anterior a la conexion.
+
+## Progresion por ocupacion entre hops (2026-10-07)
+
+Aclaracion del usuario aplicada en candidata: ocupacion 1..6 antes de desempate; pool de un solo grupo y consulta nueva al agotarse. Cache de grupos 2..6 no se reutiliza sin consultar otra vez las ocupaciones menores. Build/compilacion y 102 regresiones pasan: cinco nuevas cubren todos los grupos, ocupacion invalida, bloqueo de avance con BestLatency parcial, agotamiento de ocho candidatos con un noveno de una persona pendiente y pagina inicial visitada antes de llegar al siguiente grupo.
+
+Seis regresiones offline del probe cubren pagina parcial sin una persona, fin real, candidatos de una persona en pagina posterior/deduplicacion, cursor repetido, HTTP 429 y conteos invalidos. El reporte sanitizado indica complete/selectionReady/selectedOccupancy y no trata cursor repetido o error como fin.
+
+Potassium ejecuto el helper exacto sobre los 488 candidatos sanitizados de la consulta previa: 3 con una persona, 97 con dos, 79 con tres, 62 con cuatro, 196 con cinco y 51 con seis. Todos los IDs coinciden con expectativa independiente agrupada 1..6 y orden nativo dentro de cada grupo. Pool parcial contiene solo los tres de una persona; retirarlos bloquea pasar a 2/7. Una simulacion marcada completa progresa 2..6. No es una comprobacion actual de disponibilidad ni un salto real. Filtros/AUTO/JobId intactos, cero teleports, sin cargar el bundle.
+
+Evidencia privada: verification/best-ping/occupancy-result.json, occupancy-live-report.json, live-occupancy.luau y verify_occupancy.py del workspace principal. Fuente BestLatency aun no conectada al runtime; candidata sin activar/publicar, faltan persistencia de pool en cliente y ping tras salto real. Las secciones siguientes registran pruebas anteriores a esta correccion.
+
+## BestLatency real autenticado (2026-10-07)
+
+El probe privado de PC obtuvo HTTP 200 con la cookie del TXT .private, fuera de Git. Cinco paginas con 15s entre requests: 500 registros, 488 candidatos unicos, tres playing=1 en posiciones originales 22, 210, 259. El mismo RankServers(..., BestLatency) de la candidata se ejecuto aislado en Potassium con los 488 candidatos sanitizados: tres de una persona primero, orden nativo preservado dentro de los grupos y coincidencia con expectativa independiente en todos los IDs. Filtros/AUTO/JobId iguales, cero teleports, sin sustituir el finder ni enviar la cookie a Potassium.
+
+Evidencia en verification/best-ping/authenticated-result.json, native-live-report.json y live-native-selection.luau del workspace principal. Todavia hay mas paginas; muestra limitada, no medicion de ping personal. Fuente nativa aun no conectada al runtime, que sigue usando LegacyPing. Bundle sin cargar/publicar, pool/persistencia y salto real pendientes. Esta prueba sustituye la limitacion de solo fixtures para el helper BestLatency; los fallos Guest/401 anteriores siguen siendo evidencia historica.
+
+## Best Ping y una persona primero (2026-10-07)
+
+Candidata aislada `codex/best-ping-un-jugador`, base main `6c996a1`: build/compilacion y 97 regresiones correctas, cinco nuevas sobre prioridad de una persona, desempates legacy, orden BestLatency sin usar FPS/ping, datos sin ping y conservacion de playing tras copiar la cache. BestLatency se prueba con fixtures, no con una respuesta nativa autenticada.
+
+Se inspecciono el JavaScript publico ServerList de Roblox: la opcion usa `/v2/games/{placeId}/servers/Public` con `orderBy=BestLatency` y `sortOrder=Desc`. Potassium obtuvo HTTP 400/codigo 7/Guest users are not allowed para BestLatency y Recommended; OccupancyAsc respondio 200 con 100 registros playing=1. `game:HttpGet` devolvio vacio para BestLatency; HttpRbxApiService fue rechazado por el executor con dangerous call. No se intento eludir esa restriccion ni extraer credenciales. La opcion observada por el usuario esta en la aplicacion; no hay navegador conectado. No se comprobo la peticion de la interfaz nativa.
+
+El mismo helper de la candidata se ejecuto aislado con listas v1 reales: 200 registros (100 con una persona y 100 con seis), 197 elegibles tras excluir actual/visitados, 97 con una persona antes de los otros 100. Top 8 solo playing=1. Filtros Eternal >=7B/s, AUTO y JobId conservados, cero teleports y sin reemplazar finder/GUI/autoexec. Primer muestreo recibio HTTP 429; se respeto el cooldown compartido y se repitio espaciando 15s. Evidencia privada en `verification/best-ping/report.json` del workspace principal y harness `live-selection.luau`.
+
+Pendientes: lista BestLatency autenticada desde una via soportada, carga del bundle candidato y persistencia del pool en cliente, salto real y comparacion del ping medido tras llegada. El ping anunciado v1 no verifica el mejor ping personal. No se publico la candidata.
+
 ## Boton rojo movible (2026-10-07)
 
 Build y compilacion de fuentes/bundle correctos: 61 regresiones en la carpeta de trabajo anterior y 92 en la candidata aislada sobre main `3407543`. No cambian decisiones del detector.

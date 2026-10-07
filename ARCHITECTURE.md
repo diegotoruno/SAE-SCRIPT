@@ -1,5 +1,15 @@
 # Arquitectura
 
+## Seleccion de servidores en pruebas
+
+Conexion actual: server_hop_button_connection.json con mode=BestLatency habilita best_ping_bridge.py en PC. El runtime escribe solicitudes con nonce/exclusiones, lee respuestas directamente del workspace, valida frescura/PlaceId/orden/ocupacion y usa support.NativePool para elegir. No lee cookies. Best Ping consume siempre una respuesta actual de la conexion, sin usar el pool persistido como prueba de agotamiento. El pool se guarda con orderBy para diagnostico y para invalidar caches incompatibles. Sin proceso o con error espera; LegacyPing es solo el modo no configurado.
+
+El proceso mantiene el cursor nativo entre hops. Al no tener candidatos 1/7, una consulta OccupancyAsc sin cookie determina la ocupacion minima disponible entre IDs no visitados. Su prueba vence a los 90s y se invalida al cambiar exclusiones; las filas BestLatency vencen a los 180s. Todas las peticiones del proceso comparten intervalo de 15s y 429 espera 60s. No se siguen redirects, ni se escriben headers/raw/cookies. Respuestas atomicas; no hay listener de red. RefreshServers renueva sin teleport; Hop usa las guardas manuales existentes; GetStatus expone serverConnection. Ve BEST_PING.md. Los parrafos siguientes describen el prototipo anterior.
+
+`support.RankServers(servers, orderBy)` copia registros con playing entero 1..6 y ordena todas las ocupaciones ascendentemente antes del desempate. El runtime usa `LegacyPing`: dentro de cada grupo conserva FPS >=50 y ping anunciado descendente. El modo experimental `BestLatency` conserva la posicion recibida de Roblox dentro de cada grupo, sin recalcularla con ping/FPS. Un probe privado de PC ya obtiene listas autenticadas de v2 y el helper se verifico aislado en Potassium con esos datos; esa fuente todavia no esta conectada al pool del runtime.
+
+`support.OccupancyGroup` devuelve solo el grupo de menor ocupacion. Para avanzar a 2..6 exige evidencia de que no hay candidatos inferiores. v1 se pagina por Occupancy Asc; en una lista BestLatency parcial solo puede habilitar 1/7. El pool guarda playing, occupancy y selectionPolicy = "occupancy-groups-v2"; descarta caches antiguas o mezcladas. Al agotarse sus ocho candidatos consulta de nuevo, y cada hop en 2..6 vuelve a consultar para detectar ocupaciones inferiores nuevas. Excluye actual/visitados durante una hora, conserva capacidad 7, limites de paginas/cooldown y guardas de teleport. El numero anunciado es una observacion, no una reserva de ocupacion.
+
 ## Fuentes y build
 
 | Archivo | Responsabilidad |
@@ -10,6 +20,9 @@
 | `build.py` | Integra las factories en closures y anade el runtime; produce `dist/`. |
 | `ci_tests.luau` | Regresiones del detector con snapshots simulados. |
 | `ci_tools.py` | CLI oficial Luau fijado, SHA256 de descarga, compilacion y ejecucion de regresiones. |
+| `best_ping_bridge.py` | Proceso local: BestLatency autenticado, prueba OccupancyAsc y entrega de registros sanitizados. |
+| `start_best_ping.ps1` | Inicia el proceso oculto en Windows, sin duplicar el mismo proceso. |
+| `test_best_ping_bridge.py` | Regresiones offline del intercambio, cursor, exclusiones y prueba de ocupacion. |
 | `.github/workflows/ci.yml` | Validacion en PR/push/manual; despliegue a `stable` y Releases despues de CI. |
 | `chilli_hopper.luau` | Puente publico de `main` hacia el bundle de `stable`; conserva la URL del usuario. |
 | `loader.luau` | Linea corta usada por el executor; no requiere modulos locales. |

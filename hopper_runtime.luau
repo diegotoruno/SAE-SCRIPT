@@ -77,6 +77,90 @@ local function createFinderSupport()
         end
         return result
     end
+    -- BestLatency is an order supplied by Roblox v2, not the legacy ping field.
+    -- Keep that order within each occupancy group; never infer it from ping/fps.
+    function support.RankServers(servers, orderBy)
+        assert(orderBy == "BestLatency" or orderBy == "LegacyPing", "orden de servidores desconocido")
+        local pool = {}
+        for index, server in ipairs(servers) do
+            local playing = tonumber(server.playing)
+            if type(server.id) == "string" and playing and playing >= 1 and playing <= 6
+                and playing == math.floor(playing) then
+                table.insert(pool, {id = server.id, playing = playing,
+                    ping = tonumber(server.ping) or -1, fps = tonumber(server.fps) or 0,
+                    sourceRank = index})
+            end
+        end
+        table.sort(pool, function(a, b)
+            if a.playing ~= b.playing then return a.playing < b.playing end
+            if orderBy == "BestLatency" then return a.sourceRank < b.sourceRank end
+            local aHealthy, bHealthy = a.fps >= 50, b.fps >= 50
+            if aHealthy ~= bHealthy then return aHealthy end
+            if a.ping ~= b.ping then return a.ping > b.ping end
+            return a.id < b.id
+        end)
+        return pool
+    end
+    -- Cache only one occupancy group. Exhausting a short cache requires a new
+    -- ascending-occupancy query, not advancing to a larger cached group.
+    function support.OccupancyGroup(servers, orderBy, lowerGroupsComplete)
+        local ranked = support.RankServers(servers, orderBy)
+        if #ranked == 0 then return {}, nil end
+        local playing = ranked[1].playing
+        if playing > 1 and not lowerGroupsComplete then
+            return nil, "lista incompleta; no se confirmo el agotamiento de ocupaciones menores"
+        end
+        local group = {}
+        for _, server in ipairs(ranked) do
+            if server.playing ~= playing then break end
+            table.insert(group, server)
+        end
+        return group, playing
+    end
+    function support.NativePool(data, requestId, now, current, visited)
+        if type(data) ~= "table" or data.schema ~= 1 or data.placeId ~= 107778070777162
+            or data.orderBy ~= "BestLatency" or data.requestId ~= requestId then
+            return nil, "esperando conexion Best Ping del PC"
+        end
+        local age = now - (tonumber(data.updatedAt) or 0)
+        if age < -5 or age > 10 then return nil, "respuesta Best Ping vencida" end
+        if data.state ~= "ready" then
+            return nil, data.state == "error" and ("Best Ping: " .. tostring(data.error))
+                or "Best Ping: buscando candidatos de menor ocupacion"
+        end
+        if type(data.servers) ~= "table" then return nil, "lista Best Ping invalida" end
+        local accepted, previousRank = {}, 0
+        for _, row in ipairs(data.servers) do
+            if type(row) ~= "table" then return nil, "servidor Best Ping invalido" end
+            local playing = tonumber(row.playing)
+            if type(row.id) ~= "string" or not playing or playing < 1 or playing > 6
+                or playing ~= math.floor(playing) then return nil, "ocupacion Best Ping invalida" end
+            local rank, at = tonumber(row.nativeRank), tonumber(row.observedAt)
+            if not rank or rank ~= rank or rank == math.huge or rank <= previousRank
+                or not at or now - at < -5 or now - at > 180
+                or tonumber(row.maxPlayers) ~= 7 then return nil, "datos Best Ping vencidos o invalidos" end
+            previousRank = rank
+            local seenAt = tonumber(visited[row.id])
+            if row.id ~= current and (not seenAt or now - seenAt > 3600) then
+                table.insert(accepted, row)
+            end
+        end
+        local scanAge = now - (tonumber(data.scanStartedAt) or 0)
+        local complete = data.complete == true and scanAge >= -5 and scanAge <= 180
+        local proofAge = now - (tonumber(data.occupancyCheckedAt) or 0)
+        local lowest = tonumber(data.lowestOccupancy)
+        local verified = lowest and lowest >= 1 and lowest <= 6 and lowest == math.floor(lowest)
+            and proofAge >= -5 and proofAge <= 90
+        if verified then
+            for _, row in ipairs(accepted) do
+                if tonumber(row.playing) ~= lowest then return nil, "ocupacion Best Ping no corresponde a la consulta vigente" end
+            end
+        end
+        local group, reason = support.OccupancyGroup(accepted, "BestLatency", complete or verified)
+        if not group then return nil, reason end
+        if #group == 0 then return nil, "Best Ping: renovando candidatos agotados" end
+        return group
+    end
     function support.Attempt(env)
         local attempt = { state = "idle", connection = nil }
         local function disconnect()
@@ -606,12 +690,12 @@ local function montarHopper()
 --  JobId. Si no hay senal alguna en ~1 min, se para y se pide otro clic en vez
 --  de pisar un teleport que podria estar en camino.
 --
---  Reglas que NO se tocan:
+--  Reglas de seleccion y medicion:
 --    * servidores de 7 plazas; se descarta el actual y los visitados en 1 h
---    * candidatos ordenados por el ping ANUNCIADO descendente, porque ese campo
---      de la API esta invertido respecto al ping real (mas alto = mejor
---      conexion medida). Comprobado: anunciado 2092 ms -> 64 ms reales;
---      anunciado 4-22 ms -> 81-307 ms reales.
+--    * ocupacion ascendente 1/7 -> 2/7 -> ... -> 6/7; dentro de cada grupo
+--      se conserva FPS sano y ping ANUNCIADO descendente como heuristica previa.
+--      Las observaciones anteriores no prueban el ping de cada usuario.
+--      BestLatency nativo de v2 requiere autenticacion y sigue en pruebas.
 --    * al llegar se mide de verdad: jugadores reales y ping real (10 s de
 --      asentamiento + mediana de 8 muestras, para no confundir el arranque ni
 --      los picos con la conexion real)
@@ -646,6 +730,10 @@ do
     local SCOUT_STATE_FILE = "steal_an_egg_scout_state.json"
     local UI_FILE = "server_hop_button_ui.json"
     local POOL_FILE = "server_hop_button_pool.json"
+    local SERVER_SELECTION_POLICY = "occupancy-groups-v2"
+    local CONNECTION_FILE = "server_hop_button_connection.json"
+    local NATIVE_REQUEST_FILE = "sae_best_ping_request.json"
+    local NATIVE_RESPONSE_FILE = "sae_best_ping_response.json"
     local VISITED_MAX_AGE = 60 * 60
     local POOL_REFRESH_SECONDS = 45   -- cada cuanto se refresca el pool
     local POOL_SIZE = 8               -- candidatos guardados en el pool
@@ -684,6 +772,10 @@ do
         encode = function(value) return HttpService:JSONEncode(value) end,
         decode = function(raw) return HttpService:JSONDecode(raw) end})
     local function readJson(path, fallback) return store.Read(path, fallback) end
+    local connectionConfig = readJson(CONNECTION_FILE, {})
+    local serverOrder = connectionConfig.mode == "BestLatency" and "BestLatency" or "LegacyPing"
+    local nativeStatus = nil
+    local nativeRequestBusy = false
     local function writeJson(path, value)
         if session and not session.alive then return false end
         local ok = store.Write(path, value)
@@ -1406,6 +1498,7 @@ do
         Stop = function() if session.alive then setAuto(false) end end,
         GetStatus = function()
             return { active = autoEnabled and session.alive, jobId = game.JobId,
+                serverConnection = {orderBy = serverOrder, native = support.Copy(nativeStatus)},
                 mode = session.searchMode, cycle = eggSearch.CycleStatus(),
                 config = support.Copy(eggSearch.config), lastScan = eggSearch.lastScan and {
                     match = support.Copy(eggSearch.lastScan.match), info = support.Copy(eggSearch.lastScan.info),
@@ -1424,38 +1517,53 @@ do
     local function pickCandidates()
         local visited = support.PruneVisited(readJson(VISITED_FILE, {}), os.time(), VISITED_MAX_AGE)
         local now = os.time()
+        if serverOrder == "BestLatency" then
+            if nativeRequestBusy then return nil, "consulta Best Ping en curso" end
+            nativeRequestBusy = true
+            local excluded = {game.JobId}
+            for id in pairs(visited) do table.insert(excluded, id) end
+            local requestId = HttpService:GenerateGUID(false)
+            local ok = pcall(function()
+                writefile(NATIVE_REQUEST_FILE, HttpService:JSONEncode({placeId = PLACE_ID,
+                    requestId = requestId, requestedAt = now, excluded = excluded}))
+            end)
+            if not ok then nativeRequestBusy = false; return nil, "no se pudo solicitar Best Ping al PC" end
+            local deadline = os.clock() + 3
+            repeat
+                local decoded, data = pcall(function()
+                    return HttpService:JSONDecode(readfile(NATIVE_RESPONSE_FILE))
+                end)
+                if decoded and type(data) == "table" and data.requestId == requestId then
+                    local pool, reason = support.NativePool(data, requestId, os.time(), game.JobId, visited)
+                    nativeStatus = {state = data.state, pages = data.pages, complete = data.complete,
+                        occupancy = data.occupancy, error = reason}
+                    nativeRequestBusy = false
+                    return pool, reason
+                end
+                task.wait(0.1)
+            until not session.alive or game.JobId ~= sessionStartJobId or os.clock() >= deadline
+            nativeRequestBusy = false
+            return nil, "esperando proceso Best Ping del PC"
+        end
         local servers, fetchError = support.Pages(fetchServers, function(server)
             return type(server.id) == "string" and server.id ~= game.JobId
                 and tonumber(server.maxPlayers) == EXPECTED_CAPACITY
-                and (tonumber(server.playing) or 0) < EXPECTED_CAPACITY
+                and tonumber(server.playing) ~= nil and tonumber(server.playing) >= 1
+                and tonumber(server.playing) < EXPECTED_CAPACITY
+                and tonumber(server.playing) == math.floor(tonumber(server.playing))
                 and now - (tonumber(visited[server.id]) or 0) > VISITED_MAX_AGE
         end, function() return session.alive and game.JobId == sessionStartJobId end, POOL_SIZE, 5)
         if not servers then return nil, fetchError end
-        local pool = {}
-        for _, server in ipairs(servers) do
-            table.insert(pool, {id = server.id, ping = tonumber(server.ping) or -1, fps = tonumber(server.fps) or 0})
-        end
+        -- fetchServers uses Occupancy Asc: the earliest eligible records prove
+        -- the lowest available group, even when later pages remain unread.
+        local pool = support.OccupancyGroup(servers, "LegacyPing", true)
 
         if #pool == 0 then
             return nil, "no quedan servidores nuevos (se probaron todos hace poco)"
         end
 
-        -- Primero los servidores con fps sano (los moribundos suelen fallar con
-        -- GameEnded / Unknown exception); dentro de ellos, el ping anunciado
-        -- descendente (el ping de la API esta invertido: mas alto = mejor ping
-        -- real medido).
-        table.sort(pool, function(a, b)
-            local aHealthy = (a.fps or 0) >= 50
-            local bHealthy = (b.fps or 0) >= 50
-            if aHealthy ~= bHealthy then
-                return aHealthy
-            end
-            if a.ping ~= b.ping then
-                return a.ping > b.ping
-            end
-            return a.id < b.id
-        end)
-
+        -- Ocupacion 1 -> 2 -> ... -> 6 antes de FPS/ping. BestLatency sigue en pruebas:
+        -- la peticion v2 sin sesion web devuelve Guest users are not allowed.
         return pool
     end
 
@@ -1465,11 +1573,16 @@ do
         if not pool or #pool == 0 then
             return
         end
+        local group = support.OccupancyGroup(pool, serverOrder, true)
+        if #group == 0 then return end
         local trimmed = {}
-        for index = 1, math.min(#pool, POOL_SIZE) do
-            trimmed[index] = pool[index]
+        for index = 1, math.min(#group, POOL_SIZE) do
+            trimmed[index] = group[index]
         end
         writeJson(POOL_FILE, {
+            selectionPolicy = SERVER_SELECTION_POLICY,
+            orderBy = serverOrder,
+            occupancy = group[1].playing,
             updatedAt = os.time(),
             servers = trimmed,
         })
@@ -1478,10 +1591,21 @@ do
     -- Lee el pool guardado (sin HTTP) y filtra lo que ya no sirve: visitados
     -- en la ultima hora y el servidor actual. Si el pool es viejo, se ignora.
     local function loadPool()
+        -- The companion keeps pagination across hops. Ask it with the current
+        -- visited set; a saved batch is never proof that a group is exhausted.
+        if serverOrder == "BestLatency" then return nil end
         local data = readJson(POOL_FILE, nil)
         if type(data) ~= "table" or type(data.servers) ~= "table" then
             return nil
         end
+        if data.selectionPolicy ~= SERVER_SELECTION_POLICY then return nil end
+        if data.orderBy ~= serverOrder then return nil end
+        local occupancy = tonumber(data.occupancy)
+        if not occupancy or occupancy < 1 or occupancy >= EXPECTED_CAPACITY
+            or occupancy ~= math.floor(occupancy) then return nil end
+        -- Before another hop in groups 2..6, query again: a lower-occupancy
+        -- server may have become available since this cache was created.
+        if occupancy > 1 then return nil end
         if os.time() - (tonumber(data.updatedAt) or 0) > POOL_MAX_AGE then
             return nil
         end
@@ -1491,24 +1615,32 @@ do
         local pool = {}
         for _, server in ipairs(data.servers) do
             local id = type(server) == "table" and server.id or nil
+            if type(server) ~= "table" or tonumber(server.playing) ~= occupancy then return nil end
             if type(id) == "string" and id ~= game.JobId then
                 local seenAt = tonumber(visited[id]) or 0
                 if now - seenAt > VISITED_MAX_AGE then
                     table.insert(pool, {
                         id = id,
+                        playing = tonumber(server.playing),
                         ping = tonumber(server.ping) or -1,
                         fps = tonumber(server.fps) or 0,
                     })
                 end
             end
         end
-        return pool
+        return support.RankServers(pool, "LegacyPing")
     end
 
     local function markVisited(jobId)
         local visited = support.PruneVisited(readJson(VISITED_FILE, {}), os.time(), VISITED_MAX_AGE)
         visited[jobId] = os.time()
         writeJson(VISITED_FILE, visited)
+    end
+    hopperEnvironment.ChilliEggSearch.RefreshServers = function()
+        assert(session.alive, "Esta sesion ya termino")
+        local pool, reason = pickCandidates()
+        if pool and session.alive then savePool(pool) end
+        return support.Copy(pool), reason
     end
 
     -- Intenta el salto hasta ENTRAR en un servidor. Devuelve true solo cuando
@@ -1551,10 +1683,9 @@ do
                     if automatic and not verifyMapBeforeHop() then return false end
                     local candidate = pool[index]
                     setLabel("Saltando...")
-                    setStatus(string.format(
-                        "entrando (api %s ms)...",
-                        tostring(candidate.ping)
-                    ), COLORS.muted)
+                    setStatus(serverOrder == "BestLatency"
+                        and string.format("Best Ping · %d/7 · entrando...", candidate.playing)
+                        or string.format("entrando (api %s ms)...", tostring(candidate.ping)), COLORS.muted)
                     print(string.format(
                         "[ServerHopButton] Teleport intento %d -> %s",
                         index,
@@ -1686,6 +1817,14 @@ do
         setLabel("Buscando...")
         setStatus("buscando servidor...", COLORS.muted)
         runHopLoop(automatic, generation)
+    end
+
+    hopperEnvironment.ChilliEggSearch.Hop = function()
+        assert(session.alive, "Esta sesion ya termino")
+        uiAccess()
+        if busy then return false, "salto ocupado" end
+        beginHop(false)
+        return true
     end
 
     -- Chilli esta listo cuando su cargador lo marca en el entorno o cuando su
