@@ -1,5 +1,9 @@
 # Contexto del proyecto
 
+## Confirmacion de guardado y cargador actualizable (2026-10-07)
+
+Usuario no distingue si Guardar funciono y pide actualizar el enlace que ya pego. Confirma que usa el SHA e0f669...: es inmutable y necesita una sustitucion unica por la rama preview, sin reemplazar la cookie local. Formulario ahora conserva confirmacion explicita tras escritura/relectura, muestra comprobacion en botones y refleja GUARDADA/SOLO SESION en launcher; reapertura/restauracion comunica estado. No cambia detector ni stable. Autenticacion Delta sigue pendiente.
+
 ## Pausa al guardar en Delta (2026-10-07)
 
 Usuario confirma que "Best Ping en pausa; espera el limite de Roblox" aparece al pulsar Guardar y usar AUTO. Ese texto propio no demuestra HTTP 429. Corregido deadline 35s que era menor al cooldown 60s; DeviceRequest da progreso/contador y distingue intervalo, 429 y native request pendiente, con excepciones sanitizadas y reserva hasta terminacion real. Guardar tiene prioridad sobre prefetch, reintenta una vez ante 429 y conserva borrador oculto si falla mientras ventana abierta. Build/125 regresiones pasan. Auth real de Delta sigue sin confirmacion; conservar preview y PR #10 en borrador.

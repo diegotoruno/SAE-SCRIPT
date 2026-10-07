@@ -1,5 +1,9 @@
 # Pruebas y validacion
 
+## Confirmacion de guardado (2026-10-07)
+
+Refinamiento de feedback: confirmacion visible tras guardado/relectura, aviso distinto para sesion temporal, estado en launcher y reapertura, etiquetas de comprobacion. No cambia decisiones del detector ni persistencia. Build/compilacion y las 125 regresiones existentes pasan; confirmar manualmente mensaje en Delta despues de una consulta aceptada. El SHA antiguo del usuario no recibe modificaciones; probar el cargador de rama actualizable.
+
 ## Pausa inicial de Guardar y usar AUTO (2026-10-07)
 
 Usuario observa el mensaje de pausa en Delta al pulsar Guardar y usar AUTO. No hay evidencia de HTTP 429 ni de autenticacion aceptada. Regresion reproducible del codigo: espera de 35s incompatible con cooldown de 60s. Build/compilacion y 125 regresiones pasan (117 anteriores + ocho nuevas): cooldown completo/restaurado, intervalo distinguido de 429, reintento espaciado, request pendiente/timeout sin desbloqueo falso, excepciones/errores al iniciar sin secreto, cancelacion antes de enviar, busy legacy tras reejecucion y finalizacion tardia que no libera otra reserva. Tiempo/scheduler inyectados, sin dormir ni cookies/red/teleports.
