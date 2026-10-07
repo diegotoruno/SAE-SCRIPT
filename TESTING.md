@@ -2,6 +2,8 @@
 
 ## Reposicion adaptativa y salto de respaldo (2026-10-07)
 
+Montaje adaptativo real reutiliza Chilli, destruye sesion anterior y conserva AUTO/cuenta/filtros. La pasada continua paginas6..10:8 opciones antes de continuar y21 al terminar el bloque; comprobacion pagina9 confirma15 vigentes/cero duplicados/cero vencidos. La reserva es un maximo24, no una cantidad garantizada si Roblox ofrece pocos candidatos.
+
 149 regresiones Luau/diez Python y compilacion pasan. El caso de stock escaso ahora verifica continuidad pagina6, limite12/180s y vigencia individual. Tres casos nuevos prueban reserva24 encontrada en pagina6 tras Restore, stock suficiente que termina a5 paginas/75s e interrupcion larga que vuelve a cabeza. Hop real API hacia ace56edf-d55a-41ce-8cd1-086a03b9c6ea anunciado2/7: pendiente en21.8269ms sin HTTP previo adicional, llegada exacta/autoexec/cuenta/AUTO/Eternal>=7B intactos. Ocho muestras independientes de Data Ping: mediana56.3193ms, cuatro jugadores al medir. No garantiza ocupacion o ping futuros. Reserva anterior descendio a1..6 en prueba prolongada, justificando la extension adaptativa. Sin inputs GUI sinteticos.
 
 ## Balance cantidad/calidad (2026-10-07)

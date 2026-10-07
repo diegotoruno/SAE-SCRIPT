@@ -4,7 +4,8 @@
 
 - PR12 integrado en main6779ab6, CI37607861598 valido/publico build35. Bundle publico227568 bytes/SHA25634789849521776239ba49b4f66863ded6eb33fbc48c03441f5dc87a18e82baff identico a candidata; main sigue apuntando a stable.
 - Hop real de respaldo2/7 a ace56edf-d55a-41ce-8cd1-086a03b9c6ea:21.83ms hasta pendiente, sin HTTP adicional antes del teleport, destino exacto. Autoexec restaura cuenta/AUTO/Eternal>=7B. Mediana56.32ms/ocho muestras, cuatro jugadores al medir.
-- Prueba prolongada bajo de24 a1..6 por escasez en cabeza. Rama codex/reserva-adaptativa sobre main6779ab6 conserva cursor cuando stock<16 hasta12 paginas/180s; con suficiente stock termina a5/75s.149 regresiones/diez Python/compilacion correctos. Bundle228047 bytes/SHA2568c93990ce3fb66783640592f1b45b91dfebc7e3f8ce47e91d0e10b0812554e1e. Montaje/reposicion/publicacion de esta extension se registran al comprobarse.
+- Prueba prolongada bajo de24 a1..6 por escasez en cabeza. Rama codex/reserva-adaptativa sobre main6779ab6 conserva cursor cuando stock<16 hasta12 paginas/180s; con suficiente stock termina a5/75s.149 regresiones/diez Python/compilacion correctos. Bundle228047 bytes/SHA2568c93990ce3fb66783640592f1b45b91dfebc7e3f8ce47e91d0e10b0812554e1e.
+- Potassium monto esta extension en mismo JobId: antigua sesion alive=false, Chilli reutilizado, AUTO/cookie/Eternal>=7B intactos. Reposicion real continuo paginas6..10 en lugar de reiniciar5; reserva paso de8 a21 opciones2/7 vigentes, con15 en pagina9 y cero duplicados/vencidos en ese punto. Pasada deja de profundizar al recuperar suficiente stock. PR13/head8f25be8 paso CI37608780197; publicacion de la extension se registrara tras merge/CI.
 
 ## 2026-10-07 - Reserva balanceada para buscar mas huevos
 
