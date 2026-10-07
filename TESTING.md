@@ -1,5 +1,15 @@
 # Pruebas y validacion
 
+## UI integrada sobre build 21 (2026-10-07)
+
+Build y compilacion de fuentes/bundle correctos; las 92 regresiones existentes pasan. No cambia la logica del detector/runtime. La candidata final mide 170351 bytes, SHA256 `27fed6f3dace4f99a5c7a9c48d9463b9ea0830a77f049ba6350da30481efa10b`.
+
+Revisado visualmente en RobloxPlayerBeta/Windows mediante capturas: mapa, catalogo inclusivo, presets/alertas y modelos con UIScale 0.8 (432x560). Verificados mediante APIs del panel: rechazo de minimo invalido, conservacion exacta de 7b, seleccion/deseleccion, estado vacio de Solo filtro, guardar/cargar/aplicar/borrar preset temporal y cambiar/restaurar alertas. Se compararon 65 registros Slot con el conteo de tarjetas; el extremo de la lista solo contenia Slot y la lista mantuvo seis tarjetas renderizadas. Refresh repetido sobre el mismo snapshot no creo tarjetas ni modelos nuevos.
+
+Scan/CycleStatus y APIs de abrir/cerrar/estado funcionan con identidad baja; reejecucion final conserva filtros, AUTO, visual, orden, Solo filtro y posicion, una GUI y ninguna conexion de la sesion original. Restauradas preferencias y archivos de la prueba, retirado el callback temporal de escalado. Un auxiliar recibio un error de identidad al editar un campo despues de GetStatus; se corrigio el auxiliar y se repitio, sin limpiar logs. No hubo errores propios de panel/runtime en esta pasada.
+
+Las capturas/reportes se conservan en verification/ fuera de Git. Esta prueba confirma render y APIs en Windows; no automatiza clics, gestos o Alt fisicos, no equivale a una prueba de iPad y no induce teleports. La espera publicada en build 21 y la rareza inclusiva se conservan y siguen cubiertas por las regresiones.
+
 ## Espera de carga antes del hop (2026-10-07)
 
 Doce regresiones adicionales usan un reloj inyectado: diez reproducen llegada con memoria y snapshot vacio temprano, huevos tardios, juego sin cargar, cambios con el mismo conteo o record, replicacion continua, scans frescos repetidos, perdida/error del snapshot, renovacion entre polls, revision del campo, catalogo/ingreso incompleto y exclusiones no Slot; dos verifican coincidencias superiores y continuidad de la rareza minima sin evitar la espera del destino. No duermen ni modifican un cliente real.

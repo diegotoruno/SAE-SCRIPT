@@ -59,6 +59,8 @@ El ingreso previsto incluye escala y mutaciones; excluye bonos personales y boos
 
 ## Panel
 
+Estilo grafito con acento champan, tipografia Gotham y tarjetas con ingreso destacado; detalles en [DESIGN.md](DESIGN.md). Conserva la lista virtualizada y las opciones existentes.
+
 **EGG FILTERS** abre el panel. **Alt izquierdo** alterna abrir/cerrar el panel, tambien cuando estas editando un filtro. La lista principal muestra exclusivamente huevos actuales del mapa, con imagen o modelo, ingreso, rareza, escala, peso, mutaciones y zona.
 
 **Elegir especies** abre un catalogo separado con especies de la rareza minima y las superiores. **Aplicar filtros** guarda rareza minima, ingreso minimo por segundo, mutacion, nombre y especies elegidas. Una lista explicita de especies sigue restringiendo los candidatos; vacia acepta todas. El selector de rareza usa solo las rarezas con especies en el catalogo del juego, en orden de su rango real.
