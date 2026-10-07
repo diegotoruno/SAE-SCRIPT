@@ -1,8 +1,12 @@
 # Contexto del proyecto
 
+## Reposicion adaptativa de reserva (2026-10-07)
+
+La prueba prolongada de build35 encontro pocas opciones en las primeras cinco paginas: reserva bajo de24 a1. Se amplia la pasada cuando hay menos16 destinos vigentes: continua el cursor nativo hasta12 paginas/180s, con maximo5 consultas por llamada. Con stock suficiente termina al presupuesto normal5 paginas/75s; con24 opciones nuevas o fin de lista termina antes. Frescura individual180/90s y prioridad1/7->2/7 siguen obligatorias.149 regresiones/diez Python pasan. Hop real de respaldo2/7 eligio destino en21.83ms sin HTTP adicional y llego al JobId exacto, conservandoAUTO/cuenta/Eternal>=7B; mediana56.32ms en ocho muestras y cuatro jugadores al medir. La ocupacion anunciada no es garantia al llegar.
+
 ## Balance para revisar mas servidores (2026-10-07)
 
-Usuario prioriza encontrar el huevo con sus caracteristicas y pide balance cantidad/calidad. Autoriza expresamente 2/7 con buen ping cuando se agote la reserva rapida1/7, reemplazando la exigencia de probar ausencia global de1/7 antes de usar2/7 en DeviceCookie. Muestra real previa:3 candidatos1/7 y190 de2/7 recientes; ampliar solo1/7 no cubre cantidad. Reserva hasta24 con prioridad1/7, respaldo2/7 BestLatency, frescura1=180s/2=90s, refill al bajar de16 o respaldo>=60s desde primeras paginas. Cada pasada maximo5 paginas/75s para no perseguir candidatos de peor orden indefinidamente. Grupos3..6 mantienen prueba anterior cuando faltan1/2; bridge/legacy siguen reglas previas. Detector/filtros/ciclo/match intactos.146 regresiones Luau/diez Python pasan; montaje y recarga reales preservanAUTO/Eternal>=7B/cookie y alcanzan24 respaldos desde cero destinos rapidos. Ver WORKLOG para publicacion/hop.
+Usuario prioriza encontrar el huevo con sus caracteristicas y pide balance cantidad/calidad. Autoriza expresamente 2/7 con buen ping cuando se agote la reserva rapida1/7, reemplazando la exigencia de probar ausencia global de1/7 antes de usar2/7 en DeviceCookie. Muestra real previa:3 candidatos1/7 y190 de2/7 recientes; ampliar solo1/7 no cubre cantidad. Reserva hasta24 con prioridad1/7, respaldo2/7 BestLatency, frescura1=180s/2=90s, refill al bajar de16 o respaldo>=60s desde primeras paginas. El limite inicial5 paginas/75s se reemplaza por la reposicion adaptativa anterior. Grupos3..6 mantienen prueba anterior cuando faltan1/2; bridge/legacy siguen reglas previas. Detector/filtros/ciclo/match intactos. Montaje y recarga reales preservanAUTO/Eternal>=7B/cookie y alcanzan24 respaldos desde cero destinos rapidos. Ver WORKLOG para publicacion/hop.
 
 ## Best Ping atascado y precarga rapida (2026-10-07)
 
