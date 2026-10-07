@@ -1,7 +1,7 @@
 {
-  "source_commit": "7658660880b1d602a4a015616f32d446ebe8394f",
-  "run": "local",
-  "sha256": "75391d650d59d0df1fffcd8ec82c6971a900681411a520784da8c6ce8aed607d",
-  "bytes": 209225,
-  "luau": "0.741"
+  "kind": "compatibility-loader",
+  "distribution": "main/stable",
+  "target_url": "https://raw.githubusercontent.com/diegotoruno/SAE-SCRIPT/main/chilli_hopper.luau",
+  "sha256": "7446d680e26df80f0120908fc4dea5b893a6316d27fb48becabbb370e26258fe",
+  "bytes": 111
 }
