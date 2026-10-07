@@ -26,7 +26,7 @@ El codigo mantenido esta en tres archivos:
 
 `build.py` integra los tres en `dist/chilli_hopper.luau`. No edites el `chilli_hopper.luau` de la raiz ni la rama `stable`: son puntos de distribucion.
 
-Para mejorar el script, crea una rama `codex/descripcion`, modifica los modulos y abre un pull request hacia `main`. GitHub Actions compila los modulos y el archivo integrado con Luau 0.741, ejecuta 18 pruebas de regresion y guarda el artefacto. Un pull request solo valida; un cambio aprobado en `main` valida y publica automaticamente en `stable`, con una release identificada por numero de ejecucion y commit. Si falla una prueba, `stable` conserva la version anterior. Una ejecucion antigua no reemplaza un commit nuevo de `main`.
+Para mejorar el script, crea una rama `codex/descripcion`, modifica los modulos y abre un pull request hacia `main`. GitHub Actions compila los modulos y el archivo integrado con Luau 0.741, ejecuta 26 pruebas de regresion y guarda el artefacto. Un pull request solo valida; un cambio aprobado en `main` valida y publica automaticamente en `stable`, con una release identificada por numero de ejecucion y commit. Si falla una prueba, `stable` conserva la version anterior. Una ejecucion antigua no reemplaza un commit nuevo de `main`.
 
 Para comprobarlo localmente con Python 3.10 o posterior:
 
@@ -61,7 +61,11 @@ El ingreso previsto incluye escala y mutaciones; excluye bonos personales y boos
 
 **EGG FILTERS** abre el panel. La lista principal muestra exclusivamente huevos actuales del mapa, con imagen o modelo, ingreso, rareza, escala, peso, mutaciones y zona.
 
-**Elegir especies** abre un catalogo separado para configurar filtros. **Aplicar filtros** guarda rareza, ingreso minimo en B/s, mutacion, nombre y especies elegidas. **Solo filtro** muestra los spawns actuales que cumplen los filtros guardados. Puedes ordenar por ingreso o nombre, cambiar la vista visual, arrastrar el panel y plegar los filtros.
+**Elegir especies** abre un catalogo separado para configurar filtros. **Aplicar filtros** guarda rareza exacta, ingreso minimo por segundo, mutacion, nombre y especies elegidas. El selector de rareza usa solo las rarezas con especies en el catalogo del juego, en orden de su rango real.
+
+El minimo acepta `500k`, `25m`, `7b`, `7.5b`, `1t` o `1q`, tambien en mayusculas. Puedes usar coma decimal (`7,5b`). Sin sufijo, el valor son unidades por segundo: `7` significa 7/s. La configuracion anterior de 7B conserva su valor y aparece como `7b`; editar y volver a aplicar conserva el limite exacto.
+
+**Solo filtro** muestra los spawns actuales que cumplen los filtros guardados. Puedes ordenar por ingreso o nombre, cambiar la vista visual, arrastrar el panel y plegar los filtros.
 
 ## API
 
@@ -69,7 +73,7 @@ El ingreso previsto incluye escala y mutaciones; excluye bonos personales y boos
 local finder = getgenv().ChilliEggSearch
 finder.Configure({
     rarity = "Divine",
-    minIncome = 7000000000,
+    minIncome = "7b", -- tambien acepta 7000000000 como numero exacto
     nameContains = "",
     mutation = "",
     categories = {}, -- vacio acepta todas las especies
@@ -78,6 +82,7 @@ finder.Start()
 -- finder.Stop()
 -- finder.OpenPanel()
 -- finder.GetStatus()
+-- finder.RarityOptions() -- IDs, nombres y rangos reales del catalogo
 ```
 
 ## Chilli Hub

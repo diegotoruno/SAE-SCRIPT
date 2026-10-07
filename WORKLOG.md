@@ -13,3 +13,14 @@
 - Creado proyecto independiente `SAE-SCRIPT` para VS Code, entorno Python local, tareas Build/Verify y Markdown de contexto.
 
 Las pruebas de UI, reset real y hop mencionadas en `TESTING.md` son evidencia previa. CI actual no puede comprobarlas. Tampoco se ha verificado un candidato real Divine >=7B.
+
+## 2026-10-06 · Filtros reales y minimo abreviado
+
+- Cambios preparados y verificados en `codex/filtros-reales-ingreso`; distribucion por CI/CD al integrarse en main.
+- Rarezas derivadas de Assets.Directory y Data.Rarity.Rarities, ordenadas por Rank real. Observadas 10 opciones con especies, Common a Divine (1-10), coincidentes con las opciones visibles de Chilli. Se excluyen IDs auxiliares sin especies; no se fija una lista ni una escala numerica propia.
+- Minimo acepta k/m/b/t/q, mayusculas, punto o coma decimal y unidades por segundo sin sufijo. El cliente usa Shared.Utils.Numbers.Parse con validacion previa. Persistencia numerica y campo editable conservan el limite exacto.
+- Build y compilacion de todas las fuentes/bundle correctos; 26 regresiones pasan. `git diff --check` sin errores de whitespace.
+- Bundle candidato ejecutado en Potassium: Chilli existente reutilizado y una sola GUI. Probados guardar/aplicar sufijos, lectura del JSON persistido, IDs invalidos, bloqueo de AUTO con minimo invalido y reaplicacion exacta de 6.999.999.999, 7.000.000.001 y 1.234.567.890,12345.
+- Verificacion visible final con fuentes enviadas como UTF-8: etiquetas y mensaje de error caben; 65 tarjetas corresponden a los 65 Uids Slot de ese snapshot, sin errores del panel; cerrar/reabrir correcto. No son cantidades fijas del juego.
+- Restaurados Divine >=7B/s, especies vacias, mutacion/nombre vacios y AUTO activo, como estaban antes de las pruebas. Posicion, visual y apertura conservados por la persistencia existente.
+- No se forzo un teleport: el flujo de hop se conserva y sus regresiones pasan. El autoexec publico recibe este cambio al reejecutarse despues de su publicacion validada en stable.

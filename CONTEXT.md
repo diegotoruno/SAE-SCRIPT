@@ -33,7 +33,11 @@ La referencia visual fue el panel Steal de Chilli: tarjetas oscuras, imagen del 
 
 La implementacion final tiene lista principal **Mapa**, que muestra los spawns actuales de todas las rarezas, y un selector separado **Elegir especies**, que contiene el catalogo para configurar filtros. El catalogo no representa presencia real en el servidor. Un cambio anterior que mostraba el catalogo en la lista principal se corrigio a esta separacion.
 
-Filtros: rareza, minimo B/s, mutacion, nombre y varias especies exactas. Lista vacia de especies acepta todas. `Solo filtro` limita los spawns visibles a coincidencias. La tarjeta muestra ingreso, escala, peso, mutaciones y zona, con imagen oficial del huevo, imagen de la criatura o modelo 3D replicado. Se pueden ordenar las tarjetas por ingreso o nombre.
+Filtros: rareza exacta, minimo de ingreso por segundo, mutacion, nombre y varias especies exactas. El selector incluye solo IDs de `Data.Rarity.Rarities` usados por especies de `Assets.Directory`, ordenados por el `Rank` real. En el cliente del 2026-10-06 son Common, Uncommon, Rare, Epic, Legendary, Mythic, Cosmic, Secret, Eternal y Divine (rangos 1-10); no fijar esa lista ni una escala 0-7 en el codigo. Los otros IDs del modulo general no representan opciones disponibles del catalogo.
+
+El minimo acepta `k`, `m`, `b`, `t` y `q`, sin distinguir mayusculas, con decimal punto o coma: `500k`, `25m`, `7.5b`. Usa `Shared.Utils.Numbers.Parse` del juego tras validar el formato; un numero sin sufijo son unidades por segundo (`7` = 7/s). Los valores guardados y comparados siguen siendo numericos exactos; el campo abrevia solo si el texto conserva el mismo umbral al parsearlo. La configuracion previa de 7.000.000.000 sigue mostrando `7b`.
+
+Lista vacia de especies acepta todas. `Solo filtro` limita los spawns visibles a coincidencias. La tarjeta muestra ingreso, escala, peso, mutaciones y zona, con imagen oficial del huevo, imagen de la criatura o modelo 3D replicado. Se pueden ordenar las tarjetas por ingreso o nombre.
 
 Los cambios pendientes se aplican antes de encender AUTO. Un minimo invalido impide guardar e iniciar. El panel se arrastra, minimiza y reabre con `EGG FILTERS`; los controles de filtros se pueden plegar. Posicion, visual, orden y apertura se conservan en `chilli_egg_panel_ui.json`. Los modelos se crean solo para tarjetas visibles y usan imagen cuando falta el modelo.
 

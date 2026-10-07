@@ -37,12 +37,15 @@ finder.Start()
 finder.Stop()
 finder.GetStatus()
 finder.CycleStatus()
+finder.RarityOptions() -- {id, label, rank}: solo rarezas usadas por especies
 finder.OpenPanel()
 finder.ClosePanel()
 finder.PanelStatus()
 ```
 
 `GetStatus()` incluye config, modo, ciclo y ultimo scan. El estado persiste en archivos relativos del workspace del executor. No aplicar llamadas de ejemplo automaticamente al inspeccionar un cliente: `Configure` y `Start` cambian el estado del usuario.
+
+`Configure` espera a que cargue el catalogo y valida la rareza por ID (sin distinguir mayusculas). Rechaza rangos numericos y rarezas del modulo general que ninguna especie usa. `minIncome` acepta un numero por segundo o texto como `"7b"`; se persiste como numero. El panel comparte `ParseMinimum` y `FormatMinimum` con el detector. En Roblox, el parser numerico es `Shared.Utils.Numbers.Parse`; CI usa el equivalente offline de los sufijos observados. La validacion previa impide que el parser permisivo del juego elimine puntuacion invalida y cambie el valor silenciosamente. Un ID guardado que deje de existir produce `loading` hasta corregir los filtros.
 
 ## UI y ciclo de vida
 
