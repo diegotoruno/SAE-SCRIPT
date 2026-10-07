@@ -1221,8 +1221,12 @@ local function mountEggFilterPanel(context)
         local sound = button("Sound", popup, "Sonido: " .. (settings.sound and "ON" or "OFF"), 258, 390, 240, 34); sound.ZIndex = 62
         notification.Activated:Connect(function() access(); if result(function() api.ConfigureAlerts({notification = not settings.notification}) end) then panel.OpenOptions() end end)
         sound.Activated:Connect(function() access(); if result(function() api.ConfigureAlerts({sound = not settings.sound}) end) then panel.OpenOptions() end end)
-        local test = button("TestAlert", popup, "Probar alerta", 12, 436, 486, 34); test.ZIndex = 62
+        local test = button("TestAlert", popup, "Probar alerta", 12, 436, 234, 44); test.ZIndex = 62
         test.Activated:Connect(function() access(); result(api.TestAlert) end)
+        if type(api.OpenServerAccount) == "function" then
+            local account = button("ServerAccount", popup, "Cuenta / Best Ping", 258, 436, 240, 44); account.ZIndex = 62
+            account.Activated:Connect(function() access(); closePopup(); api.OpenServerAccount() end)
+        end
         text("AlertHint", popup, "Las alertas se emiten al encontrar un objetivo; AUTO se detiene.", 12, 482, 486, 30, C.muted, 11).ZIndex = 61
     end
     connect(optionsButton.Activated, panel.OpenOptions)
@@ -1442,6 +1446,318 @@ local function createFinderSupport()
             cursors[cursor] = true
         end
         return result
+    end
+    -- BestLatency is an order supplied by Roblox v2, not the legacy ping field.
+    -- Keep that order within each occupancy group; never infer it from ping/fps.
+    function support.RankServers(servers, orderBy)
+        assert(orderBy == "BestLatency" or orderBy == "LegacyPing", "orden de servidores desconocido")
+        local pool = {}
+        for index, server in ipairs(servers) do
+            local playing = tonumber(server.playing)
+            if type(server.id) == "string" and playing and playing >= 1 and playing <= 6
+                and playing == math.floor(playing) then
+                table.insert(pool, {id = server.id, playing = playing,
+                    ping = tonumber(server.ping) or -1, fps = tonumber(server.fps) or 0,
+                    sourceRank = index})
+            end
+        end
+        table.sort(pool, function(a, b)
+            if a.playing ~= b.playing then return a.playing < b.playing end
+            if orderBy == "BestLatency" then return a.sourceRank < b.sourceRank end
+            local aHealthy, bHealthy = a.fps >= 50, b.fps >= 50
+            if aHealthy ~= bHealthy then return aHealthy end
+            if a.ping ~= b.ping then return a.ping > b.ping end
+            return a.id < b.id
+        end)
+        return pool
+    end
+    -- Cache only one occupancy group. Exhausting a short cache requires a new
+    -- ascending-occupancy query, not advancing to a larger cached group.
+    function support.OccupancyGroup(servers, orderBy, lowerGroupsComplete)
+        local ranked = support.RankServers(servers, orderBy)
+        if #ranked == 0 then return {}, nil end
+        local playing = ranked[1].playing
+        if playing > 1 and not lowerGroupsComplete then
+            return nil, "lista incompleta; no se confirmo el agotamiento de ocupaciones menores"
+        end
+        local group = {}
+        for _, server in ipairs(ranked) do
+            if server.playing ~= playing then break end
+            table.insert(group, server)
+        end
+        return group, playing
+    end
+    function support.NativePool(data, requestId, now, current, visited)
+        if type(data) ~= "table" or data.schema ~= 1 or data.placeId ~= 107778070777162
+            or data.orderBy ~= "BestLatency" or data.requestId ~= requestId then
+            return nil, "esperando conexion Best Ping del PC"
+        end
+        local age = now - (tonumber(data.updatedAt) or 0)
+        if age < -5 or age > 10 then return nil, "respuesta Best Ping vencida" end
+        if data.state ~= "ready" then
+            return nil, data.state == "error" and ("Best Ping: " .. tostring(data.error))
+                or "Best Ping: buscando candidatos de menor ocupacion"
+        end
+        if type(data.servers) ~= "table" then return nil, "lista Best Ping invalida" end
+        local accepted, previousRank = {}, 0
+        for _, row in ipairs(data.servers) do
+            if type(row) ~= "table" then return nil, "servidor Best Ping invalido" end
+            local playing = tonumber(row.playing)
+            if type(row.id) ~= "string" or not playing or playing < 1 or playing > 6
+                or playing ~= math.floor(playing) then return nil, "ocupacion Best Ping invalida" end
+            local rank, at = tonumber(row.nativeRank), tonumber(row.observedAt)
+            if not rank or rank ~= rank or rank == math.huge or rank <= previousRank
+                or not at or now - at < -5 or now - at > 180
+                or tonumber(row.maxPlayers) ~= 7 then return nil, "datos Best Ping vencidos o invalidos" end
+            previousRank = rank
+            local seenAt = tonumber(visited[row.id])
+            if row.id ~= current and (not seenAt or now - seenAt > 3600) then
+                table.insert(accepted, row)
+            end
+        end
+        local scanAge = now - (tonumber(data.scanStartedAt) or 0)
+        local complete = data.complete == true and scanAge >= -5 and scanAge <= 180
+        local proofAge = now - (tonumber(data.occupancyCheckedAt) or 0)
+        local lowest = tonumber(data.lowestOccupancy)
+        local verified = lowest and lowest >= 1 and lowest <= 6 and lowest == math.floor(lowest)
+            and proofAge >= -5 and proofAge <= 90
+        if verified then
+            for _, row in ipairs(accepted) do
+                if tonumber(row.playing) ~= lowest then return nil, "ocupacion Best Ping no corresponde a la consulta vigente" end
+            end
+        end
+        local group, reason = support.OccupancyGroup(accepted, "BestLatency", complete or verified)
+        if not group then return nil, reason end
+        if #group == 0 then return nil, "Best Ping: renovando candidatos agotados" end
+        return group
+    end
+    function support.NormalizeCookie(value)
+        if type(value) ~= "string" then return nil end
+        value = value:gsub("^%s+", ""):gsub("%s+$", "")
+        local prefix = ".ROBLOSECURITY="
+        if value:sub(1, #prefix) == prefix then value = value:sub(#prefix + 1):gsub(";$", "") end
+        if #value == 0 or #value > 16384 or value:find("[^!-~]") or value:find(";", 1, true) then return nil end
+        return value
+    end
+    -- Kept outside general JSON storage: no backups, telemetry or public API.
+    function support.DeviceCookie(io, owner)
+        local credential, remembered = nil, false
+        local path = "sae_account_cookie_" .. tostring(owner) .. ".json"
+        local device = {}
+        function device.Restore()
+            credential, remembered = nil, false
+            local ok, saved = pcall(function() return io.decode(io.read(path)) end)
+            if ok and type(saved) == "table" and saved.owner == owner then
+                credential = support.NormalizeCookie(saved.cookie)
+                remembered = credential ~= nil
+            end
+            return credential ~= nil
+        end
+        function device.Set(value, persist)
+            local normalized = support.NormalizeCookie(value)
+            if not normalized then return false, "Pega solo el valor de .ROBLOSECURITY." end
+            local ok = pcall(function()
+                if persist then
+                    local raw = io.encode({owner = owner, cookie = normalized})
+                    io.write(path, raw)
+                    assert(io.read(path) == raw)
+                else
+                    -- Session-only must also remove any previous saved credential.
+                    io.erase(path)
+                end
+            end)
+            if not ok then return false, "No se pudo guardar o borrar la cookie local. Revisa tu executor." end
+            credential, remembered = normalized, persist == true
+            return true
+        end
+        function device.Read() return credential end
+        function device.Status() return {configured = credential ~= nil, remembered = remembered} end
+        function device.Forget()
+            local ok = pcall(io.erase, path)
+            credential, remembered = nil, false
+            return ok
+        end
+        function device.Destroy() credential = nil end
+        return device
+    end
+    function support.CookiePage(env, orderBy, cursor, secret)
+        if orderBy ~= "BestLatency" and orderBy ~= "OccupancyAsc" then return nil, "orden invalido" end
+        local url = "https://games.roblox.com/v2/games/107778070777162/servers/Public?orderBy=" .. orderBy
+            .. "&sortOrder=" .. (orderBy == "BestLatency" and "Desc" or "Asc") .. "&excludeFullGames=true&limit=100"
+        if cursor then url ..= "&cursor=" .. env.encode(cursor) end
+        local headers = {Accept = "application/json"}
+        if orderBy == "BestLatency" then
+            secret = support.NormalizeCookie(secret)
+            if not secret then return nil, "cookie ausente" end
+            headers.Cookie = ".ROBLOSECURITY=" .. secret
+        end
+        local ok, response = pcall(env.send, {Url = url, Method = "GET", Headers = headers, Redirect = false})
+        headers.Cookie = nil
+        if not ok or type(response) ~= "table" then return nil, "El executor no pudo consultar Roblox con headers." end
+        local status = tonumber(response.StatusCode or response.Status or response.status_code)
+        local finalUrl = response.Url or response.URL
+        if (type(finalUrl) == "string" and finalUrl:sub(1, #"https://games.roblox.com/") ~= "https://games.roblox.com/")
+            or (status and status >= 300 and status < 400) then
+            return nil, "Redireccion rechazada; conexion detenida.", 302
+        end
+        if status == 200 then
+            local decoded, body = pcall(env.decode, response.Body or response.body or "")
+            if decoded and type(body) == "table" and type(body.data) == "table" then
+                return {data = body.data, nextPageCursor = body.nextPageCursor}, nil, status
+            end
+            return nil, "Roblox devolvio una lista invalida.", status
+        end
+        if status == 429 then return nil, "Roblox limito las consultas; espera 60 segundos.", status end
+        if status == 400 or status == 401 or status == 403 then
+            return nil, "Roblox no acepto la cookie o la consulta. Vuelve a conectar.", status
+        end
+        return nil, "No se pudo consultar Roblox. Revisa tu conexion.", status
+    end
+    function support.DeviceRequest(env, shared)
+        local transport = {}
+        local function waiting()
+            local now = env.now()
+            if shared.busy then
+                local at = type(shared.busy) == "table" and shared.busy.started or nil
+                shared.pendingSince = shared.pendingSince or env.clock()
+                local elapsed = math.max(0, env.clock() - (at or shared.pendingSince))
+                return {kind = "pending", seconds = math.floor(elapsed)}
+            end
+            shared.pendingSince = nil
+            if now < (shared.cooldown or 0) then
+                return {kind = "rate_limit", seconds = math.ceil(shared.cooldown - now)}
+            end
+            if now < (shared.last or 0) + 15 then
+                return {kind = "interval", seconds = math.ceil(shared.last + 15 - now)}
+            end
+            return {kind = "ready", seconds = 0}
+        end
+        function transport.State()
+            local state = waiting()
+            state.lastHttpStatus = shared.lastHttpStatus
+            return state
+        end
+        function transport.Run(send, alive, progress)
+            -- A previous request plus a real 60s cooldown may exceed 35s.
+            local deadline = env.clock() + 95
+            while alive() do
+                local state = waiting()
+                if state.kind == "ready" then break end
+                if progress then pcall(progress, state) end
+                if state.kind == "pending" and state.seconds >= 30 then
+                    return nil, "El executor no termino la consulta anterior. Reinicia Roblox y ejecuta de nuevo.", nil
+                end
+                if env.clock() >= deadline then return nil, "La cola de consultas sigue ocupada. Reintenta cuando termine." end
+                env.wait(0.2)
+            end
+            if not alive() then return nil, "conexion cancelada" end
+            local token = {started = env.clock()}
+            shared.busy, shared.last = token, env.now()
+            if env.persist then pcall(env.persist, shared.last, shared.cooldown or 0) end
+            local done, page, reason, status = false, nil, nil, nil
+            local spawned = pcall(env.spawn, function()
+                local ok
+                ok, page, reason, status = pcall(send)
+                if not ok then
+                    page, reason, status = nil, "El executor no pudo completar la consulta a Roblox.", nil
+                end
+                if status == 429 then shared.cooldown = env.now() + 60 end
+                shared.lastHttpStatus = status
+                if env.persist then pcall(env.persist, shared.last, shared.cooldown or 0) end
+                -- A late completion releases only its own reservation.
+                if shared.busy == token then shared.busy = false; shared.pendingSince = nil end
+                done = true
+            end)
+            if not spawned then
+                if shared.busy == token then shared.busy = false end
+                return nil, "No se pudo iniciar la consulta en el executor."
+            end
+            deadline = env.clock() + 30
+            while alive() and not done and env.clock() < deadline do env.wait(0.1) end
+            if not alive() then return nil, "conexion cancelada" end
+            if not done then
+                -- Never unlock a native request that may still be running.
+                return nil, "El executor no termino la consulta. Reinicia Roblox si sigue pendiente."
+            end
+            return page, reason, status
+        end
+        return transport
+    end
+    function support.DeviceWaitMessage(state)
+        if state.kind == "rate_limit" then return string.format("Roblox respondio HTTP 429. Reintento en %d s...", state.seconds) end
+        if state.kind == "interval" then return string.format("Espaciando consultas. Continua en %d s...", state.seconds) end
+        if state.kind == "pending" then return string.format("Esperando la consulta anterior del executor (%d s)...", state.seconds) end
+        return "Comprobando la conexion con Roblox..."
+    end
+    -- Native v2 paging on the user's device. A partial latency stream never
+    -- establishes exhaustion of lower occupancy groups.
+    function support.DeviceNative(env)
+        local rows, cursors, cursor, rank, started, complete = {}, {}, nil, 0, env.now(), false
+        local native = {}
+        function native.Pick(current, visited)
+            if not env.alive() then return nil, "sesion terminada" end
+            local now = env.now()
+            if now - started > 180 then rows, cursors, cursor, rank, started, complete = {}, {}, nil, 0, now, false end
+            local function eligible(row)
+                return row.id ~= current and not visited[row.id]
+            end
+            local lowest, proofAt, proofCursor, proofSeen, previous = nil, nil, nil, {}, 0
+            for _ = 1, 5 do
+                local page, err = env.fetch("OccupancyAsc", proofCursor)
+                if not env.alive() then return nil, "sesion terminada" end
+                if not page or type(page.data) ~= "table" then return nil, err or "respuesta de ocupacion invalida" end
+                for _, row in ipairs(page.data) do
+                    local count = type(row) == "table" and row.playing
+                    if type(count) ~= "number" or count ~= math.floor(count) or count < previous or count > 7 then
+                        return nil, "orden de ocupacion invalido"
+                    end
+                    previous = count
+                    if not lowest and count >= 1 and count <= 6 and row.maxPlayers == 7
+                        and type(row.id) == "string" and eligible(row) then lowest = count end
+                end
+                if lowest then proofAt = env.now(); break end
+                proofCursor = page.nextPageCursor
+                if proofCursor == nil or proofCursor == "" then return nil, "no hay servidores disponibles" end
+                if type(proofCursor) ~= "string" or proofSeen[proofCursor] then return nil, "cursor de ocupacion invalido" end
+                proofSeen[proofCursor] = true
+            end
+            if not lowest then return nil, "lista parcial; revisando ocupaciones menores" end
+            local function group()
+                if env.now() - proofAt > 90 then return nil end
+                local accepted = {}
+                for _, row in pairs(rows) do
+                    if row.playing == lowest and eligible(row) and env.now() - row.observedAt <= 180 then table.insert(accepted, row) end
+                end
+                table.sort(accepted, function(a, b) return a.nativeRank < b.nativeRank end)
+                return #accepted > 0 and support.RankServers(accepted, "BestLatency") or nil
+            end
+            local cached = group()
+            if cached then return cached end
+            if complete then return nil, "renovando lista Best Ping" end
+            for _ = 1, 5 do
+                local page, err = env.fetch("BestLatency", cursor)
+                if not env.alive() then return nil, "sesion terminada" end
+                if not page or type(page.data) ~= "table" then return nil, err or "respuesta Best Ping invalida" end
+                for _, row in ipairs(page.data) do
+                    rank += 1
+                    if type(row) == "table" and type(row.id) == "string" and row.maxPlayers == 7
+                        and type(row.playing) == "number" and row.playing == math.floor(row.playing)
+                        and row.playing >= 1 and row.playing <= 6 then
+                        rows[row.id] = {id = row.id, playing = row.playing,
+                            nativeRank = rows[row.id] and rows[row.id].nativeRank or rank, observedAt = env.now()}
+                    end
+                end
+                cursor = page.nextPageCursor
+                if cursor == nil or cursor == "" then complete = true
+                elseif type(cursor) ~= "string" or cursors[cursor] then return nil, "cursor Best Ping invalido"
+                else cursors[cursor] = true end
+                local found = group()
+                if found then return found end
+                if complete then break end
+            end
+            return nil, "lista parcial; buscando Best Ping en la ocupacion menor"
+        end
+        return native
     end
     function support.Attempt(env)
         local attempt = { state = "idle", connection = nil }
@@ -1972,12 +2288,12 @@ local function montarHopper()
 --  JobId. Si no hay senal alguna en ~1 min, se para y se pide otro clic en vez
 --  de pisar un teleport que podria estar en camino.
 --
---  Reglas que NO se tocan:
+--  Reglas de seleccion y medicion:
 --    * servidores de 7 plazas; se descarta el actual y los visitados en 1 h
---    * candidatos ordenados por el ping ANUNCIADO descendente, porque ese campo
---      de la API esta invertido respecto al ping real (mas alto = mejor
---      conexion medida). Comprobado: anunciado 2092 ms -> 64 ms reales;
---      anunciado 4-22 ms -> 81-307 ms reales.
+--    * ocupacion ascendente 1/7 -> 2/7 -> ... -> 6/7; dentro de cada grupo
+--      se conserva FPS sano y ping ANUNCIADO descendente como heuristica previa.
+--      Las observaciones anteriores no prueban el ping de cada usuario.
+--      BestLatency nativo de v2 requiere autenticacion y sigue en pruebas.
 --    * al llegar se mide de verdad: jugadores reales y ping real (10 s de
 --      asentamiento + mediana de 8 muestras, para no confundir el arranque ni
 --      los picos con la conexion real)
@@ -2012,6 +2328,11 @@ do
     local SCOUT_STATE_FILE = "steal_an_egg_scout_state.json"
     local UI_FILE = "server_hop_button_ui.json"
     local POOL_FILE = "server_hop_button_pool.json"
+    local SERVER_SELECTION_POLICY = "occupancy-groups-v2"
+    local CONNECTION_FILE = "server_hop_button_connection.json"
+    local DEVICE_GATE_FILE = "sae_best_ping_device_gate.json"
+    local NATIVE_REQUEST_FILE = "sae_best_ping_request.json"
+    local NATIVE_RESPONSE_FILE = "sae_best_ping_response.json"
     local VISITED_MAX_AGE = 60 * 60
     local POOL_REFRESH_SECONDS = 45   -- cada cuanto se refresca el pool
     local POOL_SIZE = 8               -- candidatos guardados en el pool
@@ -2050,6 +2371,26 @@ do
         encode = function(value) return HttpService:JSONEncode(value) end,
         decode = function(raw) return HttpService:JSONDecode(raw) end})
     local function readJson(path, fallback) return store.Read(path, fallback) end
+    local connectionConfig = readJson(CONNECTION_FILE, {})
+    local serverOrder = connectionConfig.mode == "BestLatency" and "BestLatency" or "LegacyPing"
+    local nativeStatus = nil
+    local nativeRequestBusy = false
+    local deviceCookie = support.DeviceCookie({
+        read = function(path) return readfile(path) end,
+        write = function(path, raw) writefile(path, raw) end,
+        decode = function(raw) return HttpService:JSONDecode(raw) end,
+        encode = function(value) return HttpService:JSONEncode(value) end,
+        erase = function(path)
+            if type(isfile) == "function" and not isfile(path) then return end
+            -- Overwrite first; deletion is optional on mobile executors.
+            writefile(path, "")
+            assert(readfile(path) == "")
+            if type(delfile) == "function" then delfile(path) end
+        end,
+    }, Players.LocalPlayer.UserId)
+    if connectionConfig.transport == "DeviceCookie" then deviceCookie.Restore() end
+    local credentialGeneration, deviceFatal = 0, nil
+    local deviceNative
     local function writeJson(path, value)
         if session and not session.alive then return false end
         local ok = store.Write(path, value)
@@ -2117,6 +2458,49 @@ do
     local apiEnvironment = getgenv and getgenv() or _G
     local apiGate = apiEnvironment.__EGG_API_GATE
     if type(apiGate) ~= "table" then apiGate = {last = -math.huge, cooldown = 0}; apiEnvironment.__EGG_API_GATE = apiGate end
+    local deviceGate = apiEnvironment.__EGG_DEVICE_API_GATE
+    if type(deviceGate) ~= "table" then
+        local savedGate = readJson(DEVICE_GATE_FILE, {})
+        local last = tonumber(savedGate.last) or 0
+        local cooldown = tonumber(savedGate.cooldown) or 0
+        deviceGate = {last = math.min(last, os.time()), cooldown = math.min(cooldown, os.time() + 60)}
+        apiEnvironment.__EGG_DEVICE_API_GATE = deviceGate
+    end
+    local function executorRequest()
+        if type(request) == "function" then return request end
+        if type(http_request) == "function" then return http_request end
+        if type(syn) == "table" and type(syn.request) == "function" then return syn.request end
+        if type(http) == "table" and type(http.request) == "function" then return http.request end
+        return nil
+    end
+    local deviceTransport = support.DeviceRequest({now = os.time, clock = os.clock, wait = task.wait, spawn = task.spawn,
+        persist = function(last, cooldown)
+            writefile(DEVICE_GATE_FILE, HttpService:JSONEncode({last = last, cooldown = cooldown}))
+        end}, deviceGate)
+    local function deviceFetch(orderBy, cursor, candidate, progress)
+        local generation = credentialGeneration
+        if deviceFatal and not candidate then return nil, deviceFatal end
+        local secret = candidate or deviceCookie.Read()
+        if not secret then return nil, "Abre Cuenta / Best Ping y pega tu cookie." end
+        local send = executorRequest()
+        if not send then return nil, "Tu executor no ofrece request con headers." end
+        local result, reason, status = deviceTransport.Run(function()
+            return support.CookiePage({send = send,
+                decode = function(raw) return HttpService:JSONDecode(raw) end,
+                encode = function(value) return HttpService:UrlEncode(value) end}, orderBy, cursor, secret)
+        end, function()
+            return session.alive and generation == credentialGeneration and (candidate ~= nil or not session.accountConnecting)
+        end, progress)
+        secret = nil
+        if (status == 400 or status == 401 or status == 403 or status == 302)
+            and generation == credentialGeneration then deviceFatal = reason end
+        return result, reason, status
+    end
+    local function resetDeviceNative()
+        deviceNative = support.DeviceNative({now = os.time, fetch = deviceFetch,
+            alive = function() return session and session.alive and not session.accountConnecting end})
+    end
+    resetDeviceNative()
     local function fetchServers(cursor)
         local url = string.format(
             "https://games.roblox.com/v1/games/%d/servers/Public?sortOrder=Asc&excludeFullGames=true&limit=100",
@@ -2295,6 +2679,8 @@ do
         if session.DisposeSearch then session.DisposeSearch() end
         if session.DisposePanel then session.DisposePanel() end
         if session.attempt then session.attempt.Cancel() end
+        credentialGeneration += 1; deviceCookie.Destroy()
+        if session.DisposeAccount then session.DisposeAccount() end
     end)
     function session.Destroy()
         session.alive = false
@@ -2303,6 +2689,8 @@ do
         if session.DisposeSearch then session.DisposeSearch() end
         if session.DisposePanel then session.DisposePanel() end
         if session.attempt then session.attempt.Cancel() end
+        credentialGeneration += 1; deviceCookie.Destroy()
+        if session.DisposeAccount then session.DisposeAccount() end
         if session.alertSound then session.alertSound:Destroy() end
         if screenGui.Parent then screenGui:Destroy() end
     end
@@ -2772,6 +3160,8 @@ do
         Stop = function() if session.alive then setAuto(false) end end,
         GetStatus = function()
             return { active = autoEnabled and session.alive, jobId = game.JobId,
+                serverConnection = {orderBy = serverOrder, transport = connectionConfig.transport or "LocalBridge",
+                    credential = deviceCookie.Status(), request = deviceTransport.State(), native = support.Copy(nativeStatus)},
                 mode = session.searchMode, cycle = eggSearch.CycleStatus(),
                 config = support.Copy(eggSearch.config), lastScan = eggSearch.lastScan and {
                     match = support.Copy(eggSearch.lastScan.match), info = support.Copy(eggSearch.lastScan.info),
@@ -2780,6 +3170,183 @@ do
                 searchWindow = eggSearch.SearchWindow() }
         end,
     }
+
+    -- Account entry stays in a local closure; never expose it in GetStatus,
+    -- logs, Chilli configuration, teleport state, or companion requests.
+    do
+        local surface = Color3.fromRGB(20, 24, 30)
+        local fieldColor = Color3.fromRGB(30, 36, 44)
+        local foreground = Color3.fromRGB(239, 243, 247)
+        local secondary = Color3.fromRGB(170, 183, 197)
+        local accent = Color3.fromRGB(224, 197, 149)
+        local function rounded(object)
+            local corner = Instance.new("UICorner"); corner.CornerRadius = UDim.new(0, 12); corner.Parent = object
+        end
+        local function text(parentObject, name, content, y, height, size, color)
+            local item = Instance.new("TextLabel")
+            item.Name = name; item.BackgroundTransparency = 1; item.Text = content
+            item.Position = UDim2.fromOffset(20, y); item.Size = UDim2.new(1, -40, 0, height)
+            item.Font = Enum.Font.GothamMedium; item.TextSize = size; item.TextColor3 = color or foreground
+            item.TextXAlignment = Enum.TextXAlignment.Left; item.TextYAlignment = Enum.TextYAlignment.Top
+            item.TextWrapped = true; item.Parent = parentObject
+            return item
+        end
+        local function action(parentObject, name, content, y, color)
+            local item = Instance.new("TextButton")
+            item.Name = name; item.Text = content; item.Position = UDim2.fromOffset(20, y)
+            item.Size = UDim2.new(1, -40, 0, 44); item.BackgroundColor3 = color or fieldColor
+            item.BorderSizePixel = 0; item.Font = Enum.Font.GothamBold; item.TextSize = 14
+            item.TextColor3 = color and surface or foreground; item.Parent = parentObject; rounded(item)
+            return item
+        end
+        local entry = action(screenGui, "ServerAccount", "CUENTA / BEST PING", 0)
+        entry.AnchorPoint = Vector2.new(0, 1)
+        entry.Position = UDim2.new(0, 18, 1, -18); entry.Size = UDim2.fromOffset(196, 44); entry.ZIndex = 90
+        local panel = Instance.new("Frame")
+        panel.Name = "ServerAccountPanel"; panel.AnchorPoint = Vector2.new(0.5, 0.5)
+        panel.Position = UDim2.fromScale(0.5, 0.5); panel.Size = UDim2.fromOffset(440, 462)
+        panel.BackgroundColor3 = surface; panel.BorderSizePixel = 0; panel.Visible = false
+        panel.ZIndex = 30; panel.Parent = screenGui; rounded(panel)
+        local scale = Instance.new("UIScale"); scale.Parent = panel
+        text(panel, "Title", "Tu cuenta para Best Ping", 20, 30, 22)
+        text(panel, "Privacy", "Este dispositivo consulta Roblox. El autor del script no recibe tu cookie.", 58, 40, 13, secondary)
+        text(panel, "CookieLabel", ".ROBLOSECURITY", 112, 20, 13)
+        local input = Instance.new("TextBox")
+        input.Name = "CookieInput"; input.Position = UDim2.fromOffset(20, 138)
+        input.Size = UDim2.new(1, -40, 0, 48); input.BackgroundColor3 = fieldColor
+        input.BorderSizePixel = 0; input.Text = ""; input.PlaceholderText = ""
+        input.ClearTextOnFocus = false; input.MultiLine = false; input.TextTransparency = 1
+        input.TextSize = 16; input.Font = Enum.Font.GothamMedium; input.Parent = panel; rounded(input)
+        local mask = text(input, "MaskedValue", "Toca aqui y pega la cookie completa", 14, 24, 13, secondary)
+        mask.Position = UDim2.fromOffset(14, 14); mask.Size = UDim2.new(1, -28, 0, 24)
+        text(panel, "StorageHelp", "Guardar permite continuar entre saltos. Se guarda solo aqui, sin cifrado; otros scripts del executor podrian leerla.", 198, 54, 13, secondary)
+        local message = text(panel, "ConnectionMessage", "", 258, 40, 13, secondary)
+        local save = action(panel, "SaveAndAuto", "Guardar y usar AUTO", 304, accent)
+        local once = action(panel, "SessionOnly", "Solo esta sesion", 356)
+        local forget = action(panel, "ForgetCookie", "Borrar cookie y desconectar", 408)
+        local close = Instance.new("TextButton")
+        close.Name = "Close"; close.Text = "Cerrar"; close.Font = Enum.Font.GothamMedium
+        close.TextSize = 12; close.TextColor3 = secondary; close.BackgroundTransparency = 1
+        close.Size = UDim2.fromOffset(64, 44); close.Position = UDim2.new(1, -74, 0, 5); close.Parent = panel
+        local draft, updating, connecting = nil, false, false
+        local function savedMessage(state)
+            return state.remembered and "Cookie guardada en este dispositivo. Puedes cerrar esta ventana."
+                or "Cookie activa solo en esta sesion; no se guardo."
+        end
+        local function updateEntry()
+            uiAccess()
+            local state = deviceCookie.Status()
+            entry.Text = connecting and "CUENTA · COMPROBANDO"
+                or state.configured and (state.remembered and "CUENTA · GUARDADA" or "CUENTA · SOLO SESION")
+                or "CUENTA / BEST PING"
+        end
+        local function fit()
+            uiAccess()
+            local camera = workspace.CurrentCamera
+            local viewport = camera and camera.ViewportSize or Vector2.new(800, 600)
+            scale.Scale = math.min(1, (viewport.X - 32) / 440, (viewport.Y - 40) / 462)
+        end
+        local function show()
+            if not session.alive then return end
+            uiAccess(); fit(); panel.Visible = true; entry.Visible = false
+            local state = deviceCookie.Status()
+            message.Text = connecting and support.DeviceWaitMessage(deviceTransport.State())
+                or state.configured and savedMessage(state)
+                or "Pega tu cookie para conectar tu propia cuenta."
+        end
+        local function hide()
+            uiAccess(); input:ReleaseFocus(); panel.Visible = false; entry.Visible = true; input.Text = ""; draft = nil
+            mask.Text = "Toca aqui y pega la cookie completa"
+        end
+        connect(entry.Activated, show)
+        connect(close.Activated, hide)
+        connect(input:GetPropertyChangedSignal("Text"), function()
+            if updating or input.Text == "" then return end
+            draft = support.NormalizeCookie(input.Text)
+            updating = true; input.Text = ""; updating = false
+            mask.Text = draft and "Cookie recibida (oculta)" or "Pega solo la cookie completa"
+        end)
+        local camera = workspace.CurrentCamera
+        if camera then connect(camera:GetPropertyChangedSignal("ViewportSize"), fit) end
+        local function activate(persist)
+            if connecting then return end
+            if not draft then message.Text = "Pega la cookie completa antes de conectar."; return end
+            if not executorRequest() then message.Text = "Este executor no ofrece request con headers."; return end
+            local candidate = draft; draft = nil
+            input:ReleaseFocus(); mask.Text = "Cookie recibida (oculta)"
+            connecting = true; session.accountConnecting = true; save.Active = false; once.Active = false
+            save.Text = "Comprobando con Roblox..."; once.Text = "Espera la comprobacion..."; updateEntry()
+            setAuto(false); uiAccess(); message.Text = "Comprobando la conexion con Roblox..."
+            task.spawn(function()
+                local generation = credentialGeneration
+                local page, reason, status
+                for attempt = 1, 2 do
+                    page, reason, status = deviceFetch("BestLatency", nil, candidate, function(state)
+                        if not session.alive or generation ~= credentialGeneration then return end
+                        uiAccess(); message.Text = support.DeviceWaitMessage(state)
+                    end)
+                    if status ~= 429 or attempt == 2 then break end
+                end
+                if not session.alive or generation ~= credentialGeneration then candidate = nil; return end
+                local ok = false
+                if page then
+                    uiAccess(); message.Text = persist and "Guardando y verificando el archivo local..." or "Activando solo en esta sesion..."
+                    ok, reason = deviceCookie.Set(candidate, persist)
+                    if ok then
+                        connectionConfig = {mode = "BestLatency", transport = "DeviceCookie"}
+                        ok = writeJson(CONNECTION_FILE, connectionConfig)
+                        if not ok then reason = "No se pudo guardar el modo de conexion. Reintenta." end
+                    end
+                end
+                -- Retain a failed attempt only while the form stays open,
+                -- so an interval or cooldown never requires another paste.
+                uiAccess()
+                if not ok and panel.Visible then draft = draft or candidate end
+                candidate = nil; connecting = false; session.accountConnecting = false
+                uiAccess(); save.Active = true; once.Active = true
+                save.Text = "Guardar y usar AUTO"; once.Text = "Solo esta sesion"; updateEntry()
+                if ok then
+                    credentialGeneration += 1; deviceFatal = nil; serverOrder = "BestLatency"; resetDeviceNative()
+                    -- Confirm verified storage before starting AUTO, which may
+                    -- change the map status or begin a later hop independently.
+                    draft = nil; input.Text = ""; mask.Text = "Toca aqui para cambiar la cookie"
+                    message.Text = savedMessage(deviceCookie.Status())
+                    nativeStatus = {state = "connected"}; setAuto(true)
+                else
+                    message.Text = reason or "No se pudo conectar. Pega la cookie y reintenta."
+                    mask.Text = draft and "Cookie recibida (oculta); puedes reintentar" or "Toca aqui y pega la cookie completa"
+                end
+            end)
+        end
+        connect(save.Activated, function() activate(true) end)
+        connect(once.Activated, function() activate(false) end)
+        connect(forget.Activated, function()
+            credentialGeneration += 1; draft = nil; connecting = false; session.accountConnecting = false; setAuto(false)
+            local removed = deviceCookie.Forget()
+            deviceFatal = nil; resetDeviceNative()
+            -- Leave the selected transport enabled: an absent cookie waits;
+            -- it must not silently resume legacy or the owner's PC bridge.
+            connectionConfig = {mode = "BestLatency", transport = "DeviceCookie"}
+            serverOrder = "BestLatency"; writeJson(CONNECTION_FILE, connectionConfig)
+            uiAccess(); input.Text = ""; mask.Text = "Toca aqui y pega la cookie completa"
+            save.Active = true; once.Active = true
+            save.Text = "Guardar y usar AUTO"; once.Text = "Solo esta sesion"; updateEntry()
+            message.Text = removed and "Cookie borrada. AUTO apagado." or "AUTO apagado. No se pudo borrar el archivo local; revisa el executor."
+        end)
+        hopperEnvironment.ChilliEggSearch.OpenServerAccount = show
+        hopperEnvironment.ChilliEggSearch.CloseServerAccount = hide
+        hopperEnvironment.ChilliEggSearch.ServerAccountStatus = function()
+            uiAccess()
+            local state = deviceCookie.Status()
+            return {open = panel.Visible, launcherVisible = entry.Visible, configured = state.configured, remembered = state.remembered,
+                connecting = connecting, message = message.Text}
+        end
+        session.DisposeAccount = function() draft = nil; session.accountConnecting = false end
+        fit(); updateEntry()
+        if connectionConfig.transport ~= "LocalBridge" and not deviceCookie.Status().configured
+            and connectionConfig.mode ~= "BestLatency" then show()
+        elseif connectionConfig.transport == "DeviceCookie" and not deviceCookie.Status().configured then show() end
+    end
 
     local filterPanel = mountEggFilterPanel({ search = eggSearch,
         api = hopperEnvironment.ChilliEggSearch, session = session, screenGui = screenGui,
@@ -2790,38 +3357,65 @@ do
     local function pickCandidates()
         local visited = support.PruneVisited(readJson(VISITED_FILE, {}), os.time(), VISITED_MAX_AGE)
         local now = os.time()
+        if serverOrder == "BestLatency" then
+            if connectionConfig.transport == "DeviceCookie" then
+                if session.accountConnecting then return nil, "conectando la cuenta; espera la comprobacion" end
+                if nativeRequestBusy then return nil, "consulta Best Ping en curso" end
+                nativeRequestBusy = true
+                local generation = credentialGeneration
+                local ok, pool, reason = pcall(deviceNative.Pick, game.JobId, visited)
+                nativeRequestBusy = false
+                if not session.alive or generation ~= credentialGeneration then return nil, "conexion cancelada" end
+                if not ok then pool, reason = nil, "No se pudo leer Best Ping en este dispositivo." end
+                nativeStatus = {state = pool and "ready" or "error", occupancy = pool and pool[1].playing, error = reason}
+                return pool, reason
+            end
+            if nativeRequestBusy then return nil, "consulta Best Ping en curso" end
+            nativeRequestBusy = true
+            local excluded = {game.JobId}
+            for id in pairs(visited) do table.insert(excluded, id) end
+            local requestId = HttpService:GenerateGUID(false)
+            local ok = pcall(function()
+                writefile(NATIVE_REQUEST_FILE, HttpService:JSONEncode({placeId = PLACE_ID,
+                    requestId = requestId, requestedAt = now, excluded = excluded}))
+            end)
+            if not ok then nativeRequestBusy = false; return nil, "no se pudo solicitar Best Ping al PC" end
+            local deadline = os.clock() + 3
+            repeat
+                local decoded, data = pcall(function()
+                    return HttpService:JSONDecode(readfile(NATIVE_RESPONSE_FILE))
+                end)
+                if decoded and type(data) == "table" and data.requestId == requestId then
+                    local pool, reason = support.NativePool(data, requestId, os.time(), game.JobId, visited)
+                    nativeStatus = {state = data.state, pages = data.pages, complete = data.complete,
+                        occupancy = data.occupancy, error = reason}
+                    nativeRequestBusy = false
+                    return pool, reason
+                end
+                task.wait(0.1)
+            until not session.alive or game.JobId ~= sessionStartJobId or os.clock() >= deadline
+            nativeRequestBusy = false
+            return nil, "esperando proceso Best Ping del PC"
+        end
         local servers, fetchError = support.Pages(fetchServers, function(server)
             return type(server.id) == "string" and server.id ~= game.JobId
                 and tonumber(server.maxPlayers) == EXPECTED_CAPACITY
-                and (tonumber(server.playing) or 0) < EXPECTED_CAPACITY
+                and tonumber(server.playing) ~= nil and tonumber(server.playing) >= 1
+                and tonumber(server.playing) < EXPECTED_CAPACITY
+                and tonumber(server.playing) == math.floor(tonumber(server.playing))
                 and now - (tonumber(visited[server.id]) or 0) > VISITED_MAX_AGE
         end, function() return session.alive and game.JobId == sessionStartJobId end, POOL_SIZE, 5)
         if not servers then return nil, fetchError end
-        local pool = {}
-        for _, server in ipairs(servers) do
-            table.insert(pool, {id = server.id, ping = tonumber(server.ping) or -1, fps = tonumber(server.fps) or 0})
-        end
+        -- fetchServers uses Occupancy Asc: the earliest eligible records prove
+        -- the lowest available group, even when later pages remain unread.
+        local pool = support.OccupancyGroup(servers, "LegacyPing", true)
 
         if #pool == 0 then
             return nil, "no quedan servidores nuevos (se probaron todos hace poco)"
         end
 
-        -- Primero los servidores con fps sano (los moribundos suelen fallar con
-        -- GameEnded / Unknown exception); dentro de ellos, el ping anunciado
-        -- descendente (el ping de la API esta invertido: mas alto = mejor ping
-        -- real medido).
-        table.sort(pool, function(a, b)
-            local aHealthy = (a.fps or 0) >= 50
-            local bHealthy = (b.fps or 0) >= 50
-            if aHealthy ~= bHealthy then
-                return aHealthy
-            end
-            if a.ping ~= b.ping then
-                return a.ping > b.ping
-            end
-            return a.id < b.id
-        end)
-
+        -- Ocupacion 1 -> 2 -> ... -> 6 antes de FPS/ping. BestLatency sigue en pruebas:
+        -- la peticion v2 sin sesion web devuelve Guest users are not allowed.
         return pool
     end
 
@@ -2831,11 +3425,16 @@ do
         if not pool or #pool == 0 then
             return
         end
+        local group = support.OccupancyGroup(pool, serverOrder, true)
+        if #group == 0 then return end
         local trimmed = {}
-        for index = 1, math.min(#pool, POOL_SIZE) do
-            trimmed[index] = pool[index]
+        for index = 1, math.min(#group, POOL_SIZE) do
+            trimmed[index] = group[index]
         end
         writeJson(POOL_FILE, {
+            selectionPolicy = SERVER_SELECTION_POLICY,
+            orderBy = serverOrder,
+            occupancy = group[1].playing,
             updatedAt = os.time(),
             servers = trimmed,
         })
@@ -2844,10 +3443,21 @@ do
     -- Lee el pool guardado (sin HTTP) y filtra lo que ya no sirve: visitados
     -- en la ultima hora y el servidor actual. Si el pool es viejo, se ignora.
     local function loadPool()
+        -- The companion keeps pagination across hops. Ask it with the current
+        -- visited set; a saved batch is never proof that a group is exhausted.
+        if serverOrder == "BestLatency" then return nil end
         local data = readJson(POOL_FILE, nil)
         if type(data) ~= "table" or type(data.servers) ~= "table" then
             return nil
         end
+        if data.selectionPolicy ~= SERVER_SELECTION_POLICY then return nil end
+        if data.orderBy ~= serverOrder then return nil end
+        local occupancy = tonumber(data.occupancy)
+        if not occupancy or occupancy < 1 or occupancy >= EXPECTED_CAPACITY
+            or occupancy ~= math.floor(occupancy) then return nil end
+        -- Before another hop in groups 2..6, query again: a lower-occupancy
+        -- server may have become available since this cache was created.
+        if occupancy > 1 then return nil end
         if os.time() - (tonumber(data.updatedAt) or 0) > POOL_MAX_AGE then
             return nil
         end
@@ -2857,24 +3467,32 @@ do
         local pool = {}
         for _, server in ipairs(data.servers) do
             local id = type(server) == "table" and server.id or nil
+            if type(server) ~= "table" or tonumber(server.playing) ~= occupancy then return nil end
             if type(id) == "string" and id ~= game.JobId then
                 local seenAt = tonumber(visited[id]) or 0
                 if now - seenAt > VISITED_MAX_AGE then
                     table.insert(pool, {
                         id = id,
+                        playing = tonumber(server.playing),
                         ping = tonumber(server.ping) or -1,
                         fps = tonumber(server.fps) or 0,
                     })
                 end
             end
         end
-        return pool
+        return support.RankServers(pool, "LegacyPing")
     end
 
     local function markVisited(jobId)
         local visited = support.PruneVisited(readJson(VISITED_FILE, {}), os.time(), VISITED_MAX_AGE)
         visited[jobId] = os.time()
         writeJson(VISITED_FILE, visited)
+    end
+    hopperEnvironment.ChilliEggSearch.RefreshServers = function()
+        assert(session.alive, "Esta sesion ya termino")
+        local pool, reason = pickCandidates()
+        if pool and session.alive then savePool(pool) end
+        return support.Copy(pool), reason
     end
 
     -- Intenta el salto hasta ENTRAR en un servidor. Devuelve true solo cuando
@@ -2917,10 +3535,9 @@ do
                     if automatic and not verifyMapBeforeHop() then return false end
                     local candidate = pool[index]
                     setLabel("Saltando...")
-                    setStatus(string.format(
-                        "entrando (api %s ms)...",
-                        tostring(candidate.ping)
-                    ), COLORS.muted)
+                    setStatus(serverOrder == "BestLatency"
+                        and string.format("Best Ping · %d/7 · entrando...", candidate.playing)
+                        or string.format("entrando (api %s ms)...", tostring(candidate.ping)), COLORS.muted)
                     print(string.format(
                         "[ServerHopButton] Teleport intento %d -> %s",
                         index,
@@ -3052,6 +3669,14 @@ do
         setLabel("Buscando...")
         setStatus("buscando servidor...", COLORS.muted)
         runHopLoop(automatic, generation)
+    end
+
+    hopperEnvironment.ChilliEggSearch.Hop = function()
+        assert(session.alive, "Esta sesion ya termino")
+        uiAccess()
+        if busy then return false, "salto ocupado" end
+        beginHop(false)
+        return true
     end
 
     -- Chilli esta listo cuando su cargador lo marca en el entorno o cuando su
