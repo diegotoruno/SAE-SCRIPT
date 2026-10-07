@@ -12,7 +12,7 @@ El filtro inicial es **Divine con ingreso previsto minimo de 7.000.000.000 por s
 
 La rareza seleccionada es un minimo inclusivo segun Data.Rarity.Rarities/Rank: Eternal acepta Eternal, Divine y cualquier rango superior (incluye otros IDs con el mismo Rank). El flujo siguiente se aplica a Divine o superior por defecto y a la rareza minima elegida o superior al configurar. Ingreso y demas filtros siguen siendo obligatorios; una observacion superior mantiene la busqueda del minimo seleccionado en el ciclo vigente.
 
-1. Al entrar, leer un snapshot valido del mapa.
+1. Al entrar, esperar juego cargado y un snapshot valido del mapa. Antes de aceptar la primera decision, exigir al menos 10 segundos desde esa lectura valida y 3 segundos sin cambios de inputs Slot/catalogo ni revision del campo. Scans repetidos no acortan la espera. Repetirla al renovarse el ciclo o perderse los datos.
 2. Sin Divine disponible ni observacion guardada de Divine en el ciclo vigente, quedarse en ese servidor y esperar la renovacion.
 3. Al renovarse los huevos, esperar el snapshot nuevo y escanear otra vez. Si no hay Divine, seguir esperando.
 4. Si hay Divine pero ninguno cumple el minimo y los demas filtros, hacer hop y escanear el servidor de destino.
