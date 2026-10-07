@@ -1,5 +1,11 @@
 # Estado del trabajo
 
+## 2026-10-07 - Corregir recorrido Best Ping y precargar 1/7
+
+- Reporte Buscar atascado con cuenta guardada. Cliente real seguia vivo con HTTP200/lista parcial; recorrido se reiniciaba a los180s. Usuario pide recuperar precarga para saltos rapidos.
+- Rama codex/best-ping-paginacion sobre main f8c72d0. Cursor conserva recorrido con observaciones de180s, snapshot sanitizado por UserId, reutilizacion de comprobacion inicial y progreso. Reserva hasta ocho 1/7 persistida, consumo sin HTTP por Hop/AUTO incluso durante refill, exclusiones/frescura/transporte/cuenta y grupos mayores con prueba nueva.
+- Build/134 regresiones Luau/diez Python correctos. Montaje real en Potassium: sesion anterior destruida, Chilli reutilizado, Eternal>=7B/s/cookie/AUTO apagado conservados. Sin inputs sinteticos. Cache y hop reales/publicacion pendientes de comprobacion posterior.
+
 ## 2026-10-07 - Distribucion comun solicitada
 
 - Usuario reporta CUENTA GUARDADA en Delta/iPad y autoriza actualizar main/chilli_hopper.luau para todos. Conserva una sola version de distribucion con cookies/filtros locales; requiere cambiar previews antiguos a main una sola vez.

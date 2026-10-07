@@ -2,6 +2,7 @@
 
 | Decision | Motivo y consecuencia |
 | --- | --- |
+| Precargar hasta ocho 1/7 con BestLatency | Click/AUTO usan reserva vigente sin HTTP, conservando orden nativo y excluyendo visitados/actual. Vencen registros, no el cursor incompleto. Cursor sanitizado por cuenta sobrevive hops durante 180s; grupos 2..6 requieren prueba nueva. Primera reserva puede tardar, ocupacion/ping al llegar no se garantizan. |
 | Una distribucion comun para Delta y Potassium | Usuario solicita conservar main/chilli_hopper.luau en todas las PC y usarlo tambien en iPad. CI publica el mismo bundle en stable tras validar; cookies/filtros son locales. Un script abierto conserva su version hasta recargar. Previews o SHA de prueba no se usan como distribucion permanente. |
 | Separar pausa propia, HTTP 429 y peticion pendiente | Usuario observa pausa al guardar desde Delta. La espera anterior de 35s no cubria cooldown 60s y descartaba el borrador. Prioridad a validacion, contador, un reintento 429 y borrador en memoria mientras formulario abierto. Una peticion colgada sigue bloqueada hasta terminar, sin forzar duplicados. |
 | Cookie propia introducida en Delta/Potassium | Usuario quiere probar iPad como otra persona. Peticion directa al host Roblox desde cada dispositivo; el autor no recibe credenciales. No requiere su PC. |
