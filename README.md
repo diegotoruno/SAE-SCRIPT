@@ -48,11 +48,11 @@ loadstring(game:HttpGet("https://raw.githubusercontent.com/diegotoruno/SAE-SCRIP
 
 ## Busqueda
 
-El filtro inicial busca Divine que generen al menos 7.000.000.000 por segundo. Solo usa huevos disponibles en el mapa (`Slot`).
+La rareza seleccionada es un minimo inclusivo segun el Rank del juego: Eternal acepta Eternal, Divine y cualquier rango superior. El filtro inicial busca Divine o superior que generen al menos 7.000.000.000 por segundo. Ingreso, mutacion, nombre y especies exactas siguen aplicandose. Solo usa huevos disponibles en el mapa (`Slot`).
 
-- Sin Divine, espera la siguiente renovacion en el servidor actual.
-- Con Divine que no cumpla los filtros, hace hop y vuelve a escanear al llegar.
-- Con un Divine que cumpla, se queda en el servidor y apaga AUTO. Chilli continua con su configuracion.
+- Sin huevos de la rareza minima o superiores ni una observacion vigente en el ciclo, espera la siguiente renovacion en el servidor actual.
+- Con huevos de la rareza minima o superiores que no cumplan los filtros, hace hop y vuelve a escanear al llegar; una observacion vigente permite continuar aunque falten en el destino.
+- Con cualquier huevo que cumpla, se queda en el servidor y apaga AUTO. Chilli continua con su configuracion.
 - Si se renuevan los huevos durante la busqueda, espera los nuevos datos y repite la decision.
 
 El ingreso previsto incluye escala y mutaciones; excluye bonos personales y boosts temporales. Los filtros y el estado de AUTO se guardan en el workspace del executor.
@@ -61,7 +61,7 @@ El ingreso previsto incluye escala y mutaciones; excluye bonos personales y boos
 
 **EGG FILTERS** abre el panel. **Alt izquierdo** alterna abrir/cerrar el panel, tambien cuando estas editando un filtro. La lista principal muestra exclusivamente huevos actuales del mapa, con imagen o modelo, ingreso, rareza, escala, peso, mutaciones y zona.
 
-**Elegir especies** abre un catalogo separado para configurar filtros. **Aplicar filtros** guarda rareza exacta, ingreso minimo por segundo, mutacion, nombre y especies elegidas. El selector de rareza usa solo las rarezas con especies en el catalogo del juego, en orden de su rango real.
+**Elegir especies** abre un catalogo separado con especies de la rareza minima y las superiores. **Aplicar filtros** guarda rareza minima, ingreso minimo por segundo, mutacion, nombre y especies elegidas. Una lista explicita de especies sigue restringiendo los candidatos; vacia acepta todas. El selector de rareza usa solo las rarezas con especies en el catalogo del juego, en orden de su rango real.
 
 El minimo acepta `500k`, `25m`, `7b`, `7.5b`, `1t` o `1q`, tambien en mayusculas. Puedes usar coma decimal (`7,5b`). Sin sufijo, el valor son unidades por segundo: `7` significa 7/s. La configuracion anterior de 7B conserva su valor y aparece como `7b`; editar y volver a aplicar conserva el limite exacto.
 

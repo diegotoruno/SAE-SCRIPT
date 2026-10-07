@@ -561,4 +561,140 @@ test("cancellation during connection setup cannot send a stale teleport", functi
     fake.env.connect = function() attempt.Cancel(); return {Disconnect = function() end} end
     assert(attempt.Run("destination") == "cancelled" and fake.sent() == 0 and #fake.states == 1)
 end)
+local function minimumFixture(read, write)
+    local definitions = {
+        Common = {_id = "Common", Rank = 1}, Eternal = {_id = "Eternal", Rank = 9},
+        Divine = {_id = "Divine", Rank = 10}, Titan = {_id = "Titan", Rank = 11},
+        Limited = {_id = "Limited", Rank = 9},
+    }
+    local entries = {
+        common = {DisplayName = "Common Alpha", Rarity = definitions.Common},
+        eternal = {DisplayName = "Eternal Alpha", Rarity = definitions.Eternal},
+        divine = {DisplayName = "Divine Alpha", Rarity = definitions.Divine},
+        divine2 = {DisplayName = "Divine Beta", Rarity = "Divine"},
+        titan = {DisplayName = "Titan Alpha", Rarity = definitions.Titan},
+        limited = {DisplayName = "Limited Alpha", Rarity = definitions.Limited},
+    }
+    local finder = factory(read or function() return {} end, write or function() return true end)
+    local state = {records = {}, reads = 0}
+    finder.modules = {assets = {Directory = entries}, rarities = {Rarities = definitions},
+        eggs = {HasFieldSnapshot = function() return true end,
+            ReadFieldEggs = function() return {Records = state.records} end},
+        records = {ToAssetItemData = function(e) return e end},
+        earnings = {MutationOnlyRatePerSecond = function(e) state.reads += 1; return e.rate end},
+        cycle = {IsNightPhase = function() return false end}}
+    finder.Configure({rarity = "Eternal"})
+    setfenv(finder.Scan, setmetatable({workspace = {GetServerTimeNow = function() return 100 end}},
+        {__index = getfenv(finder.Scan)}))
+    local function evaluateMinimum(input, patch, registry)
+        local filters = table.clone(finder.config)
+        for key, value in pairs(patch or {}) do filters[key] = value end
+        local match, info, all = finder.Evaluate(input, entries, function(e) return e.rate end, filters, registry)
+        info.ready = info.errors == 0
+        return finder.Decide(match, info), match, info, all
+    end
+    return finder, state, evaluateMinimum, entries, definitions
+end
+test("Eternal accepts Divine at the exact income boundary", function()
+    local _, _, evaluateMinimum = minimumFixture()
+    local mode, match, info = evaluateMinimum({egg("d", 7e9)})
+    assert(mode == "match" and match.rarity == "Divine" and info.rarityCount == 1)
+    assert(evaluateMinimum({egg("d", 6999999999)}) == "hop")
+end)
+test("minimum includes exact higher and equal ranks and chooses best income", function()
+    local _, _, evaluateMinimum = minimumFixture()
+    local mode, match, info, all = evaluateMinimum({egg("e", 7e9, "eternal"),
+        egg("d", 8e9), egg("t", 9e9, "titan"), egg("l", 7e9, "limited"), egg("c", 99e9, "common")})
+    assert(mode == "match" and match.uid == "t" and #all == 4 and info.rarityCount == 4)
+end)
+test("minimum never considers lower rank income or starts a hop", function()
+    local finder, _, _, entries, definitions = minimumFixture()
+    local reads = 0
+    local match, info = finder.Evaluate({egg("c", 99e9, "common")}, entries,
+        function() reads += 1; return 99e9 end, nil, definitions)
+    info.ready = info.errors == 0
+    assert(reads == 0 and info.rarityCount == 0 and finder.Decide(match, info) == "wait")
+end)
+test("higher rank must still satisfy species name and mutation", function()
+    local _, _, evaluateMinimum = minimumFixture()
+    for _, patch in ipairs({{categories = {"eternal"}}, {nameContains = "Eternal"}, {mutation = "Golden"}}) do
+        assert(evaluateMinimum({egg("d", 8e9)}, patch) == "hop")
+    end
+    assert(evaluateMinimum({egg("d", 8e9, "divine", "Slot", {"Golden"})},
+        {categories = {"divine"}, nameContains = "Alpha", mutation = "Golden"}) == "match")
+end)
+test("unavailable higher eggs are never evidence or a candidate", function()
+    local _, _, evaluateMinimum = minimumFixture()
+    for _, state in ipairs({"Carried", "GuardCarried", "Dropped", "Claimed", "Base"}) do
+        assert(evaluateMinimum({egg("d", 99e9, "divine", state)}) == "wait")
+    end
+end)
+test("minimum handles case insensitive table and string rarity ids", function()
+    local _, _, evaluateMinimum = minimumFixture()
+    local mode, _, info, all = evaluateMinimum({egg("d", 8e9), egg("d2", 8e9, "divine2")}, {rarity = "eTeRnAl"})
+    assert(mode == "match" and #all == 2 and info.rarityCount == 2)
+end)
+test("game rank metadata controls ordering and missing ranks wait", function()
+    local _, _, evaluateMinimum = minimumFixture()
+    assert(evaluateMinimum({egg("d", 8e9)}, nil, {Eternal = {Rank = 100}, Divine = {Rank = 50}}) == "wait")
+    for _, registry in ipairs({{}, {Divine = {Rank = 10}},
+        {Eternal = {Rank = math.huge}, Divine = {Rank = 10}},
+        {Eternal = {Rank = 9}, Divine = {Rank = 0/0}}}) do
+        assert(evaluateMinimum({egg("d", 8e9)}, nil, registry) == "loading")
+    end
+end)
+test("species membership and map explanations use the same minimum", function()
+    local finder, _, _, entries, definitions = minimumFixture()
+    for _, id in ipairs({"Eternal", "Divine", "Titan", "Limited"}) do
+        assert(finder.RarityMatches(id, "Eternal", definitions))
+    end
+    assert(finder.RarityMatches("Common", "Eternal", definitions) == false)
+    assert(finder.Explain(egg("d", 7e9), entries.divine, 7e9) == "Cumple todos los filtros")
+    assert(finder.Explain(egg("d", 6e9), entries.divine, 6e9) == "Ingreso inferior al mínimo")
+    assert(finder.Explain(egg("c", 99e9, "common"), entries.common, 99e9) == "Rareza inferior al mínimo")
+end)
+test("AUTO calculates higher eggs with the panel closed and invalidates caches", function()
+    local finder, state = minimumFixture()
+    state.records = {egg("d", 7e9)}
+    local match, info = finder.Scan()
+    assert(info.ready and match.rarity == "Divine" and state.reads == 1)
+    finder.Scan(); assert(state.reads == 1)
+    state.records[1].rate = 6999999999
+    match, info = finder.Scan()
+    assert(finder.Decide(match, info) == "hop" and state.reads == 2)
+    finder.modules.rarities.Rarities.Divine.Rank = 8
+    match, info = finder.Scan()
+    assert(finder.Decide(match, info) == "wait" and state.reads == 2)
+end)
+test("fresh hop verification recomputes the higher egg exact income", function()
+    local finder, state = minimumFixture()
+    state.records = {egg("d", 7e9)}
+    assert(finder.Scan().rarity == "Divine" and state.reads == 1)
+    assert(finder.Scan(true).rarity == "Divine" and state.reads == 2)
+end)
+test("map snapshot includes higher matches and the correct reason", function()
+    local finder, state = minimumFixture()
+    state.records = {egg("d", 7e9), egg("c", 99e9, "common")}
+    local snapshot = finder.MapSnapshot()
+    assert(snapshot.info.ready and snapshot.match.rarity == "Divine" and #snapshot.rows == 2)
+    for _, row in ipairs(snapshot.rows) do
+        if row.uid == "d" then assert(row.match and row.reason == "Cumple todos los filtros")
+        else assert(not row.match and row.reason == "Rareza inferior al mínimo") end
+    end
+end)
+test("higher observation persists the minimum hunt until the next night", function()
+    local _, read, write = memoryStore(); local finder = minimumFixture(read, write)
+    local function decideMinimumCycle(target, input, now)
+        local match, info = target.Evaluate(input, target.modules.assets.Directory, function(e) return e.rate end)
+        info.ready = info.errors == 0
+        return target.Decide(match, info, cycle(now))
+    end
+    assert(decideMinimumCycle(finder, {egg("d", 6e9)}, 100) == "hop")
+    assert(finder.SearchWindow().rarity == "eternal")
+    local resumed = minimumFixture(read, write)
+    assert(decideMinimumCycle(resumed, {}, 101) == "hop")
+    assert(decideMinimumCycle(resumed, {egg("d", 7e9)}, 102) == "match")
+    assert(decideMinimumCycle(resumed, {}, 290) == "loading")
+    assert(decideMinimumCycle(resumed, {}, 301) == "wait")
+end)
 print(string.format("%d regression tests passed", passed))

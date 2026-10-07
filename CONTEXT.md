@@ -10,6 +10,8 @@ El filtro inicial es **Divine con ingreso previsto minimo de 7.000.000.000 por s
 
 ## Flujo final acordado
 
+La rareza seleccionada es un minimo inclusivo segun Data.Rarity.Rarities/Rank: Eternal acepta Eternal, Divine y cualquier rango superior (incluye otros IDs con el mismo Rank). El flujo siguiente se aplica a Divine o superior por defecto y a la rareza minima elegida o superior al configurar. Ingreso y demas filtros siguen siendo obligatorios; una observacion superior mantiene la busqueda del minimo seleccionado en el ciclo vigente.
+
 1. Al entrar, leer un snapshot valido del mapa.
 2. Sin Divine disponible ni observacion guardada de Divine en el ciclo vigente, quedarse en ese servidor y esperar la renovacion.
 3. Al renovarse los huevos, esperar el snapshot nuevo y escanear otra vez. Si no hay Divine, seguir esperando.
@@ -37,7 +39,7 @@ La referencia visual fue el panel Steal de Chilli: tarjetas oscuras, imagen del 
 
 La implementacion final tiene lista principal **Mapa**, que muestra los spawns actuales de todas las rarezas, y un selector separado **Elegir especies**, que contiene el catalogo para configurar filtros. El catalogo no representa presencia real en el servidor. Un cambio anterior que mostraba el catalogo en la lista principal se corrigio a esta separacion.
 
-Filtros: rareza exacta, minimo de ingreso por segundo, mutacion, nombre y varias especies exactas. El selector incluye solo IDs de `Data.Rarity.Rarities` usados por especies de `Assets.Directory`, ordenados por el `Rank` real. En el cliente del 2026-10-06 son Common, Uncommon, Rare, Epic, Legendary, Mythic, Cosmic, Secret, Eternal y Divine (rangos 1-10); no fijar esa lista ni una escala 0-7 en el codigo. Los otros IDs del modulo general no representan opciones disponibles del catalogo.
+Filtros: rareza minima inclusiva, minimo de ingreso por segundo, mutacion, nombre y varias especies exactas. El selector incluye solo IDs de `Data.Rarity.Rarities` usados por especies de `Assets.Directory`, ordenados por el `Rank` real. En el cliente del 2026-10-06 son Common, Uncommon, Rare, Epic, Legendary, Mythic, Cosmic, Secret, Eternal y Divine (rangos 1-10); no fijar esa lista ni una escala 0-7 en el codigo. Los otros IDs del modulo general no representan opciones disponibles del catalogo. El selector de especies ofrece la rareza minima y las superiores; una lista de especies explicita sigue siendo una restriccion exacta.
 
 El minimo acepta `k`, `m`, `b`, `t` y `q`, sin distinguir mayusculas, con decimal punto o coma: `500k`, `25m`, `7.5b`. Usa `Shared.Utils.Numbers.Parse` del juego tras validar el formato; un numero sin sufijo son unidades por segundo (`7` = 7/s). Los valores guardados y comparados siguen siendo numericos exactos; el campo abrevia solo si el texto conserva el mismo umbral al parsearlo. La configuracion previa de 7.000.000.000 sigue mostrando `7b`.
 

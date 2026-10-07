@@ -1,5 +1,12 @@
 # Estado del trabajo
 
+## 2026-10-07 - Rareza minima inclusiva
+
+- Integrado el fix sobre main/build 16, conservando parser exacto, opciones del catalogo, cache, panel virtualizado, Alt, presets, alertas y continuidad de ciclo. Seleccionar Eternal ahora admite Divine y cualquier rango mayor o igual segun Data.Rarity.Rarities/Rank; minimo y demas filtros siguen aplicandose a Slot.
+- Selector de especies, Explain y cache de AUTO comparten la regla; huevos superiores se calculan con el panel cerrado y se vuelven a verificar antes del teleport. Notificacion muestra la rareza real del match. Se conserva la configuracion y formato de la memoria de busqueda.
+- Build y compilacion correctos; 80 regresiones locales pasan (68 existentes y 12 nuevas). Detector final SHA256 `50629f3f2102212ba8f2f31f9095e22a2a9b446bbbd35776085a64412400b381` probado aislado con Potassium: 341 comprobaciones, escala real de 18 rarezas y comparacion de 65 Slot con ingresos reales. Configuracion, AUTO y JobId activos conservados; cero teleports.
+- No habia un spawn real Eternal/Divine >=7B; casos de permanencia/hop controlados con catalogo real. Evidencia y limites en TESTING.md; referencias e informes privados excluidos de Git.
+
 ## 2026-10-06
 
 - Consolidado el detector y panel con Chilli + hopper; filtro inicial Divine >=7B/s.

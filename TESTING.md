@@ -9,11 +9,15 @@
 
 Se compilan fuentes, punto de entrada, loader, tests y bundle integrado. El CLI oficial Luau 0.741 se descarga y verifica por SHA256. No se ejecuta el bundle de Roblox en el CLI; se ejecuta solo `ci_tests.luau` con un entorno controlado.
 
-Las 68 regresiones incluyen los 50 casos anteriores del detector, filtros, caches, persistencia y soporte de teleport. Se conservan sufijos y limites exactos, rarezas reales, Slot como unica fuente y rechazo de datos incompletos.
+Las 80 regresiones incluyen los 68 casos anteriores del detector, filtros, caches, persistencia y soporte de teleport y 12 casos de rareza minima. Se conservan sufijos y limites exactos, rarezas reales, Slot como unica fuente y rechazo de datos incompletos.
 
 Los 18 casos adicionales prueban huevo robado/ausente tras observar la rareza, persistencia entre instancias, expiracion al inicio de noche y reset durante desconexion, cambios de filtros/rareza/overrides, reloj desconocido/pausado, memoria futura/corrupta, fallos al guardar, snapshots del periodo anterior y reset durante scan, sesiones destruidas, recuperacion por conexion nueva, timeout bloqueado, fallo de cierre de pending y cancelacion antes de enviar. Desconexiones/fallos se simulan con adapters offline; no se fuerzan expulsiones o fallos de red del cliente.
 
 Al cambiar una decision o filtro, ampliar las regresiones con el caso que fallo. No agregar tests que se limiten a comparar lineas de codigo.
+
+Los 12 casos de rareza minima cubren Eternal -> Divine en el limite exacto/insuficiente, mismo rango y superiores, exclusiones inferiores/no Slot, nombre/mutacion/especies, mayusculas e IDs mixtos, registro de Rank invalido o cambiado, selector y Explain, AUTO con el panel cerrado y cache invalidada, lectura fresca antes del hop, filas del mapa y continuidad de la observacion superior hasta la noche siguiente.
+
+Validacion complementaria del 2026-10-07: build/compilacion y 80 regresiones locales correctas. Con Potassium se ejecuto el detector integrado sobre main como instancia aislada con startup desactivado y almacenamiento en memoria, SHA256 `50629f3f2102212ba8f2f31f9095e22a2a9b446bbbd35776085a64412400b381`. Pasaron 341 comprobaciones, incluidas las 324 combinaciones de las 18 rarezas reales. Eternal Rank 9, Divine Rank 10: Divine exacto 7B produjo match; 6.999.999.999 produjo hop. Se compararon 65 Slot reales e ingresos calculados por los modulos del juego; no habia Eternal/Divine ni candidatos >=7B en ese snapshot. Los casos Divine usaron registros/ingresos controlados con especies reales, sin inyectarlos en EggState. Filtros, AUTO y JobId del finder activo iguales antes/despues; cero teleports y sin sustituir el bundle activo. Esta evidencia no prueba render/clics del panel ni un spawn real Divine >=7B. Reportes privados fuera de Git.
 
 ## Smoke test real con Potassium
 

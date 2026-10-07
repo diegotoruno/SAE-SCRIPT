@@ -105,7 +105,7 @@ local function mountEggFilterPanel(context)
     local filterToggle = button("ToggleFilters", root, "Filtros −", 428, 93, 96, 24)
     local filters = make("Frame", "Filters", root, { Position = UDim2.fromOffset(14, 124), Size = UDim2.fromOffset(512, 168), BackgroundColor3 = C.card, BorderSizePixel = 0 })
     corner(filters); stroke(filters)
-    text("RarityLabel", filters, "RAREZA", 12, 10, 135, 16, C.muted, 10)
+    text("RarityLabel", filters, "RAREZA MÍNIMA", 12, 10, 135, 16, C.muted, 10)
     text("IncomeLabel", filters, "MÍNIMO /s · k m b t q", 170, 10, 130, 16, C.muted, 10)
     text("MutationLabel", filters, "MUTACIÓN", 306, 10, 184, 16, C.muted, 10)
     local rarityButton = button("Rarity", filters, draft.rarity .. " ▾", 12, 31, 144, 34)
@@ -235,7 +235,7 @@ local function mountEggFilterPanel(context)
         if popup then closePopup(); return end
         popup = make("Frame", "Dropdown", root, { Position = UDim2.fromOffset(14, 192), Size = UDim2.fromOffset(512, 310), BackgroundColor3 = C.input, BorderSizePixel = 0, ZIndex = 60 })
         corner(popup); stroke(popup, C.cyan, 2)
-        text("Prompt", popup, anchor == rarityButton and "Elige una rareza" or "Elige una mutación", 12, 5, 440, 24, C.white, 17, true).ZIndex = 61
+        text("Prompt", popup, anchor == rarityButton and "Elige una rareza mínima" or "Elige una mutación", 12, 5, 440, 24, C.white, 17, true).ZIndex = 61
         local dismiss = button("Dismiss", popup, "×", 466, 5, 32, 26); dismiss.ZIndex = 62
         dismiss.Activated:Connect(function() access(); closePopup() end)
         local list = make("ScrollingFrame", "Options", popup, { Position = UDim2.fromOffset(8, 36), Size = UDim2.fromOffset(496, 266), CanvasSize = UDim2.new(), AutomaticCanvasSize = Enum.AutomaticSize.Y, BackgroundTransparency = 1, ScrollBarThickness = 4, BorderSizePixel = 0, ZIndex = 61 })
@@ -265,7 +265,7 @@ local function mountEggFilterPanel(context)
         make("UIListLayout", "Layout", list, { Padding = UDim.new(0, 6), SortOrder = Enum.SortOrder.LayoutOrder })
         local options = {}
         for id, catalog in pairs(search.modules.assets.Directory) do
-            if catalog.Rarity._id == draft.rarity then table.insert(options, {id = id, catalog = catalog}) end
+            if search.RarityMatches(catalog.Rarity, draft.rarity) then table.insert(options, {id = id, catalog = catalog}) end
         end
         table.sort(options, function(a, b) return a.catalog.DisplayName < b.catalog.DisplayName end)
         for index, option in ipairs(options) do
@@ -498,7 +498,7 @@ local function mountEggFilterPanel(context)
             text("Name", row, preset.name, 8, 5, 280, 18, C.white, 14).ZIndex = 63
             local minimum = tonumber(preset.config.minIncome)
             local summary = minimum and minimum > 0 and minimum < math.huge and search.FormatMinimum(minimum) or "inválido"
-            text("Summary", row, tostring(preset.config.rarity or "Sin rareza") .. " · ≥ " .. summary .. "/s", 8, 24, 280, 16, C.muted, 11).ZIndex = 63
+            text("Summary", row, tostring(preset.config.rarity or "Sin rareza") .. "+ · ≥ " .. summary .. "/s", 8, 24, 280, 16, C.muted, 11).ZIndex = 63
             local load = button("Load", row, "Cargar", 290, 8, 82, 30); load.ZIndex = 63
             local delete = button("Delete", row, "Borrar", 380, 8, 86, 30); delete.ZIndex = 63
             load.Activated:Connect(function() access(); result(function() panel.LoadPreset(preset.name) end) end)
@@ -618,9 +618,9 @@ local function mountEggFilterPanel(context)
             local titles = { wait = "Esperando huevos nuevos", hop = "Buscando otro servidor", loading = "Esperando renovación / datos", match = "Objetivo encontrado", stopped = "Búsqueda detenida" }
             stateTitle.Text = titles[status.mode] or "Escaneando mapa"
             stateTitle.TextColor3 = status.mode == "match" and C.green or C.white
-            stateDetail.Text = string.format("%s · ≥ %s/s · %d en mapa · %d de esa rareza", status.config.rarity, number(status.config.minIncome), info.count or 0, info.rarityCount or 0)
+            stateDetail.Text = string.format("%s+ · ≥ %s/s · mapa %d · rareza mínima %d", status.config.rarity, number(status.config.minIncome), info.count or 0, info.rarityCount or 0)
             if status.mode == "hop" and info.continuingCycle then
-                stateDetail.Text = status.config.rarity .. " observado en este ciclo · no está aquí; sigo buscando"
+                stateDetail.Text = status.config.rarity .. "+ observado en este ciclo · no está aquí; sigo buscando"
             end
             if status.mode == "loading" and info.reason then stateDetail.Text = info.reason end
             if cycle then
