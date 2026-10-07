@@ -1015,4 +1015,128 @@ test("higher rarity hunt cannot bypass the empty destination load wait", functio
     local mode, info = scanDestination()
     assert(mode == "hop" and info.continuingCycle and info.rarityCount == 0)
 end)
+test("cookie parser rejects headers multiple cookies controls and oversize input", function()
+    assert(support.NormalizeCookie("  .ROBLOSECURITY=fake-secret;\n") == "fake-secret")
+    for _, value in ipairs({"", "Cookie: .ROBLOSECURITY=fake", "a;b", "a\nb", "a b", string.rep("a", 16385)}) do
+        assert(support.NormalizeCookie(value) == nil)
+    end
+end)
+local function credentialFixture(owner, files)
+    files = files or {}
+    local io = {read = function(path) assert(files[path]); return files[path] end,
+        write = function(path, raw) files[path] = raw end,
+        erase = function(path) files[path] = nil end,
+        encode = function(value) return tostring(value.owner) .. ":" .. value.cookie end,
+        decode = function(raw) local id, cookie = raw:match("^(%d+):(.+)$"); return {owner = tonumber(id), cookie = cookie} end}
+    return support.DeviceCookie(io, owner), files, io
+end
+test("device cookie survives hop only after explicit local save and is account scoped", function()
+    local first, files = credentialFixture(101)
+    assert(first.Set("fake-secret", true))
+    local destination = credentialFixture(101, files)
+    assert(destination.Restore() and destination.Read() == "fake-secret")
+    local other = credentialFixture(202, files)
+    assert(not other.Restore() and other.Read() == nil)
+    local status = destination.Status()
+    assert(status.configured and status.remembered and status.cookie == nil)
+    assert(first.Set("session-secret", false) and not first.Status().remembered)
+    destination = credentialFixture(101, files)
+    assert(not destination.Restore())
+    first.Destroy(); assert(first.Read() == nil)
+end)
+test("forget removes saved cookie and unwritable storage never pretends success", function()
+    local device, files, io = credentialFixture(101)
+    assert(device.Set("fake-secret", true)); assert(device.Forget())
+    assert(next(files) == nil and device.Read() == nil)
+    io.write = function() error("fake-secret") end
+    local ok, reason = device.Set("fake-secret", true)
+    assert(not ok and not reason:find("fake-secret", 1, true) and device.Read() == nil)
+    io.erase = function() error("fake-secret") end
+    assert(not device.Forget() and not device.Status().configured)
+end)
+test("authenticated cookie request is fixed to Roblox and occupancy carries no cookie", function()
+    local calls = {}
+    local env = {encode = function(value) return value end, decode = function() return {data = {}} end,
+        send = function(options)
+            table.insert(calls, {url = options.Url, cookie = options.Headers.Cookie, redirect = options.Redirect})
+            return {StatusCode = 200, Body = "fixture"}
+        end}
+    assert(support.CookiePage(env, "BestLatency", nil, "fake-secret"))
+    assert(calls[1].url:find("https://games.roblox.com/v2/games/107778070777162/servers/Public", 1, true) == 1)
+    assert(calls[1].cookie == ".ROBLOSECURITY=fake-secret" and calls[1].redirect == false)
+    assert(support.CookiePage(env, "OccupancyAsc", nil, "fake-secret"))
+    assert(calls[2].cookie == nil)
+    assert(not support.CookiePage(env, "https://another.example", nil, "fake-secret") and #calls == 2)
+end)
+test("cookie HTTP errors redirects and decoder failures never disclose credential", function()
+    local env = {encode = function(v) return v end, decode = function() error("fake-secret") end,
+        send = function() error("fake-secret") end}
+    local function rejected()
+        local page, reason = support.CookiePage(env, "BestLatency", nil, "fake-secret")
+        assert(page == nil and not reason:find("fake-secret", 1, true))
+    end
+    rejected()
+    for _, status in ipairs({200, 302, 400, 401, 403, 429, 500}) do
+        env.send = function() return {StatusCode = status, Body = "fake-secret", Headers = {Cookie = "fake-secret"}} end
+        rejected()
+    end
+    env.send = function() return {StatusCode = 200, Url = "https://another.example/", Body = "fixture"} end
+    rejected()
+end)
+local function deviceNativeFixture(pages)
+    local index, clock, active, calls = 0, 100, true, {}
+    local native = support.DeviceNative({now = function() return clock end, alive = function() return active end,
+        fetch = function(order, cursor)
+            index += 1; table.insert(calls, {order = order, cursor = cursor})
+            local entry = pages[index]
+            if not entry then return nil, "fixture exhausted" end
+            if entry.cancel then active = false end
+            return entry.page, entry.error
+        end})
+    return native, calls, function(value) clock = value end
+end
+local function nativePage(rows, cursor)
+    local result = {data = {}, nextPageCursor = cursor}
+    for _, row in ipairs(rows) do table.insert(result.data, {id = row[1], playing = row[2], maxPlayers = 7}) end
+    return result
+end
+test("device uses minimum occupancy proof and native order across consumed groups", function()
+    local native, calls = deviceNativeFixture({
+        {page = nativePage({{"one", 1}, {"two-a", 2}})},
+        {page = nativePage({{"two-b", 2}, {"one", 1}, {"two-a", 2}}, "later")},
+        {page = nativePage({{"one", 1}, {"two-a", 2}, {"two-b", 2}})},
+    })
+    local first = native.Pick("current", {})
+    assert(#first == 1 and first[1].id == "one")
+    local nextGroup = native.Pick("current", {one = 100})
+    assert(#nextGroup == 2 and nextGroup[1].id == "two-b" and nextGroup[2].id == "two-a")
+    assert(calls[1].order == "OccupancyAsc" and calls[2].order == "BestLatency" and calls[3].order == "OccupancyAsc")
+end)
+test("device partial latency page never overrides lower occupancy proof", function()
+    local pages = {{page = nativePage({{"one", 1}, {"two", 2}})}}
+    for i = 1, 5 do table.insert(pages, {page = nativePage({{"two", 2}}, "page" .. i)}) end
+    local native = deviceNativeFixture(pages)
+    assert(native.Pick("current", {}) == nil)
+end)
+test("device malformed proof repeated cursors cancellation and errors wait", function()
+    for _, pages in ipairs({
+        {{page = nativePage({{"two", 2}, {"one", 1}})}},
+        {{error = "authentication"}},
+        {{cancel = true, page = nativePage({{"one", 1}})}},
+        {{page = nativePage({{"visited", 1}}, "same")}, {page = nativePage({{"visited", 1}}, "same")}},
+        {{page = nativePage({{"one", 1}})}, {page = nativePage({{"two", 2}}, "same")}, {page = nativePage({{"two", 2}}, "same")}},
+    }) do
+        local native = deviceNativeFixture(pages)
+        assert(native.Pick("current", {visited = 100}) == nil)
+    end
+end)
+test("device expired catalogue cannot reuse servers from the previous arrival", function()
+    local native, _, clock = deviceNativeFixture({
+        {page = nativePage({{"one", 1}})}, {page = nativePage({{"one", 1}})},
+        {page = nativePage({{"two", 2}})}, {page = nativePage({{"two", 2}})},
+    })
+    assert(native.Pick("current", {})[1].id == "one")
+    clock(281)
+    assert(native.Pick("current", {})[1].id == "two")
+end)
 print(string.format("%d regression tests passed", passed))

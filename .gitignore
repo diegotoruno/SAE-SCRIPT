@@ -16,4 +16,5 @@ chilli_egg_preferences.json*
 server_hop_button*.json*
 sae_best_ping_*.json*
 sae_best_ping_*.pid
+sae_account_cookie_*.json*
 /.private/

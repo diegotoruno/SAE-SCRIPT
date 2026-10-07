@@ -161,6 +161,158 @@ local function createFinderSupport()
         if #group == 0 then return nil, "Best Ping: renovando candidatos agotados" end
         return group
     end
+    function support.NormalizeCookie(value)
+        if type(value) ~= "string" then return nil end
+        value = value:gsub("^%s+", ""):gsub("%s+$", "")
+        local prefix = ".ROBLOSECURITY="
+        if value:sub(1, #prefix) == prefix then value = value:sub(#prefix + 1):gsub(";$", "") end
+        if #value == 0 or #value > 16384 or value:find("[^!-~]") or value:find(";", 1, true) then return nil end
+        return value
+    end
+    -- Kept outside general JSON storage: no backups, telemetry or public API.
+    function support.DeviceCookie(io, owner)
+        local credential, remembered = nil, false
+        local path = "sae_account_cookie_" .. tostring(owner) .. ".json"
+        local device = {}
+        function device.Restore()
+            credential, remembered = nil, false
+            local ok, saved = pcall(function() return io.decode(io.read(path)) end)
+            if ok and type(saved) == "table" and saved.owner == owner then
+                credential = support.NormalizeCookie(saved.cookie)
+                remembered = credential ~= nil
+            end
+            return credential ~= nil
+        end
+        function device.Set(value, persist)
+            local normalized = support.NormalizeCookie(value)
+            if not normalized then return false, "Pega solo el valor de .ROBLOSECURITY." end
+            local ok = pcall(function()
+                if persist then
+                    local raw = io.encode({owner = owner, cookie = normalized})
+                    io.write(path, raw)
+                    assert(io.read(path) == raw)
+                else
+                    -- Session-only must also remove any previous saved credential.
+                    io.erase(path)
+                end
+            end)
+            if not ok then return false, "No se pudo guardar o borrar la cookie local. Revisa tu executor." end
+            credential, remembered = normalized, persist == true
+            return true
+        end
+        function device.Read() return credential end
+        function device.Status() return {configured = credential ~= nil, remembered = remembered} end
+        function device.Forget()
+            local ok = pcall(io.erase, path)
+            credential, remembered = nil, false
+            return ok
+        end
+        function device.Destroy() credential = nil end
+        return device
+    end
+    function support.CookiePage(env, orderBy, cursor, secret)
+        if orderBy ~= "BestLatency" and orderBy ~= "OccupancyAsc" then return nil, "orden invalido" end
+        local url = "https://games.roblox.com/v2/games/107778070777162/servers/Public?orderBy=" .. orderBy
+            .. "&sortOrder=" .. (orderBy == "BestLatency" and "Desc" or "Asc") .. "&excludeFullGames=true&limit=100"
+        if cursor then url ..= "&cursor=" .. env.encode(cursor) end
+        local headers = {Accept = "application/json"}
+        if orderBy == "BestLatency" then
+            secret = support.NormalizeCookie(secret)
+            if not secret then return nil, "cookie ausente" end
+            headers.Cookie = ".ROBLOSECURITY=" .. secret
+        end
+        local ok, response = pcall(env.send, {Url = url, Method = "GET", Headers = headers, Redirect = false})
+        headers.Cookie = nil
+        if not ok or type(response) ~= "table" then return nil, "El executor no pudo consultar Roblox con headers." end
+        local status = tonumber(response.StatusCode or response.Status or response.status_code)
+        local finalUrl = response.Url or response.URL
+        if (type(finalUrl) == "string" and finalUrl:sub(1, #"https://games.roblox.com/") ~= "https://games.roblox.com/")
+            or (status and status >= 300 and status < 400) then
+            return nil, "Redireccion rechazada; conexion detenida.", 302
+        end
+        if status == 200 then
+            local decoded, body = pcall(env.decode, response.Body or response.body or "")
+            if decoded and type(body) == "table" and type(body.data) == "table" then
+                return {data = body.data, nextPageCursor = body.nextPageCursor}, nil, status
+            end
+            return nil, "Roblox devolvio una lista invalida.", status
+        end
+        if status == 429 then return nil, "Roblox limito las consultas; espera 60 segundos.", status end
+        if status == 400 or status == 401 or status == 403 then
+            return nil, "Roblox no acepto la cookie o la consulta. Vuelve a conectar.", status
+        end
+        return nil, "No se pudo consultar Roblox. Revisa tu conexion.", status
+    end
+    -- Native v2 paging on the user's device. A partial latency stream never
+    -- establishes exhaustion of lower occupancy groups.
+    function support.DeviceNative(env)
+        local rows, cursors, cursor, rank, started, complete = {}, {}, nil, 0, env.now(), false
+        local native = {}
+        function native.Pick(current, visited)
+            if not env.alive() then return nil, "sesion terminada" end
+            local now = env.now()
+            if now - started > 180 then rows, cursors, cursor, rank, started, complete = {}, {}, nil, 0, now, false end
+            local function eligible(row)
+                return row.id ~= current and not visited[row.id]
+            end
+            local lowest, proofAt, proofCursor, proofSeen, previous = nil, nil, nil, {}, 0
+            for _ = 1, 5 do
+                local page, err = env.fetch("OccupancyAsc", proofCursor)
+                if not env.alive() then return nil, "sesion terminada" end
+                if not page or type(page.data) ~= "table" then return nil, err or "respuesta de ocupacion invalida" end
+                for _, row in ipairs(page.data) do
+                    local count = type(row) == "table" and row.playing
+                    if type(count) ~= "number" or count ~= math.floor(count) or count < previous or count > 7 then
+                        return nil, "orden de ocupacion invalido"
+                    end
+                    previous = count
+                    if not lowest and count >= 1 and count <= 6 and row.maxPlayers == 7
+                        and type(row.id) == "string" and eligible(row) then lowest = count end
+                end
+                if lowest then proofAt = env.now(); break end
+                proofCursor = page.nextPageCursor
+                if proofCursor == nil or proofCursor == "" then return nil, "no hay servidores disponibles" end
+                if type(proofCursor) ~= "string" or proofSeen[proofCursor] then return nil, "cursor de ocupacion invalido" end
+                proofSeen[proofCursor] = true
+            end
+            if not lowest then return nil, "lista parcial; revisando ocupaciones menores" end
+            local function group()
+                if env.now() - proofAt > 90 then return nil end
+                local accepted = {}
+                for _, row in pairs(rows) do
+                    if row.playing == lowest and eligible(row) and env.now() - row.observedAt <= 180 then table.insert(accepted, row) end
+                end
+                table.sort(accepted, function(a, b) return a.nativeRank < b.nativeRank end)
+                return #accepted > 0 and support.RankServers(accepted, "BestLatency") or nil
+            end
+            local cached = group()
+            if cached then return cached end
+            if complete then return nil, "renovando lista Best Ping" end
+            for _ = 1, 5 do
+                local page, err = env.fetch("BestLatency", cursor)
+                if not env.alive() then return nil, "sesion terminada" end
+                if not page or type(page.data) ~= "table" then return nil, err or "respuesta Best Ping invalida" end
+                for _, row in ipairs(page.data) do
+                    rank += 1
+                    if type(row) == "table" and type(row.id) == "string" and row.maxPlayers == 7
+                        and type(row.playing) == "number" and row.playing == math.floor(row.playing)
+                        and row.playing >= 1 and row.playing <= 6 then
+                        rows[row.id] = {id = row.id, playing = row.playing,
+                            nativeRank = rows[row.id] and rows[row.id].nativeRank or rank, observedAt = env.now()}
+                    end
+                end
+                cursor = page.nextPageCursor
+                if cursor == nil or cursor == "" then complete = true
+                elseif type(cursor) ~= "string" or cursors[cursor] then return nil, "cursor Best Ping invalido"
+                else cursors[cursor] = true end
+                local found = group()
+                if found then return found end
+                if complete then break end
+            end
+            return nil, "lista parcial; buscando Best Ping en la ocupacion menor"
+        end
+        return native
+    end
     function support.Attempt(env)
         local attempt = { state = "idle", connection = nil }
         local function disconnect()
@@ -732,6 +884,7 @@ do
     local POOL_FILE = "server_hop_button_pool.json"
     local SERVER_SELECTION_POLICY = "occupancy-groups-v2"
     local CONNECTION_FILE = "server_hop_button_connection.json"
+    local DEVICE_GATE_FILE = "sae_best_ping_device_gate.json"
     local NATIVE_REQUEST_FILE = "sae_best_ping_request.json"
     local NATIVE_RESPONSE_FILE = "sae_best_ping_response.json"
     local VISITED_MAX_AGE = 60 * 60
@@ -776,6 +929,22 @@ do
     local serverOrder = connectionConfig.mode == "BestLatency" and "BestLatency" or "LegacyPing"
     local nativeStatus = nil
     local nativeRequestBusy = false
+    local deviceCookie = support.DeviceCookie({
+        read = function(path) return readfile(path) end,
+        write = function(path, raw) writefile(path, raw) end,
+        decode = function(raw) return HttpService:JSONDecode(raw) end,
+        encode = function(value) return HttpService:JSONEncode(value) end,
+        erase = function(path)
+            if type(isfile) == "function" and not isfile(path) then return end
+            -- Overwrite first; deletion is optional on mobile executors.
+            writefile(path, "")
+            assert(readfile(path) == "")
+            if type(delfile) == "function" then delfile(path) end
+        end,
+    }, Players.LocalPlayer.UserId)
+    if connectionConfig.transport == "DeviceCookie" then deviceCookie.Restore() end
+    local credentialGeneration, deviceFatal = 0, nil
+    local deviceNative
     local function writeJson(path, value)
         if session and not session.alive then return false end
         local ok = store.Write(path, value)
@@ -843,6 +1012,63 @@ do
     local apiEnvironment = getgenv and getgenv() or _G
     local apiGate = apiEnvironment.__EGG_API_GATE
     if type(apiGate) ~= "table" then apiGate = {last = -math.huge, cooldown = 0}; apiEnvironment.__EGG_API_GATE = apiGate end
+    local deviceGate = apiEnvironment.__EGG_DEVICE_API_GATE
+    if type(deviceGate) ~= "table" then
+        local savedGate = readJson(DEVICE_GATE_FILE, {})
+        local last = tonumber(savedGate.last) or 0
+        local cooldown = tonumber(savedGate.cooldown) or 0
+        deviceGate = {last = math.min(last, os.time()), cooldown = math.min(cooldown, os.time() + 60)}
+        apiEnvironment.__EGG_DEVICE_API_GATE = deviceGate
+    end
+    local function executorRequest()
+        if type(request) == "function" then return request end
+        if type(http_request) == "function" then return http_request end
+        if type(syn) == "table" and type(syn.request) == "function" then return syn.request end
+        if type(http) == "table" and type(http.request) == "function" then return http.request end
+        return nil
+    end
+    local function deviceFetch(orderBy, cursor, candidate)
+        local generation = credentialGeneration
+        if deviceFatal and not candidate then return nil, deviceFatal end
+        local secret = candidate or deviceCookie.Read()
+        if not secret then return nil, "Abre Cuenta / Best Ping y pega tu cookie." end
+        local send = executorRequest()
+        if not send then return nil, "Tu executor no ofrece request con headers." end
+        local deadline = os.clock() + 35
+        while session.alive and os.clock() < deadline do
+            if not deviceGate.busy and os.time() >= math.max(deviceGate.last + 15, deviceGate.cooldown) then break end
+            task.wait(0.2)
+        end
+        if not session.alive or generation ~= credentialGeneration then return nil, "conexion cancelada" end
+        if deviceGate.busy or os.time() < math.max(deviceGate.last + 15, deviceGate.cooldown) then
+            return nil, "Best Ping en pausa; espera el limite de Roblox."
+        end
+        deviceGate.busy, deviceGate.last = true, os.time()
+        pcall(function() writefile(DEVICE_GATE_FILE, HttpService:JSONEncode({last = deviceGate.last, cooldown = deviceGate.cooldown})) end)
+        local done, result, reason = false, nil, nil
+        task.spawn(function()
+            local status
+            result, reason, status = support.CookiePage({send = send,
+                decode = function(raw) return HttpService:JSONDecode(raw) end,
+                encode = function(value) return HttpService:UrlEncode(value) end}, orderBy, cursor, secret)
+            secret = nil
+            if status == 429 then deviceGate.cooldown = os.time() + 60 end
+            if (status == 400 or status == 401 or status == 403 or status == 302)
+                and generation == credentialGeneration then deviceFatal = reason end
+            pcall(function() writefile(DEVICE_GATE_FILE, HttpService:JSONEncode({last = deviceGate.last, cooldown = deviceGate.cooldown})) end)
+            deviceGate.busy, done = false, true
+        end)
+        deadline = os.clock() + 30
+        while session.alive and not done and os.clock() < deadline do task.wait(0.1) end
+        if not session.alive or generation ~= credentialGeneration then return nil, "conexion cancelada" end
+        if not done then return nil, "La consulta tardo demasiado; espera antes de reintentar." end
+        return result, reason
+    end
+    local function resetDeviceNative()
+        deviceNative = support.DeviceNative({now = os.time, fetch = deviceFetch,
+            alive = function() return session and session.alive end})
+    end
+    resetDeviceNative()
     local function fetchServers(cursor)
         local url = string.format(
             "https://games.roblox.com/v1/games/%d/servers/Public?sortOrder=Asc&excludeFullGames=true&limit=100",
@@ -1021,6 +1247,8 @@ do
         if session.DisposeSearch then session.DisposeSearch() end
         if session.DisposePanel then session.DisposePanel() end
         if session.attempt then session.attempt.Cancel() end
+        credentialGeneration += 1; deviceCookie.Destroy()
+        if session.DisposeAccount then session.DisposeAccount() end
     end)
     function session.Destroy()
         session.alive = false
@@ -1029,6 +1257,8 @@ do
         if session.DisposeSearch then session.DisposeSearch() end
         if session.DisposePanel then session.DisposePanel() end
         if session.attempt then session.attempt.Cancel() end
+        credentialGeneration += 1; deviceCookie.Destroy()
+        if session.DisposeAccount then session.DisposeAccount() end
         if session.alertSound then session.alertSound:Destroy() end
         if screenGui.Parent then screenGui:Destroy() end
     end
@@ -1498,7 +1728,8 @@ do
         Stop = function() if session.alive then setAuto(false) end end,
         GetStatus = function()
             return { active = autoEnabled and session.alive, jobId = game.JobId,
-                serverConnection = {orderBy = serverOrder, native = support.Copy(nativeStatus)},
+                serverConnection = {orderBy = serverOrder, transport = connectionConfig.transport or "LocalBridge",
+                    credential = deviceCookie.Status(), native = support.Copy(nativeStatus)},
                 mode = session.searchMode, cycle = eggSearch.CycleStatus(),
                 config = support.Copy(eggSearch.config), lastScan = eggSearch.lastScan and {
                     match = support.Copy(eggSearch.lastScan.match), info = support.Copy(eggSearch.lastScan.info),
@@ -1507,6 +1738,151 @@ do
                 searchWindow = eggSearch.SearchWindow() }
         end,
     }
+
+    -- Account entry stays in a local closure; never expose it in GetStatus,
+    -- logs, Chilli configuration, teleport state, or companion requests.
+    do
+        local surface = Color3.fromRGB(20, 24, 30)
+        local fieldColor = Color3.fromRGB(30, 36, 44)
+        local foreground = Color3.fromRGB(239, 243, 247)
+        local secondary = Color3.fromRGB(170, 183, 197)
+        local accent = Color3.fromRGB(224, 197, 149)
+        local function rounded(object)
+            local corner = Instance.new("UICorner"); corner.CornerRadius = UDim.new(0, 12); corner.Parent = object
+        end
+        local function text(parentObject, name, content, y, height, size, color)
+            local item = Instance.new("TextLabel")
+            item.Name = name; item.BackgroundTransparency = 1; item.Text = content
+            item.Position = UDim2.fromOffset(20, y); item.Size = UDim2.new(1, -40, 0, height)
+            item.Font = Enum.Font.GothamMedium; item.TextSize = size; item.TextColor3 = color or foreground
+            item.TextXAlignment = Enum.TextXAlignment.Left; item.TextYAlignment = Enum.TextYAlignment.Top
+            item.TextWrapped = true; item.Parent = parentObject
+            return item
+        end
+        local function action(parentObject, name, content, y, color)
+            local item = Instance.new("TextButton")
+            item.Name = name; item.Text = content; item.Position = UDim2.fromOffset(20, y)
+            item.Size = UDim2.new(1, -40, 0, 44); item.BackgroundColor3 = color or fieldColor
+            item.BorderSizePixel = 0; item.Font = Enum.Font.GothamBold; item.TextSize = 14
+            item.TextColor3 = color and surface or foreground; item.Parent = parentObject; rounded(item)
+            return item
+        end
+        local entry = action(screenGui, "ServerAccount", "CUENTA / BEST PING", 0)
+        entry.AnchorPoint = Vector2.new(0, 1)
+        entry.Position = UDim2.new(0, 18, 1, -18); entry.Size = UDim2.fromOffset(196, 44); entry.ZIndex = 90
+        local panel = Instance.new("Frame")
+        panel.Name = "ServerAccountPanel"; panel.AnchorPoint = Vector2.new(0.5, 0.5)
+        panel.Position = UDim2.fromScale(0.5, 0.5); panel.Size = UDim2.fromOffset(440, 462)
+        panel.BackgroundColor3 = surface; panel.BorderSizePixel = 0; panel.Visible = false
+        panel.ZIndex = 30; panel.Parent = screenGui; rounded(panel)
+        local scale = Instance.new("UIScale"); scale.Parent = panel
+        text(panel, "Title", "Tu cuenta para Best Ping", 20, 30, 22)
+        text(panel, "Privacy", "Este dispositivo consulta Roblox. El autor del script no recibe tu cookie.", 58, 40, 13, secondary)
+        text(panel, "CookieLabel", ".ROBLOSECURITY", 112, 20, 13)
+        local input = Instance.new("TextBox")
+        input.Name = "CookieInput"; input.Position = UDim2.fromOffset(20, 138)
+        input.Size = UDim2.new(1, -40, 0, 48); input.BackgroundColor3 = fieldColor
+        input.BorderSizePixel = 0; input.Text = ""; input.PlaceholderText = ""
+        input.ClearTextOnFocus = false; input.MultiLine = false; input.TextTransparency = 1
+        input.TextSize = 16; input.Font = Enum.Font.GothamMedium; input.Parent = panel; rounded(input)
+        local mask = text(input, "MaskedValue", "Toca aqui y pega la cookie completa", 14, 24, 13, secondary)
+        mask.Position = UDim2.fromOffset(14, 14); mask.Size = UDim2.new(1, -28, 0, 24)
+        text(panel, "StorageHelp", "Guardar permite continuar entre saltos. Se guarda solo aqui, sin cifrado; otros scripts del executor podrian leerla.", 198, 54, 13, secondary)
+        local message = text(panel, "ConnectionMessage", "", 258, 40, 13, secondary)
+        local save = action(panel, "SaveAndAuto", "Guardar y usar AUTO", 304, accent)
+        local once = action(panel, "SessionOnly", "Solo esta sesion", 356)
+        local forget = action(panel, "ForgetCookie", "Borrar cookie y desconectar", 408)
+        local close = Instance.new("TextButton")
+        close.Name = "Close"; close.Text = "Cerrar"; close.Font = Enum.Font.GothamMedium
+        close.TextSize = 12; close.TextColor3 = secondary; close.BackgroundTransparency = 1
+        close.Size = UDim2.fromOffset(64, 44); close.Position = UDim2.new(1, -74, 0, 5); close.Parent = panel
+        local draft, updating, connecting = nil, false, false
+        local function fit()
+            uiAccess()
+            local camera = workspace.CurrentCamera
+            local viewport = camera and camera.ViewportSize or Vector2.new(800, 600)
+            scale.Scale = math.min(1, (viewport.X - 32) / 440, (viewport.Y - 40) / 462)
+        end
+        local function show()
+            if not session.alive then return end
+            uiAccess(); fit(); panel.Visible = true; entry.Visible = false
+            local state = deviceCookie.Status()
+            message.Text = state.configured and (state.remembered and "Conectada en este dispositivo." or "Conectada solo en esta sesion.")
+                or "Pega tu cookie para conectar tu propia cuenta."
+        end
+        local function hide()
+            uiAccess(); input:ReleaseFocus(); panel.Visible = false; entry.Visible = true; input.Text = ""; draft = nil
+            mask.Text = "Toca aqui y pega la cookie completa"
+        end
+        connect(entry.Activated, show)
+        connect(close.Activated, hide)
+        connect(input:GetPropertyChangedSignal("Text"), function()
+            if updating or input.Text == "" then return end
+            draft = support.NormalizeCookie(input.Text)
+            updating = true; input.Text = ""; updating = false
+            mask.Text = draft and "Cookie recibida (oculta)" or "Pega solo la cookie completa"
+        end)
+        local camera = workspace.CurrentCamera
+        if camera then connect(camera:GetPropertyChangedSignal("ViewportSize"), fit) end
+        local function activate(persist)
+            if connecting then return end
+            if not draft then message.Text = "Pega la cookie completa antes de conectar."; return end
+            if not executorRequest() then message.Text = "Este executor no ofrece request con headers."; return end
+            local candidate = draft; draft = nil
+            input:ReleaseFocus(); mask.Text = "Cookie recibida (oculta)"
+            connecting = true; save.Active = false; once.Active = false
+            setAuto(false); uiAccess(); message.Text = "Comprobando la conexion con Roblox..."
+            task.spawn(function()
+                local generation = credentialGeneration
+                local page, reason = deviceFetch("BestLatency", nil, candidate)
+                if not session.alive or generation ~= credentialGeneration then candidate = nil; return end
+                local ok = false
+                if page then
+                    ok, reason = deviceCookie.Set(candidate, persist)
+                    if ok then
+                        connectionConfig = {mode = "BestLatency", transport = "DeviceCookie"}
+                        ok = writeJson(CONNECTION_FILE, connectionConfig)
+                        if not ok then reason = "No se pudo guardar el modo de conexion. Reintenta." end
+                    end
+                end
+                candidate = nil; connecting = false
+                uiAccess(); save.Active = true; once.Active = true
+                if ok then
+                    credentialGeneration += 1; deviceFatal = nil; serverOrder = "BestLatency"; resetDeviceNative()
+                    nativeStatus = {state = "connected"}; hide(); setAuto(true)
+                else
+                    message.Text = reason or "No se pudo conectar. Pega la cookie y reintenta."
+                    mask.Text = "Toca aqui y pega la cookie completa"
+                end
+            end)
+        end
+        connect(save.Activated, function() activate(true) end)
+        connect(once.Activated, function() activate(false) end)
+        connect(forget.Activated, function()
+            credentialGeneration += 1; draft = nil; connecting = false; setAuto(false)
+            local removed = deviceCookie.Forget()
+            deviceFatal = nil; resetDeviceNative()
+            -- Leave the selected transport enabled: an absent cookie waits;
+            -- it must not silently resume legacy or the owner's PC bridge.
+            connectionConfig = {mode = "BestLatency", transport = "DeviceCookie"}
+            serverOrder = "BestLatency"; writeJson(CONNECTION_FILE, connectionConfig)
+            uiAccess(); input.Text = ""; mask.Text = "Toca aqui y pega la cookie completa"
+            save.Active = true; once.Active = true
+            message.Text = removed and "Cookie borrada. AUTO apagado." or "AUTO apagado. No se pudo borrar el archivo local; revisa el executor."
+        end)
+        hopperEnvironment.ChilliEggSearch.OpenServerAccount = show
+        hopperEnvironment.ChilliEggSearch.CloseServerAccount = hide
+        hopperEnvironment.ChilliEggSearch.ServerAccountStatus = function()
+            uiAccess()
+            local state = deviceCookie.Status()
+            return {open = panel.Visible, launcherVisible = entry.Visible, configured = state.configured, remembered = state.remembered}
+        end
+        session.DisposeAccount = function() draft = nil end
+        fit()
+        if connectionConfig.transport ~= "LocalBridge" and not deviceCookie.Status().configured
+            and connectionConfig.mode ~= "BestLatency" then show()
+        elseif connectionConfig.transport == "DeviceCookie" and not deviceCookie.Status().configured then show() end
+    end
 
     local filterPanel = mountEggFilterPanel({ search = eggSearch,
         api = hopperEnvironment.ChilliEggSearch, session = session, screenGui = screenGui,
@@ -1518,6 +1894,17 @@ do
         local visited = support.PruneVisited(readJson(VISITED_FILE, {}), os.time(), VISITED_MAX_AGE)
         local now = os.time()
         if serverOrder == "BestLatency" then
+            if connectionConfig.transport == "DeviceCookie" then
+                if nativeRequestBusy then return nil, "consulta Best Ping en curso" end
+                nativeRequestBusy = true
+                local generation = credentialGeneration
+                local ok, pool, reason = pcall(deviceNative.Pick, game.JobId, visited)
+                nativeRequestBusy = false
+                if not session.alive or generation ~= credentialGeneration then return nil, "conexion cancelada" end
+                if not ok then pool, reason = nil, "No se pudo leer Best Ping en este dispositivo." end
+                nativeStatus = {state = pool and "ready" or "error", occupancy = pool and pool[1].playing, error = reason}
+                return pool, reason
+            end
             if nativeRequestBusy then return nil, "consulta Best Ping en curso" end
             nativeRequestBusy = true
             local excluded = {game.JobId}

@@ -1,5 +1,9 @@
 # Contexto del proyecto
 
+## Cookie propia por dispositivo (2026-10-07)
+
+Rama codex/cookie-local-dispositivo, sobre la conexion Best Ping previa. Usuario requiere pegar la cookie dentro del script en Delta/iPad; conocidos usan Potassium. Nuevo formulario con launcher fijo CUENTA / BEST PING y acceso desde Opciones; cerrar no impide reabrir. Guardado local opcional sin cifrado por UserId para sobrevivir hops, sin PC/proxy ni credenciales en API/logs/Git. Alternativa de sesion sola y borrado/desconexion. Build/117 regresiones y diez tests Python pasan. Montaje/cierre/reapertura/limpieza comprobados aislados en Potassium con almacenamiento simulado; no autenticar desde Delta ni declarar soporte de redirects probado. Ver BEST_PING.md. Version activa/autoexec de esta PC sigue usando el bridge anterior; no se ha sustituido stable.
+
 ## Pruebas de seleccion de servidores (2026-10-07)
 
 Estado actual: el usuario pidio hacer la conexion. BestLatency ya esta conectado/activado en esta PC mediante best_ping_bridge.py y el intercambio de JSON sanitizados en el workspace de Potassium. La cookie permanece en el TXT privado del PC; el runtime solo recibe registros. El autoexec local de prueba lee el bundle validado para conservar la conexion entre hops; original respaldado, stable sin publicar. Un hop real llego al candidato anunciado 1/7, con mediana posterior de 70.26 ms y tres jugadores al medir. AUTO/Eternal >=7B/s intactos; conexion y renovacion de pool confirmadas en el destino.

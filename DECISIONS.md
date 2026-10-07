@@ -2,6 +2,9 @@
 
 | Decision | Motivo y consecuencia |
 | --- | --- |
+| Cookie propia introducida en Delta/Potassium | Usuario quiere probar iPad como otra persona. Peticion directa al host Roblox desde cada dispositivo; el autor no recibe credenciales. No requiere su PC. |
+| Guardado opcional local por cuenta y sin cifrado | Executor movil no ofrece almacen cifrado verificado. Guardar y usar AUTO informa el alcance; solo sesion no persiste al hop. Borrar elimina/sobrescribe el secreto y apaga AUTO, sin fallback. |
+| Launcher fijo y segunda entrada en Opciones | Cerrar por accidente debe permitir reabrir, independientemente de plegado/arrastre del hopper. |
 | Conectar Best Ping mediante proceso local | Cookie solo en PC/Roblox, fuera del cliente/bundle/Git. JSON sanitizado en workspace, sin listener de red. Configuracion explicita; error/ausencia de proceso esperan sin fallback silencioso. |
 | OccupancyAsc confirma grupos menores antes de avanzar | Permite seleccionar 2..6 sin recorrer toda la lista BestLatency. Prueba ligada a exclusiones y maximo 90s; desempate siempre del orden nativo y filas con maximo 180s. |
 | Instalacion local entre hops | Autoexec de esta PC lee bundle validado del workspace; original respaldado. Stable no se edita ni se publica durante estas pruebas. Proceso debe reiniciarse despues de reiniciar Windows. |

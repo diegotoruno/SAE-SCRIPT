@@ -18,6 +18,8 @@ El punto de entrada de `main` carga el script validado de la rama `stable`. Los 
 
 ## Desarrollo y CI/CD
 
+La candidata agrega **CUENTA / BEST PING** para pegar una cookie propia desde Delta o Potassium. Guardado opcional local sin cifrado, consulta directa a Roblox y opcion de borrar/desconectar. El boton fijo permite reabrir el formulario si se cierra. Configuracion, APIs y limites de prueba: [BEST_PING.md](BEST_PING.md). Requiere cargar esta candidata tambien en autoexec; main/stable aun conserva la version publicada anterior.
+
 El codigo mantenido esta en tres archivos:
 
 - `map_egg_search.luau`: filtros, lecturas del mapa y decisiones del detector.

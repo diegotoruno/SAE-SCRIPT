@@ -1,5 +1,12 @@
 # Estado del trabajo
 
+## 2026-10-07 - Cookie local por usuario y formulario recuperable
+
+- Usuario requiere opcion en Delta/iPad y Potassium, sin acceso del autor a cookies. Implementado transporte directo optativo DeviceCookie, validacion BestLatency antes de guardar, persistencia por UserId solo tras Guardar y usar AUTO, sesion sin guardado y borrar/desconectar. Archivo local sin cifrado explicitado en formulario; nunca API/logs/teleport/bridge/Git.
+- Usuario senala que cerrar debe permitir recuperar. Launcher CUENTA / BEST PING independiente del marco plegable/arrastrable, segunda entrada en Opciones y API segura de abrir/cerrar/estado.
+- Build/compilacion y 117 regresiones Luau pasan; diez tests Python pasan. UI aislada en Potassium con archivos ficticios/request bloqueado: reapertura doble desde identidad baja, limites de pantalla/escalas, opcion secundaria y limpieza de 30 conexiones correctos. AUTO/filtros/JobId reales conservados, sin teleports ni cookies reales. Captura no disponible por pipe nativo de Computer Use; paste/toques/auth/persistencia reales de Delta pendientes.
+- Rama codex/cookie-local-dispositivo sobre la conexion anterior; la sesion/autoexec real de esta PC conserva el bridge previo. Se prepara preview generado por build.py para prueba del usuario; stable sigue anterior.
+
 ## 2026-10-07 - Conexion local Best Ping activa
 
 - Usuario pidio conectar. Agregados proceso Python local, launcher oculto, intercambio JSON sanitizado, configuracion BestLatency y NativePool; no cookies en runtime/bundle. Mantiene cursor entre hops y confirma grupo minimo con OccupancyAsc antes de avanzar a 2..6. Modo nativo espera ante fallos, sin fallback.

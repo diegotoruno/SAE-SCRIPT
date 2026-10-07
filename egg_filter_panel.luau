@@ -605,8 +605,12 @@ local function mountEggFilterPanel(context)
         local sound = button("Sound", popup, "Sonido: " .. (settings.sound and "ON" or "OFF"), 258, 390, 240, 34); sound.ZIndex = 62
         notification.Activated:Connect(function() access(); if result(function() api.ConfigureAlerts({notification = not settings.notification}) end) then panel.OpenOptions() end end)
         sound.Activated:Connect(function() access(); if result(function() api.ConfigureAlerts({sound = not settings.sound}) end) then panel.OpenOptions() end end)
-        local test = button("TestAlert", popup, "Probar alerta", 12, 436, 486, 34); test.ZIndex = 62
+        local test = button("TestAlert", popup, "Probar alerta", 12, 436, 234, 44); test.ZIndex = 62
         test.Activated:Connect(function() access(); result(api.TestAlert) end)
+        if type(api.OpenServerAccount) == "function" then
+            local account = button("ServerAccount", popup, "Cuenta / Best Ping", 258, 436, 240, 44); account.ZIndex = 62
+            account.Activated:Connect(function() access(); closePopup(); api.OpenServerAccount() end)
+        end
         text("AlertHint", popup, "Las alertas se emiten al encontrar un objetivo; AUTO se detiene.", 12, 482, 486, 30, C.muted, 11).ZIndex = 61
     end
     connect(optionsButton.Activated, panel.OpenOptions)

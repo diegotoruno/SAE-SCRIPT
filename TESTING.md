@@ -1,5 +1,13 @@
 # Pruebas y validacion
 
+## Cuenta propia y reapertura (2026-10-07)
+
+Build/compilacion y 117 regresiones Luau pasan; diez tests Python del bridge siguen pasando. Nueve regresiones nuevas cubren formato de cookie, persistencia explicita por cuenta entre instancias, sesion sin guardado, borrado/fallo de disco, destino fijo Roblox/headers solo BestLatency, errores/redirecciones sin secreto, prioridad de ocupacion/orden nativo, lista parcial, cursor repetido/cancelacion y expiracion del catalogo.
+
+Potassium monto el bundle candidato aislado en una GUI con nombre de prueba, getgenv y archivos simulados, request bloqueado y tareas propias suprimidas. Verificados entrada vacia/oculta, tamanos dentro del viewport a escalas 1 y 0.7, abrir desde identidad 2, cerrar/reabrir dos veces, launcher hijo del ScreenGui fuera de Holder, entrada en Opciones y desconexion de 30 listeners al destruir. Configuracion real Eternal >=7B/s, AUTO y JobId conservados. No se introdujo cookie real, ni se ejecutaron peticiones autenticadas/teleports/inputs sinteticos. Computer Use no conecto al pipe nativo; no se obtuvo captura visual. Esta prueba confirma montaje/API/geometria, no toques/paste/teclado iOS.
+
+Prueba pendiente del usuario en Delta/iPad: cargar candidata y colocar esa misma linea en autoexec; cerrar/reabrir CUENTA / BEST PING; pegar cookie propia; Guardar y usar AUTO; observar consulta aceptada, decisiones usuales y reanudacion al llegar. No enviar cookie por chat ni leer campo/archivo con diagnosticos. Comprobar tambien Borrar cookie y desconectar y que no se retomen consultas. Redirect=false se solicita, pero el executor podria ignorarlo; no hay garantia de soporte en Delta. No publicar como soporte iPad confirmado antes de esa evidencia.
+
 ## Best Ping conectado y salto real (2026-10-07)
 
 Build/compilacion y 108 regresiones Luau pasan; diez pruebas Python offline pasan y forman parte de CI. NativePool rechaza respuestas de otro hop/PlaceId, filas vencidas/reordenadas, errores y ocupaciones superiores sin prueba vigente. El proceso conserva cursor, deduplica, excluye visitados y determina el grupo minimo via OccupancyAsc sin requerir fin del stream BestLatency; pruebas cubren vencimiento/cambio de exclusiones/orden ascendente invalido.

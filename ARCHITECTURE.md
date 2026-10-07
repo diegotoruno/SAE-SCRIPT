@@ -1,5 +1,9 @@
 # Arquitectura
 
+## Cuenta del usuario en el dispositivo
+
+`hopper_runtime.luau` agrega helpers testables NormalizeCookie, DeviceCookie, CookiePage y DeviceNative. Transporte `DeviceCookie` consulta v2 desde el executor y conserva la prioridad 1..6/BestLatency con prueba OccupancyAsc. Sin cookie/ante rechazo espera, sin bridge/fallback. Cookie aislada en closure y archivo opcional `sae_account_cookie_<UserId>.json` sin cifrado ni backups; no usa Store. GetStatus solo expone booleanos; API OpenServerAccount/CloseServerAccount/ServerAccountStatus no entrega secretos. Launcher fijo fuera de Holder y acceso desde opciones del panel. Callbacks restauran identidad y pertenecen a la sesion. DisposeAccount elimina borrador; Destroy limpia credencial en memoria y conexiones; el archivo recordado permanece hasta borrado explicito. Gate sanitizado guarda cooldown/ultima consulta entre hops, nunca credenciales. Mantener autoexec de la misma candidata.
+
 ## Seleccion de servidores en pruebas
 
 Conexion actual: server_hop_button_connection.json con mode=BestLatency habilita best_ping_bridge.py en PC. El runtime escribe solicitudes con nonce/exclusiones, lee respuestas directamente del workspace, valida frescura/PlaceId/orden/ocupacion y usa support.NativePool para elegir. No lee cookies. Best Ping consume siempre una respuesta actual de la conexion, sin usar el pool persistido como prueba de agotamiento. El pool se guarda con orderBy para diagnostico y para invalidar caches incompatibles. Sin proceso o con error espera; LegacyPing es solo el modo no configurado.

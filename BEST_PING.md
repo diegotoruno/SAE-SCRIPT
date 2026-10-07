@@ -2,7 +2,23 @@
 
 El hopper puede usar el orden nativo `BestLatency` de Roblox v2. Primero intenta candidatos no visitados con 1/7 personas antes de entrar; despues 2/7 y asi hasta 6/7. El orden BestLatency desempata dentro de cada ocupacion. La cuenta autenticada y la ubicacion del PC determinan la lista recibida; no garantiza un ping real concreto.
 
-## Proceso de PC
+## Cuenta propia en Delta / Potassium
+
+La candidata incluye un formulario dentro de Roblox. En un dispositivo nuevo se abre al cargar. Tras cerrarlo, el boton fijo **CUENTA / BEST PING** de la esquina inferior izquierda lo reabre, independiente del plegado y la posicion del hopper. Tambien esta en **Egg Filters > Opciones > Cuenta / Best Ping**.
+
+Pega el valor completo de `.ROBLOSECURITY` en el campo oculto. **Guardar y usar AUTO** comprueba una consulta BestLatency, guarda la cookie solo en el workspace local del executor y activa AUTO con los filtros actuales. **Solo esta sesion** no conserva la cookie al reejecutar o cambiar de servidor; al llegar habra que pegarla otra vez. Las decisiones de huevos, rareza minima e ingresos exactos no cambian.
+
+La cookie recordada vive en `sae_account_cookie_<UserId>.json`, separada por cuenta de Roblox. Es un archivo **sin cifrado**: otros scripts con acceso al executor pueden leerlo. No usar almacenamiento compartido entre personas. El codigo no transmite credenciales al autor, GitHub ni al proceso de su PC; declara peticiones autenticadas solo a `https://games.roblox.com`. El modo directo no necesita Python, PC ni proxy.
+
+**Borrar cookie y desconectar** borra/sobrescribe ese archivo, limpia la credencial en memoria y apaga AUTO. Se mantiene el transporte seleccionado, esperando una nueva cookie; no pasa silenciosamente al bridge de otra PC ni al modo legacy. No revoca la sesion de Roblox. Una peticion o teleport ya enviado puede terminar.
+
+El modo guardado es `{"mode":"BestLatency","transport":"DeviceCookie"}` en `server_hop_button_connection.json`; ese archivo no incluye la cookie. `GetStatus().serverConnection.credential` solo tiene `configured` y `remembered`. `OpenServerAccount()`, `CloseServerAccount()` y `ServerAccountStatus()` permiten abrir/cerrar/inspeccionar la ventana sin devolver secretos.
+
+El executor debe ofrecer `request`, `http_request`, `syn.request` o `http.request` con headers y respuesta HTTP, ademas de archivos locales. Se solicita `Redirect=false` y se rechazan respuestas 3xx/destinos finales ajenos a games.roblox.com; **el respeto a ese parametro depende del executor y no se ha verificado en Delta**. No se usa HttpGet como sustituto de una consulta autenticada. Errores de autenticacion detienen las consultas hasta reconectar; 429 espera 60s, y todas las peticiones del modo directo se espacian 15s incluso entre llegadas.
+
+Para continuar entre hops, **la misma candidata debe estar en autoexec** del dispositivo. El cargador habitual de main/stable aun no incorpora esta funcion. Verificacion local: 117 regresiones Luau y diez pruebas Python; formulario montado/reabierto y limpiado en Potassium con almacenamiento simulado, sin cookies reales ni teleports. Autenticacion y persistencia real desde Delta/iPad pendientes de la prueba del usuario.
+
+## Proceso de PC (alternativa existente)
 
 `best_ping_bridge.py` usa solo Python 3.10+ y la biblioteca estandar. Lee el TXT privado autorizado y envia la cookie exclusivamente a games.roblox.com para BestLatency. Rechaza redirects. No transmite la cookie a RobloxPlayer, al bundle, a resultados ni a Git. No abre un puerto de red.
 
