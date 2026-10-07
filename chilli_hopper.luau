@@ -91,6 +91,36 @@ local function createMapEggSearch(readJson, writeJson)
     local function rarityId(rarity)
         return type(rarity) == "table" and rarity._id or rarity
     end
+    local function rarityRanks(directory, rarities)
+        local ranks = {}
+        if rarities then
+            for id, rarity in pairs(rarities) do
+                if type(id) == "string" and type(rarity) == "table" and finite(rarity.Rank) then
+                    ranks[string.lower(id)] = rarity.Rank
+                end
+            end
+        else
+            for _, catalog in pairs(directory) do
+                local rarity = catalog.Rarity
+                if type(rarity) == "table" and type(rarity._id) == "string" and finite(rarity.Rank) then
+                    ranks[string.lower(rarity._id)] = rarity.Rank
+                end
+            end
+        end
+        return ranks
+    end
+    local function matchesRarity(rarity, minimum, ranks)
+        local id = rarityId(rarity)
+        if type(id) ~= "string" then return nil end
+        id, minimum = string.lower(id), string.lower(minimum)
+        if id == minimum then return true end
+        if ranks[id] == nil or ranks[minimum] == nil then return nil end
+        return ranks[id] >= ranks[minimum]
+    end
+    function search.RarityMatches(rarity, minimum, rarities)
+        rarities = rarities or (search.modules and search.modules.rarities.Rarities)
+        return matchesRarity(rarity, minimum, rarityRanks({}, rarities))
+    end
     function search.RarityOptions(directory, rarities)
         if directory == nil then
             local modules = search.modules
@@ -168,13 +198,15 @@ local function createMapEggSearch(readJson, writeJson)
     end
 
     function search.Summary()
-        return string.format("%s >= %s/s", search.config.rarity, search.FormatMinimum(search.config.minIncome))
+        return string.format("%s+ >= %s/s", search.config.rarity, search.FormatMinimum(search.config.minIncome))
     end
 
     function search.Explain(egg, catalog, income, filters)
         filters = filters or search.config
         if not catalog then return "Datos de especie no disponibles" end
-        if string.lower(tostring(rarityId(catalog.Rarity))) ~= string.lower(filters.rarity) then return "Rareza distinta" end
+        local rarityOk = search.RarityMatches(catalog.Rarity, filters.rarity)
+        if rarityOk == nil then return "Datos de rareza no disponibles" end
+        if not rarityOk then return "Rareza inferior al mínimo" end
         if #filters.categories > 0 and not table.find(filters.categories, egg.AssetCategory) then return "Especie excluida" end
         local name = string.lower(catalog.DisplayName or egg.AssetCategory)
         local needle = string.lower(filters.nameContains)
@@ -213,8 +245,10 @@ local function createMapEggSearch(readJson, writeJson)
     end
 
     -- Funcion pura: tambien permite verificar los filtros sin teleports.
-    function search.Evaluate(records, directory, incomeFor, filters)
+    function search.Evaluate(records, directory, incomeFor, filters, rarities)
         filters = normalize(filters or search.config)
+        rarities = rarities or (search.modules and search.modules.rarities.Rarities)
+        local ranks = rarityRanks(directory, rarities)
         local available = {}
         for _, catalog in pairs(directory) do
             local id = rarityId(catalog.Rarity)
@@ -233,9 +267,10 @@ local function createMapEggSearch(readJson, writeJson)
                 local catalog = directory[egg.AssetCategory]
                 local rarity = catalog and catalog.Rarity
                 local tier = rarityId(rarity)
-                if not catalog or type(tier) ~= "string" then
+                local rarityOk = matchesRarity(rarity, filters.rarity, ranks)
+                if not catalog or rarityOk == nil then
                     info.errors += 1
-                elseif string.lower(tier) == string.lower(filters.rarity) then
+                elseif rarityOk then
                     info.rarityCount += 1
                     local name = catalog.DisplayName or egg.AssetCategory
                     local nameOk = filters.nameContains == ""
@@ -424,7 +459,7 @@ local function createMapEggSearch(readJson, writeJson)
                 return cached.income
             end
             local count, unknown = 0, 0
-            local selectedTier = string.lower(search.config.rarity)
+            local ranks = rarityRanks(modules.assets.Directory, modules.rarities.Rarities)
             for key, egg in pairs(snapshot.Records) do
                 if egg.State == "Slot" then
                     count += 1
@@ -432,9 +467,10 @@ local function createMapEggSearch(readJson, writeJson)
                     active[id] = true
                     local catalog = modules.assets.Directory[egg.AssetCategory]
                     local tier = catalog and rarityId(catalog.Rarity)
-                    if type(tier) ~= "string" then unknown += 1 end
-                    local selected = type(tier) == "string" and string.lower(tier) == selectedTier
-                    -- AUTO only needs full inputs of the selected rarity. The
+                    local rarityOk = matchesRarity(catalog and catalog.Rarity, search.config.rarity, ranks)
+                    if rarityOk == nil then unknown += 1 end
+                    local selected = rarityOk == true
+                    -- AUTO needs full inputs of the minimum rarity and above. The
                     -- panel requests all rows explicitly; unrelated spawns
                     -- still contribute availability/error counts.
                     if includeMapIncome or selected then
@@ -471,7 +507,8 @@ local function createMapEggSearch(readJson, writeJson)
                 best, details, matches = analysisResult.match, analysisResult.info, analysisResult.matches
             else
                 search.stats.analyses += 1
-                best, details, matches = search.Evaluate(snapshot.Records, modules.assets.Directory, incomeFor)
+                best, details, matches = search.Evaluate(snapshot.Records, modules.assets.Directory, incomeFor,
+                    search.config, modules.rarities.Rarities)
                 details.ready = details.errors == 0
                 analysisKey, analysisResult = key, {match = best, info = details, matches = matches}
             end
@@ -620,7 +657,7 @@ local function mountEggFilterPanel(context)
     local filterToggle = button("ToggleFilters", root, "Filtros −", 428, 93, 96, 24)
     local filters = make("Frame", "Filters", root, { Position = UDim2.fromOffset(14, 124), Size = UDim2.fromOffset(512, 168), BackgroundColor3 = C.card, BorderSizePixel = 0 })
     corner(filters); stroke(filters)
-    text("RarityLabel", filters, "RAREZA", 12, 10, 135, 16, C.muted, 10)
+    text("RarityLabel", filters, "RAREZA MÍNIMA", 12, 10, 135, 16, C.muted, 10)
     text("IncomeLabel", filters, "MÍNIMO /s · k m b t q", 170, 10, 130, 16, C.muted, 10)
     text("MutationLabel", filters, "MUTACIÓN", 306, 10, 184, 16, C.muted, 10)
     local rarityButton = button("Rarity", filters, draft.rarity .. " ▾", 12, 31, 144, 34)
@@ -750,7 +787,7 @@ local function mountEggFilterPanel(context)
         if popup then closePopup(); return end
         popup = make("Frame", "Dropdown", root, { Position = UDim2.fromOffset(14, 192), Size = UDim2.fromOffset(512, 310), BackgroundColor3 = C.input, BorderSizePixel = 0, ZIndex = 60 })
         corner(popup); stroke(popup, C.cyan, 2)
-        text("Prompt", popup, anchor == rarityButton and "Elige una rareza" or "Elige una mutación", 12, 5, 440, 24, C.white, 17, true).ZIndex = 61
+        text("Prompt", popup, anchor == rarityButton and "Elige una rareza mínima" or "Elige una mutación", 12, 5, 440, 24, C.white, 17, true).ZIndex = 61
         local dismiss = button("Dismiss", popup, "×", 466, 5, 32, 26); dismiss.ZIndex = 62
         dismiss.Activated:Connect(function() access(); closePopup() end)
         local list = make("ScrollingFrame", "Options", popup, { Position = UDim2.fromOffset(8, 36), Size = UDim2.fromOffset(496, 266), CanvasSize = UDim2.new(), AutomaticCanvasSize = Enum.AutomaticSize.Y, BackgroundTransparency = 1, ScrollBarThickness = 4, BorderSizePixel = 0, ZIndex = 61 })
@@ -780,7 +817,7 @@ local function mountEggFilterPanel(context)
         make("UIListLayout", "Layout", list, { Padding = UDim.new(0, 6), SortOrder = Enum.SortOrder.LayoutOrder })
         local options = {}
         for id, catalog in pairs(search.modules.assets.Directory) do
-            if catalog.Rarity._id == draft.rarity then table.insert(options, {id = id, catalog = catalog}) end
+            if search.RarityMatches(catalog.Rarity, draft.rarity) then table.insert(options, {id = id, catalog = catalog}) end
         end
         table.sort(options, function(a, b) return a.catalog.DisplayName < b.catalog.DisplayName end)
         for index, option in ipairs(options) do
@@ -1013,7 +1050,7 @@ local function mountEggFilterPanel(context)
             text("Name", row, preset.name, 8, 5, 280, 18, C.white, 14).ZIndex = 63
             local minimum = tonumber(preset.config.minIncome)
             local summary = minimum and minimum > 0 and minimum < math.huge and search.FormatMinimum(minimum) or "inválido"
-            text("Summary", row, tostring(preset.config.rarity or "Sin rareza") .. " · ≥ " .. summary .. "/s", 8, 24, 280, 16, C.muted, 11).ZIndex = 63
+            text("Summary", row, tostring(preset.config.rarity or "Sin rareza") .. "+ · ≥ " .. summary .. "/s", 8, 24, 280, 16, C.muted, 11).ZIndex = 63
             local load = button("Load", row, "Cargar", 290, 8, 82, 30); load.ZIndex = 63
             local delete = button("Delete", row, "Borrar", 380, 8, 86, 30); delete.ZIndex = 63
             load.Activated:Connect(function() access(); result(function() panel.LoadPreset(preset.name) end) end)
@@ -1133,9 +1170,9 @@ local function mountEggFilterPanel(context)
             local titles = { wait = "Esperando huevos nuevos", hop = "Buscando otro servidor", loading = "Esperando renovación / datos", match = "Objetivo encontrado", stopped = "Búsqueda detenida" }
             stateTitle.Text = titles[status.mode] or "Escaneando mapa"
             stateTitle.TextColor3 = status.mode == "match" and C.green or C.white
-            stateDetail.Text = string.format("%s · ≥ %s/s · %d en mapa · %d de esa rareza", status.config.rarity, number(status.config.minIncome), info.count or 0, info.rarityCount or 0)
+            stateDetail.Text = string.format("%s+ · ≥ %s/s · mapa %d · rareza mínima %d", status.config.rarity, number(status.config.minIncome), info.count or 0, info.rarityCount or 0)
             if status.mode == "hop" and info.continuingCycle then
-                stateDetail.Text = status.config.rarity .. " observado en este ciclo · no está aquí; sigo buscando"
+                stateDetail.Text = status.config.rarity .. "+ observado en este ciclo · no está aquí; sigo buscando"
             end
             if status.mode == "loading" and info.reason then stateDetail.Text = info.reason end
             if cycle then
@@ -2487,7 +2524,7 @@ do
         setLabel("MATCH")
         setStatus(string.format("%s · %s/s · %s", match.name,
             eggSearch.FormatMinimum(match.income), match.area or "mapa"), COLORS.green)
-        matchAlert("Egg " .. eggSearch.config.rarity .. " encontrado", string.format(
+        matchAlert("Egg " .. match.rarity .. " encontrado", string.format(
             "%s · %s/s · %s. Objetivo encontrado; Chilli puede continuar.",
             match.name, eggSearch.FormatMinimum(match.income), match.area or "mapa"))
         print("[EggSearch] MATCH " .. HttpService:JSONEncode(match))
@@ -2889,11 +2926,11 @@ do
                             setLabel(remaining and string.format("EGG · %d:%02d",
                                 math.floor(remaining / 60), remaining % 60) or "Egg Search")
                             setStatus(cycle and not cycle.running
-                                and "sin " .. eggSearch.config.rarity .. " · ciclo pausado" or "sin " .. eggSearch.config.rarity .. " · esperando renovacion", COLORS.muted)
+                                and "sin " .. eggSearch.config.rarity .. "+ · ciclo pausado" or "sin " .. eggSearch.config.rarity .. "+ · esperando renovacion", COLORS.muted)
                         else
                             setStatus(info.continuingCycle
                                 and "no está aquí · búsqueda del ciclo vigente; buscando servidor"
-                                or string.format("%d %s; ninguno cumple · buscando servidor",
+                                or string.format("%d %s+; ninguno cumple · buscando servidor",
                                     info.rarityCount, eggSearch.config.rarity), COLORS.green)
                             -- El vigilante sigue escaneando durante reintentos o renovaciones.
                             setBusy(true)
