@@ -9,6 +9,7 @@
 | Recuperar pendiente solo con prueba de llegada/reconexion | JobId diferente o nuevo ID de conexion permiten recuperacion. Reejecutar en la misma conexion no habilita otro salto de AUTO. |
 | Reset durante hop repite el ciclo | Reemplaza el requisito anterior de detenerse totalmente al reset. |
 | Reloj y snapshots del juego | La noche observada dura 10s en un periodo 300s; un temporizador local puede desincronizarse. |
+| Espera de carga antes de decidir | La memoria de busqueda no permite hop con la primera lectura del destino. Exigir juego cargado, snapshot valido, minimo 10s desde su lectura y 3s sin cambios Slot/revision. Mantener loading si siguen llegando datos y reiniciar al renovarse o perderse. |
 | Ingreso sin boosts personales | Comparar caracteristicas del egg de forma consistente entre servidores. |
 | Catalogo separado de la lista Mapa | Elegir especies es configuracion; las tarjetas del mapa deben ser spawns reales. |
 | Recursos visuales replicados | Usar imagenes/modelos del juego; no hardcodear una lista de assets que se quede obsoleta. |

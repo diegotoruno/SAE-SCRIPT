@@ -1,6 +1,9 @@
 -- Behavioral regression tests: no executor, network, Roblox account or teleports.
 local factory = require("./map_egg_search")
-setfenv(factory, setmetatable({task = {spawn = function() end}}, {__index = getfenv(factory)}))
+local loadClock, gameLoaded = 0, true
+setfenv(factory, setmetatable({task = {spawn = function() end},
+    os = {clock = function() return loadClock end}, game = {IsLoaded = function() return gameLoaded end}},
+    {__index = getfenv(factory)}) :: any)
 local saved = {}
 local search = factory(function() return {} end, function(key, value) saved[key] = value; return true end)
 local passed = 0
@@ -146,6 +149,10 @@ setfenv(search.Scan, setmetatable({workspace = {GetServerTimeNow = function() re
     {__index = getfenv(search.Scan)}))
 local function scanDecision()
     local match, info = search.Scan()
+    if not info.ready and info.reason and string.find(info.reason, "datos estables", 1, true) then
+        loadClock += 10
+        match, info = search.Scan()
+    end
     return search.Decide(match, info), info
 end
 test("night suppresses stale match and income reads", function()
@@ -515,6 +522,9 @@ test("cycle renewal during a scan discards the pre-reset match", function()
     assert(match == nil and not info.ready and finder.Decide(match, info, cycle(301)) == "loading")
     finder.modules.eggs.ReadFieldEggs = function() return {Records = {}} end
     match, info = finder.Scan()
+    assert(not info.ready)
+    loadClock += 10
+    match, info = finder.Scan()
     assert(info.ready and finder.Decide(match, info, cycle(302)) == "wait")
 end)
 test("disposed detector cannot replace persisted cycle or filters", function()
@@ -696,5 +706,131 @@ test("higher observation persists the minimum hunt until the next night", functi
     assert(decideMinimumCycle(resumed, {egg("d", 7e9)}, 102) == "match")
     assert(decideMinimumCycle(resumed, {}, 290) == "loading")
     assert(decideMinimumCycle(resumed, {}, 301) == "wait")
+end)
+local function loadingFixture(read, write)
+    local finder = factory(read or function() return {} end, write or function() return true end)
+    local state = {records = {}, snapshot = true, now = 100, reads = 0, catalog = table.clone(catalog)}
+    finder.CycleStatus = function() return cycle(state.now) end
+    finder.modules = {
+        assets = {Directory = state.catalog}, rarities = {Rarities = rarities},
+        eggs = {HasFieldSnapshot = function() return state.snapshot end,
+            ReadFieldEggs = function() state.reads += 1; return {Records = state.records} end},
+        records = {ToAssetItemData = function(e) return e end},
+        earnings = {MutationOnlyRatePerSecond = function(e) return e.rate end},
+        cycle = {IsNightPhase = function() return cycle(state.now).night end},
+    }
+    setfenv(finder.Scan, setmetatable({workspace = {GetServerTimeNow = function() return state.now end}},
+        {__index = getfenv(finder.Scan)}) :: any)
+    local function scan()
+        local match, info = finder.Scan()
+        return finder.Decide(match, info, cycle(state.now)), info, match
+    end
+    return finder, state, scan
+end
+test("arrival with saved hunt cannot hop on an early empty snapshot", function()
+    local _, read, write = memoryStore()
+    assert(decideCycle(cycleFactory(read, write), {egg("origin", 6e9)}, 100) == "hop")
+    local _, state, scan = loadingFixture(read, write)
+    loadClock = 0
+    assert(scan() == "loading")
+    for _ = 1, 5 do assert(scan() == "loading") end
+    loadClock = 9.99; assert(scan() == "loading")
+    state.records = {egg("late", 8e9)}
+    loadClock = 10; assert(scan() == "loading")
+    loadClock = 12.99; assert(scan() == "loading")
+    loadClock = 13
+    local mode, _, match = scan()
+    assert(mode == "match" and match.uid == "late")
+end)
+test("loaded game and first valid snapshot start the arrival wait", function()
+    local _, state, scan = loadingFixture()
+    loadClock, gameLoaded = 0, false
+    assert(scan() == "loading" and state.reads == 0)
+    loadClock, gameLoaded, state.snapshot = 50, true, false
+    assert(scan() == "loading" and state.reads == 0)
+    loadClock, state.snapshot, state.records = 100, true, {egg("low", 6e9)}
+    assert(scan() == "loading")
+    loadClock = 109.99; assert(scan() == "loading")
+    loadClock = 110; assert(scan() == "hop")
+end)
+test("same-count replication and in-place changes restart the quiet window", function()
+    local _, state, scan = loadingFixture()
+    state.records = {egg("low", 6e9)}
+    loadClock = 0; assert(scan() == "loading")
+    loadClock = 9; state.records[1].Uid = "replacement"; assert(scan() == "loading")
+    loadClock = 10; assert(scan() == "loading")
+    loadClock = 11; state.records[1].rate = 8e9; assert(scan() == "loading")
+    loadClock = 13.99; assert(scan() == "loading")
+    loadClock = 14; assert(scan() == "match")
+end)
+test("continuous replication never becomes ready by timeout alone", function()
+    local _, state, scan = loadingFixture()
+    state.records = {egg("low", 6e9)}
+    for second = 0, 30 do
+        loadClock = second; state.records[1].AssetScale = second + 1
+        assert(scan() == "loading")
+    end
+    loadClock = 33; assert(scan() == "hop")
+end)
+test("fresh repeated reads cannot skip the arrival gate", function()
+    local finder, state, scan = loadingFixture()
+    state.records = {egg("low", 6e9)}
+    loadClock = 0; assert(scan() == "loading")
+    for _ = 1, 10 do
+        local match, info = finder.Scan(true)
+        assert(finder.Decide(match, info, cycle(100)) == "loading")
+    end
+    loadClock = 10; assert(scan() == "hop")
+    loadClock = 10.1; assert(scan() == "hop", "Established readiness must not restart on every scan")
+end)
+test("lost or malformed snapshot restarts arrival validation", function()
+    local finder, state, scan = loadingFixture()
+    state.records = {egg("low", 6e9)}
+    loadClock = 0; assert(scan() == "loading")
+    loadClock = 10; assert(scan() == "hop")
+    state.snapshot = false; assert(scan() == "loading")
+    state.snapshot = true; loadClock = 20; assert(scan() == "loading")
+    loadClock = 30; assert(scan() == "hop")
+    local read = finder.modules.eggs.ReadFieldEggs
+    finder.modules.eggs.ReadFieldEggs = function() return {} end
+    assert(scan() == "loading")
+    finder.modules.eggs.ReadFieldEggs = read
+    loadClock = 40; assert(scan() == "loading")
+    loadClock = 50; assert(scan() == "hop")
+end)
+test("renewal missed between polls starts a new load gate", function()
+    local _, state, scan = loadingFixture()
+    state.records = {egg("low", 6e9)}
+    loadClock = 0; assert(scan() == "loading")
+    loadClock = 10; assert(scan() == "hop")
+    state.now = 301; loadClock = 20; assert(scan() == "loading")
+    loadClock = 29.99; assert(scan() == "loading")
+    state.records = {}; loadClock = 30; assert(scan() == "loading")
+    loadClock = 33; assert(scan() == "wait")
+end)
+test("field refresh during loading restarts quiet time without trusting the signal", function()
+    local finder, state, scan = loadingFixture()
+    state.records = {egg("low", 6e9)}
+    loadClock = 0; assert(scan() == "loading")
+    loadClock = 9; finder.fieldRevision += 1; assert(scan() == "loading")
+    loadClock = 10; assert(scan() == "loading")
+    loadClock = 12; assert(scan() == "hop")
+end)
+test("missing catalog or income cannot consume the load wait", function()
+    local _, state, scan = loadingFixture()
+    state.records = {egg("low", 6e9, "missing")}
+    loadClock = 0; assert(scan() == "loading")
+    loadClock = 20; state.records[1].AssetCategory = "divine"; assert(scan() == "loading")
+    loadClock = 30; assert(scan() == "hop")
+    state.records[1].rate = -1; assert(scan() == "loading")
+    state.records[1].rate = 6e9; loadClock = 40; assert(scan() == "loading")
+    loadClock = 50; assert(scan() == "hop")
+end)
+test("unavailable eggs are excluded from arrival stability inputs", function()
+    local _, state, scan = loadingFixture()
+    state.records = {egg("base", 99e9, "divine", "Base")}
+    loadClock = 0; assert(scan() == "loading")
+    state.records[1].rate = 100e9
+    loadClock = 10; assert(scan() == "wait")
 end)
 print(string.format("%d regression tests passed", passed))

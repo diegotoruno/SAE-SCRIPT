@@ -1,5 +1,13 @@
 # Pruebas y validacion
 
+## Espera de carga antes del hop (2026-10-07)
+
+Diez regresiones adicionales usan un reloj inyectado para reproducir llegada con memoria y snapshot vacio temprano, huevos tardios, juego sin cargar, cambios con el mismo conteo o record, replicacion continua, scans frescos repetidos, perdida/error del snapshot, renovacion entre polls, revision del campo, catalogo/ingreso incompleto y exclusiones no Slot. No duermen ni modifican un cliente real.
+
+Potassium, cliente conectado de Windows: reejecucion con AUTO, primera decision a los 10,1s; salto automatico real con Common insuficiente despues de 10,1s; llegada con snapshot ausente y otros 10,03s desde la lectura valida (ready a 21,67s desde el autoexec), sin segundo salto. Coincidencia Common real con filtro temporal: AUTO se apago y se conservo el servidor. Renovacion natural: loading durante noche y snapshot pendiente, otros 10,08s tras los datos nuevos y wait en el mismo servidor.
+
+Mapa/juego/scan/panel coinciden en 65 Slot en esa captura; una GUI, sesion anterior detenida y conexiones retiradas. API desde identidad 2 y panel sin errores. Restaurados filtros originales Eternal >=7B/s, AUTO y preferencias; autoexec original restaurado byte por byte, pending=false y monitores terminados. Una asercion auxiliar de apertura fallo al encontrar el panel cerrado durante la observacion; se corrigio a preferencias/estado del detector y paso, conservando logs. No se simularon inputs ni se forzaron kicks. La candidata de carga se probo sobre la base previa al cambio de rareza minima; iPad y Eternal/Divine >=7B real no verificados.
+
 ## Comprobacion local y CI
 
 ```powershell

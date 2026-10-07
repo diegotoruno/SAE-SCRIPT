@@ -28,6 +28,8 @@ La cache de analisis incorpora el ciclo para no trasladar decisiones entre perio
 
 El runtime coordina AUTO, revisa otra vez antes del teleport y conserva estado entre servidores. Un teleport ya enviado no se puede retirar; la decision nueva se aplica antes del siguiente intento y al llegar al destino. La observacion del ciclo recuerda el minimo seleccionado aunque el spawn observado sea superior; no requiere migrar la configuracion ni la ventana persistida.
 
+Antes de la primera decision de cada sesion/ciclo, Scan espera game:IsLoaded(), una lectura valida, minimo 10s desde esa lectura y 3s sin cambios de inputs Slot/catalogo ni revision. Compara copias para detectar cambios en el mismo record. Hasta validar, ready=false y no devuelve candidato confirmado, aunque exista memoria de busqueda. Los analisis cacheados se mantienen separados: se clona info antes de aplicar la barrera. Tras validar no demora cada poll. Noche/reset, cambio de ciclo/overrides/modulos, snapshot ausente o error de datos reinician la barrera; Scan(true) no la evita. El tiempo de carga usa os.clock(), sin sustituir el reloj del ciclo del juego. La estabilidad es una precaucion y no una señal explicita de completitud si una replicacion parcial queda detenida durante toda la ventana.
+
 ## API publica
 
 ```lua

@@ -1,5 +1,12 @@
 # Estado del trabajo
 
+## 2026-10-07 - Espera de carga antes de continuar el hop
+
+- Scan exige juego cargado, lectura valida, minimo 10s desde esa lectura y 3s sin cambios Slot/catalogo/revision. La memoria guardada no evita la barrera; renovar, perder datos o fallar ingresos la reinicia. Conserva ingreso exacto, fuentes Slot, filtros y flujo del ciclo.
+- Candidata previa a rareza minima: build/compilacion y 78 regresiones correctos (68 anteriores y diez nuevas de carga). Potassium verifico espera real de 10,1s, un hop y llegada por autoexec con 10,03s tras snapshot valido, match real que apaga AUTO y renovacion natural con espera adicional de 10,08s.
+- Filtros Eternal >=7B/s, AUTO y preferencias conservados; autoexec de prueba retirado, original restaurado y pending=false. Sin nuevos errores del runtime/panel; fallo corregido de un auxiliar final descrito en TESTING.md. Prueba en Windows, no en iPad; no se observo Eternal/Divine >=7B real.
+- Preparada en rama codex/espera-carga-hop para integrarse y distribuirse despues del cambio de rareza minima inclusiva. Los cambios anteriores pendientes en la carpeta principal se conservan fuera de esta publicacion; los archivos del cliente y la evidencia privada quedan fuera de Git.
+
 ## 2026-10-07 - Rareza minima inclusiva
 
 - Integrado el fix sobre main/build 16, conservando parser exacto, opciones del catalogo, cache, panel virtualizado, Alt, presets, alertas y continuidad de ciclo. Seleccionar Eternal ahora admite Divine y cualquier rango mayor o igual segun Data.Rarity.Rarities/Rank; minimo y demas filtros siguen aplicandose a Slot.
