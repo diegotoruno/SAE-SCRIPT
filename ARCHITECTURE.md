@@ -57,6 +57,9 @@ finder.PanelStatus()
 
 `ServerHopButton` contiene `EggFilterPanel`. En Potassium puede estar debajo de `gethui()`/`CoreGui.RobloxGui`, no directamente bajo CoreGui. Al comprobar duplicados, recorrer descendientes y deduplicar instancias entre roots.
 
+El boton rojo se arrastra desde el marco y todos sus controles existentes (texto, AUTO y plegado), con raton o un solo toque activo. Un umbral de 6px distingue clic de arrastre; se bloquean acciones durante el gesto y los 250ms posteriores a soltar. La posicion se guarda en `server_hop_button_ui.json` al soltar o perder foco. Todos los listeners pertenecen a la sesion y se desconectan al destruirla.
+
+
 Los helpers `uiAccess()`/`access()` elevan la identidad para CoreGui. Funciones de modulos del juego o llamadas entre scripts pueden reducir esa identidad; restablecerla inmediatamente antes de acceder a la GUI. Las comprobaciones de pruebas deben hacer lo mismo.
 
 `getgenv().__CHILLI_HOPPER_SESSION.Destroy()` elimina la sesion anterior, conexiones, loops y panel al volver a ejecutar. El loader de Chilli evita cargarlo dos veces en el mismo servidor. Conservar estos contratos al cambiar la UI o el arranque.

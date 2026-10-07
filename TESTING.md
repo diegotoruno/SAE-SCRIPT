@@ -1,5 +1,14 @@
 # Pruebas y validacion
 
+## Boton rojo movible (2026-10-07)
+
+Build y compilacion de fuentes/bundle correctos: 61 regresiones en la carpeta de trabajo anterior y 92 en la candidata aislada sobre main `3407543`. No cambian decisiones del detector.
+
+Potassium comprobo el montaje de la candidata: una GUI, seis conexiones anteriores desconectadas, 23 conexiones nuevas y listeners InputBegan en boton, texto, AUTO, plegado y estado. Filtros Eternal >=7B/s, AUTO activo, posicion, plegado y preferencias del panel conservados; panel sin error y Chilli existente reutilizado. Evidencia privada en `verification/movable-button-live.json`.
+
+No se dispararon conexiones ni se simularon inputs. Pendiente comprobacion manual con raton y dedo: arrastrar expandido/plegado desde texto y chips; soltar tras mantener quieto mas de 250ms sin saltar/cambiar AUTO/plegado; confirmar clic normal, segundo dedo ignorado y posicion restaurada al reejecutar. Esta inspeccion no verifica el gesto fisico ni iPad. AUTO hizo hops naturales durante la prueba; el autoexec publico sigue cargando la version anterior al reconectar. Candidata sin publicar.
+
+
 ## UI integrada sobre build 21 (2026-10-07)
 
 Build y compilacion de fuentes/bundle correctos; las 92 regresiones existentes pasan. No cambia la logica del detector/runtime. La candidata final mide 170351 bytes, SHA256 `27fed6f3dace4f99a5c7a9c48d9463b9ea0830a77f049ba6350da30481efa10b`.
