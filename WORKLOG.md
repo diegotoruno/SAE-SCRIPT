@@ -31,3 +31,11 @@ Las pruebas de UI, reset real y hop mencionadas en `TESTING.md` son evidencia pr
 - Build y compilacion de fuentes/bundle correctos; las 26 regresiones del detector pasan. No cambia su filtro ni sus decisiones de hop.
 - Potassium verifico el orden de 65 tarjetas Slot de un snapshot real. Las primeras siete fueron Cosmic (Rank 7), seguidas por Mythic (Rank 6), con ingreso descendente dentro de cada grupo. Nombre, persistencia, cerrar/reabrir y una sola GUI correctos.
 - Dejadas las criaturas en modo mejor rareza por solicitud del usuario; restaurados filtros Divine >=7B y AUTO activo. El resto de la configuracion visual se conserva.
+
+## 2026-10-06 · Alt izquierdo para abrir/cerrar
+
+- Agregado LeftAlt mediante UserInputService.InputBegan, usando Open/Close existentes y conexion registrada para su limpieza al destruir la sesion. Se muestra la ayuda del atajo en el pie del panel.
+- Build y compilacion de fuentes/bundle correctos; 26 regresiones del detector pasan.
+- Potassium verifico SendKeyEvent de LeftAlt: abrir/cerrar, persistencia, cerrar selector de especies, campo de minimo enfocado y ayuda sin recorte. RightAlt no alterna el panel.
+- Al reejecutar, comprobadas destruccion de la instancia anterior y una alternancia por evento. Durante esta comprobacion tambien se recargo la version publica anterior; por eso la candidata debe distribuirse por CI/CD para conservar el atajo en las siguientes ejecuciones.
+- Filtros conservados y AUTO activo al terminar la comprobacion; apertura cerrada como estaba.

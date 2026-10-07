@@ -384,6 +384,11 @@ local function mountEggFilterPanel(context)
         elseif not dirty or panel.Apply() then api.Start() end
     end)
     connect(minimize.Activated, panel.Close); connect(launcher.Activated, panel.Open)
+    connect(UIS.InputBegan, function(input)
+        if input.KeyCode == Enum.KeyCode.LeftAlt then
+            if panel.open then panel.Close() else panel.Open() end
+        end
+    end)
     connect(filterToggle.Activated, function() filtersOpen = not filtersOpen; layout(); save() end)
     connect(apply.Activated, panel.Apply)
     connect(clear.Activated, function() selection = {}; markDirty() end)
@@ -449,7 +454,7 @@ local function mountEggFilterPanel(context)
             tabCatalog.Text = onlyMatches and "Solo filtro: ON" or "Solo filtro: OFF"
             tabCatalog.BackgroundColor3 = onlyMatches and Color3.fromRGB(58, 74, 100) or C.card
             tabMap.BackgroundColor3 = not onlyMatches and Color3.fromRGB(58, 74, 100) or C.card
-            foot.Text = "Spawns actuales del mapa · CUMPLE usa los filtros guardados."
+            foot.Text = "Alt izquierdo: abrir/cerrar · CUMPLE usa los filtros guardados."
             local cycle = status.cycle
             local info = status.lastScan and status.lastScan.info or {}
             tabMap.Text = string.format("Mapa · %d", info.count or 0)
