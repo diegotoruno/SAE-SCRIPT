@@ -1,5 +1,11 @@
 # Estado del trabajo
 
+## 2026-10-07 - Confirmacion manual del arrastre en Windows
+
+- Tras el reporte de que no se movia, el cliente tenia la version publicada anterior (seis conexiones): AUTO habia saltado y autoexec recargo stable, donde el arreglo aun no estaba publicado.
+- Recargada la candidata en el servidor actual; el usuario confirmo que ya se mueve. Observacion pasiva de inputs reales desde plegado/texto y cambios de Position; filtros Eternal >=7B/s y AUTO conservados. Sin inputs sinteticos ni llamadas a conexiones.
+- Preparado PR #9, rama codex/boton-rojo-movible. Publicacion por CI pendiente en este punto; autoexec conserva el cargador habitual. Evidencia privada en verification/movable-button-manual.json. iPad/tactil no probado.
+
 ## 2026-10-07 - Boton rojo movible
 
 - Arrastre registrado en toda la superficie del hopper, incluidos texto, AUTO y plegado. Conserva umbral de 6px y guardado existente; sigue solo el toque inicial y bloquea clics durante el arrastre y 250ms despues de soltar, incluso si se mantuvo quieto. Perder foco termina el gesto; listeners retirados con la sesion.

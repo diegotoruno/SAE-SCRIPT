@@ -6,7 +6,9 @@ Build y compilacion de fuentes/bundle correctos: 61 regresiones en la carpeta de
 
 Potassium comprobo el montaje de la candidata: una GUI, seis conexiones anteriores desconectadas, 23 conexiones nuevas y listeners InputBegan en boton, texto, AUTO, plegado y estado. Filtros Eternal >=7B/s, AUTO activo, posicion, plegado y preferencias del panel conservados; panel sin error y Chilli existente reutilizado. Evidencia privada en `verification/movable-button-live.json`.
 
-No se dispararon conexiones ni se simularon inputs. Pendiente comprobacion manual con raton y dedo: arrastrar expandido/plegado desde texto y chips; soltar tras mantener quieto mas de 250ms sin saltar/cambiar AUTO/plegado; confirmar clic normal, segundo dedo ignorado y posicion restaurada al reejecutar. Esta inspeccion no verifica el gesto fisico ni iPad. AUTO hizo hops naturales durante la prueba; el autoexec publico sigue cargando la version anterior al reconectar. Candidata sin publicar.
+El usuario confirmo en Windows que ahora se mueve. Los listeners pasivos observaron MouseButton1 desde plegado/texto y cambios reales de Position; filtros Eternal >=7B/s y AUTO se conservaron. El reporte inicial del fallo tenia seis conexiones (version publica anterior), mientras la candidata tiene 23: el hop habia recargado el bundle sin publicar.
+
+No se dispararon conexiones ni se simularon inputs. Siguen pendientes dedo/iPad, segundo dedo y todas las combinaciones de clic/arrastre mantenido. AUTO hizo hops naturales durante la prueba; el autoexec no se modifica. PR #9 prepara la publicacion del arreglo.
 
 
 ## UI integrada sobre build 21 (2026-10-07)
