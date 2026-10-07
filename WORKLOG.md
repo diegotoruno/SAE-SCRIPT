@@ -4,7 +4,7 @@
 
 - Usuario pide cantidad/calidad y autoriza2/7 cuando se agote reserva rapida1/7. Muestra real reciente3/1 frente190/2. Rama codex/reserva-balanceada sobre main dc891a5, worktree verification/balanced-reserve.
 - Reserva24, prioridad1/7 y respaldo2/7 en orden nativo, TTL180/90 y refill<16 o respaldo60s desde cabeza BestLatency. No esperar ausencia global1/7; grupos3..6 con prueba anterior. Detector/ciclo/filtros/match intactos. Migracion/restauracion y cuentas separadas; politica persistida sin cookie.
-- Build/145 regresiones Luau/diez Python correctos. Montaje real conserva cookie/Eternal>=7B/AUTO activo, sesion anterior destruida y Chilli reutilizado. De0 listos a24 respaldos2/7 desde observaciones ya obtenidas. Refill/recarga/hop/CI quedan por comprobar; resultados posteriores se agregaran.
+- Build/146 regresiones Luau/diez Python correctos. Montaje real conserva cookie/Eternal>=7B/AUTO activo, sesion anterior destruida y Chilli reutilizado. De0 listos a24 respaldos2/7 desde observaciones ya obtenidas. Recarga recupero24 y refill desde cabeza; GetStatus descarta un respaldo2/7 de97s que aun existia en disco. Pasada limitada a5 paginas/75s para no seguir acumulando candidatos de menor prioridad. Hop/CI quedan por comprobar; resultados posteriores se agregaran.
 
 ## 2026-10-07 - Corregir recorrido Best Ping y precargar 1/7
 

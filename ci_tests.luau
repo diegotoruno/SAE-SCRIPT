@@ -1342,7 +1342,9 @@ end)
 
 test("balanced refresh retains valid one-player priority and finishes despite old primary rows", function()
     local clock, saved, calls = 100, nil, 0
-    local old = {{"one-old", 1}}; for i = 1, 23 do old[#old + 1] = {"old-" .. i, 2} end
+    local old = {}; for i = 1, 76 do old[#old + 1] = {"three-" .. i, 3} end
+    for i = 1, 23 do old[#old + 1] = {"old-" .. i, 2} end
+    old[#old + 1] = {"one-old", 1}
     local new = {}; for i = 1, 30 do new[#new + 1] = {"new-" .. i, 2} end
     local native = support.DeviceNative({reservePolicy = "Balanced", now = function() return clock end,
         alive = function() return true end, save = function(value) saved = value end,
@@ -1351,6 +1353,7 @@ test("balanced refresh retains valid one-player priority and finishes despite ol
     clock = 160
     local pool = native.Pick("current", {}, nil, 24)
     assert(#pool == 24 and pool[1].id == "one-old" and pool[2].id == "new-1" and calls == 1 and not saved.balancedInProgress)
+    assert(saved.rows['one-old'].nativeRank > saved.rank)
     local restored = support.DeviceNative({reservePolicy = "Balanced", now = function() return clock end,
         alive = function() return true end, fetch = function() error("unnecessary request") end})
     assert(restored.Restore(saved) and #restored.Pick("current", {}) == 24)
@@ -1397,6 +1400,19 @@ test("balanced refill preserves ready stock while cancelled background cannot se
         end})
     assert(not native.Pick("current", {}, function() return active end, 24) and calls == 2)
     assert(native.Pick("current", {})[1].id == "two" and calls == 2)
+end)
+
+test("balanced small partial stock never chases pages beyond the quality budget", function()
+    local clock, calls, saved = 100, {}, nil
+    local native = support.DeviceNative({reservePolicy = "Balanced", now = function() return clock end,
+        alive = function() return true end, save = function(value) saved = value end,
+        fetch = function(order, cursor)
+            calls[#calls+1] = {order = order, cursor = cursor}; clock += 15
+            return nativePage({{"two-" .. #calls, 2}}, "page-" .. #calls)
+        end})
+    assert(#native.Pick("current", {}, nil, 24) == 5 and #calls == 5 and not saved.balancedInProgress)
+    native.Pick("current", {}, nil, 24)
+    assert(calls[6].cursor == nil)
 end)
 
 local function requestFixture(shared, delay)

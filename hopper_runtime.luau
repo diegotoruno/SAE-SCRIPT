@@ -505,7 +505,7 @@ local function createFinderSupport()
                 local cached = native.Reserve(current, visited)
                 -- A manual/AUTO hop consumes ready candidates immediately.
                 if cached and (wanted == 1 or not native.NeedsRefill(current, visited)) then return cached end
-                if not balancedInProgress or complete or needsRefresh then
+                if not balancedInProgress or complete or needsRefresh or pages >= 5 then
                     cursors, cursor, rank, pages, complete = {}, nil, 0, 0, false
                     pass = math.max(env.now(), pass + 1)
                     balancedInProgress, needsRefresh = true, false
@@ -528,7 +528,9 @@ local function createFinderSupport()
                     if found and env.publish then pcall(env.publish, found) end
                     local fresh = 0
                     for _, row in ipairs(native.Reserve(current, visited, math.huge) or {}) do if row.pass == pass then fresh += 1 end end
-                    if fresh >= wanted or complete then balancedInProgress = false; saveStream(); break end
+                    if fresh >= wanted or complete or pages >= 5 or env.now() - pass >= 75 then
+                        balancedInProgress = false; saveStream(); break
+                    end
                 end
                 local found = native.Reserve(current, visited)
                 if found then return found end
