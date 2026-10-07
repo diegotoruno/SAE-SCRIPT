@@ -6,6 +6,7 @@ local function createMapEggSearch(readJson, writeJson)
         stats = { scans = 0, analyses = 0, incomeReads = 0, cacheHits = 0, lastMs = 0 } }
     local incomeCache = {}
     local analysisKey, analysisResult
+    local rowRevision = 0
     local connections = {}
     function search.Dispose()
         search.disposed = true
@@ -158,6 +159,18 @@ local function createMapEggSearch(readJson, writeJson)
         table.sort(keys, function(a,b) return tostring(a) < tostring(b) end)
         local parts = {}; for _, key in ipairs(keys) do table.insert(parts, tostring(key) .. "=" .. search.RecordKey(value[key])) end
         return "{" .. table.concat(parts, "|") .. "}"
+    end
+    function search.CopyRecord(value)
+        if type(value) ~= "table" then return value end
+        local result = {}; for key, item in pairs(value) do result[key] = search.CopyRecord(item) end
+        return result
+    end
+    function search.SameRecord(a, b)
+        if type(a) ~= type(b) then return false end
+        if type(a) ~= "table" then return a == b end
+        for key, value in pairs(a) do if not search.SameRecord(value, b[key]) then return false end end
+        for key in pairs(b) do if a[key] == nil then return false end end
+        return true
     end
 
     -- Funcion pura: tambien permite verificar los filtros sin teleports.
@@ -340,28 +353,45 @@ local function createMapEggSearch(readJson, writeJson)
                 else search.stats.cacheHits += 1 end
                 return cached.income
             end
+            local count, unknown = 0, 0
+            local selectedTier = string.lower(search.config.rarity)
             for key, egg in pairs(snapshot.Records) do
                 if egg.State == "Slot" then
+                    count += 1
                     local id = tostring(egg.Uid or key)
                     active[id] = true
                     local catalog = modules.assets.Directory[egg.AssetCategory]
-                    local signature = search.RecordKey(egg) .. tostring(catalog)
-                        .. tostring(catalog and catalog.EarningRate) .. tostring(catalog and rarityId(catalog.Rarity))
-                    local cached = incomeCache[id]
-                    if not cached or cached.key ~= signature or cached.modules ~= modules then
-                        cached = {key = signature, modules = modules}
-                        incomeCache[id] = cached
-                    end
-                    cachedByEgg[egg] = cached
-                    if includeMapIncome then incomeFor(egg) end
-                    table.insert(inputKeys, id .. ":" .. signature)
-                    table.insert(mapRows, {uid = id, egg = egg, catalog = catalog,
-                        income = cached.income, key = signature})
+                    local tier = catalog and rarityId(catalog.Rarity)
+                    if type(tier) ~= "string" then unknown += 1 end
+                    local selected = type(tier) == "string" and string.lower(tier) == selectedTier
+                    -- AUTO only needs full inputs of the selected rarity. The
+                    -- panel requests all rows explicitly; unrelated spawns
+                    -- still contribute availability/error counts.
+                    if includeMapIncome or selected then
+                        local rarity = modules.rarities.Rarities[tier]
+                        local catalogState = {rate = catalog and catalog.EarningRate, name = catalog and catalog.DisplayName,
+                            icon = catalog and catalog.Icon, eggIcon = catalog and catalog.Egg and catalog.Egg.Icon,
+                            tier = tier, rank = rarity and rarity.Rank, color = rarity and rarity.Color}
+                        local cached = incomeCache[id]
+                        if not cached or cached.modules ~= modules or cached.catalog ~= catalog
+                            or not search.SameRecord(cached.record, egg) or not search.SameRecord(cached.catalogState, catalogState) then
+                            rowRevision += 1
+                            cached = {key = tostring(rowRevision), modules = modules, catalog = catalog,
+                                record = search.CopyRecord(egg), catalogState = catalogState}
+                            incomeCache[id] = cached
+                        end
+                        cachedByEgg[egg] = cached
+                        if includeMapIncome then incomeFor(egg) end
+                        if selected then table.insert(inputKeys, id .. ":" .. cached.key) end
+                        table.insert(mapRows, {uid = id, egg = egg, catalog = catalog,
+                            income = cached.income, key = cached.key})
+                        end
                 end
             end
             for id in pairs(incomeCache) do if not active[id] then incomeCache[id] = nil end end
             table.sort(inputKeys)
-            local key = tostring(modules) .. tostring(search.fieldRevision) .. search.RecordKey(search.config) .. table.concat(inputKeys, "|")
+            local key = tostring(modules) .. tostring(search.fieldRevision) .. search.RecordKey(search.config)
+                .. ":" .. tostring(count) .. ":" .. tostring(unknown) .. "|" .. table.concat(inputKeys, "|")
             local best, details, matches
             if not fresh and key == analysisKey and analysisResult and analysisResult.info.ready then
                 best, details, matches = analysisResult.match, analysisResult.info, analysisResult.matches

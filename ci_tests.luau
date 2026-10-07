@@ -363,4 +363,19 @@ test("legacy pending teleport waits until expiry or confirmed destination", func
     assert(support.AutoHopAllowed(state, "origin", 160, false, false, 60))
     assert(support.AutoHopAllowed(state, "destination", 120, false, false, 60))
 end)
+test("record comparison detects in-place mutation without stringifying data", function()
+    local a = {Uid = "copy", State = "Slot", Mutations = {"Golden"}, Bounds = {x = 1}}
+    local snapshot = search.CopyRecord(a)
+    assert(search.SameRecord(snapshot, a))
+    a.Mutations[1] = "Rainbow"; assert(not search.SameRecord(snapshot, a))
+    a.Mutations[1] = "Golden"; a.Bounds.x = 2; assert(not search.SameRecord(snapshot, a))
+    a.Bounds.x = 1; a.NewField = 2; assert(not search.SameRecord(snapshot, a))
+end)
+test("catalog income and rarity changes invalidate analysis", function()
+    records = {egg("catalog-change", 8e9)}; search.Scan()
+    local before = search.stats.analyses
+    catalog.divine.EarningRate = 123; search.Scan(); assert(search.stats.analyses == before + 1)
+    catalog.divine.Rarity = {_id = "Common"}; assert(scanDecision() == "wait")
+    catalog.divine.Rarity = {_id = "Divine"}; catalog.divine.EarningRate = nil
+end)
 print(string.format("%d regression tests passed", passed))
