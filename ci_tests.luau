@@ -1264,6 +1264,157 @@ test("expired continuation cursor renews without treating a partial stream as ex
     assert(calls[2].cursor == "expired" and calls[4].cursor == nil)
 end)
 
+local function balancedRow(id, playing, at, rank, pass)
+    return {id = id, playing = playing, observedAt = at, nativeRank = rank, pass = pass or 0}
+end
+
+test("balanced reserve prioritizes one-player options then native-ordered two-player backup", function()
+    local rows = {balancedRow("two-best", 2, 100, 1), balancedRow("one-later", 1, 100, 8),
+        balancedRow("one-best", 1, 100, 3), balancedRow("two-later", 2, 100, 4), balancedRow("three", 3, 100, 2)}
+    local pool = support.BalancedReserve(rows, 110, "current", {})
+    assert(#pool == 4 and pool[1].id == "one-best" and pool[2].id == "one-later"
+        and pool[3].id == "two-best" and pool[4].id == "two-later")
+    local backup = support.BalancedReserve(rows, 110, "current", {['one-best'] = 100, ['one-later'] = 100})
+    assert(backup[1].id == "two-best")
+end)
+
+test("balanced stock caps at twenty-four unique eligible options and expires backup sooner", function()
+    local rows = {balancedRow("expired-primary", 1, 99, 1), balancedRow("expired-backup", 2, 189, 2),
+        balancedRow("future", 1, 281, 3), balancedRow("current", 1, 280, 4), balancedRow("visited", 1, 280, 5)}
+    for i = 1, 40 do table.insert(rows, balancedRow("two-" .. i, 2, 280, i + 5)) end
+    table.insert(rows, balancedRow("one", 1, 100, 60)); table.insert(rows, rows[#rows])
+    local pool = support.BalancedReserve(rows, 280, "current", {visited = 279})
+    assert(#pool == 24 and pool[1].id == "one" and pool[2].id == "two-1" and pool[24].id == "two-23")
+    assert(not support.BalancedReserve({balancedRow("two", 2, 100, 1)}, 191, "current", {}))
+    assert(support.BalancedReserve({balancedRow("one", 1, 100, 1)}, 280, "current", {})[1].id == "one")
+end)
+
+test("balanced cached backup requires explicit reserve policy and preserves account transport boundary", function()
+    local data = {orderBy = "BestLatency", transport = "DeviceCookie", occupancy = 2,
+        servers = {balancedRow("two", 2, 100, 1)}, reservePolicy = "balanced-1-2-v1"}
+    assert(not support.PreloadedNativePool(data, 110, "current", {}, "DeviceCookie"))
+    assert(support.PreloadedNativePool(data, 110, "current", {}, "DeviceCookie", true)[1].id == "two")
+    assert(not support.PreloadedNativePool(data, 110, "current", {}, "LocalBridge", true))
+    data.reservePolicy = nil
+    assert(not support.PreloadedNativePool(data, 110, "current", {}, "DeviceCookie", true))
+end)
+
+test("balanced cold start uses native head immediately and never waits for global one-player exhaustion", function()
+    local calls, published = {}, {}
+    local native = support.DeviceNative({reservePolicy = "Balanced", now = function() return 100 end,
+        alive = function() return true end, publish = function(pool) published[#published + 1] = pool end,
+        fetch = function(order, cursor)
+            calls[#calls+1] = {order = order, cursor = cursor}
+            assert(order == "BestLatency" and cursor == nil)
+            return nativePage({{"two-first", 2}, {"two-second", 2}, {"one", 1}}, "later")
+        end})
+    local pool = native.Pick("current", {})
+    assert(#calls == 1 and #pool == 3 and pool[1].id == "one" and #published == 1)
+    pool = native.Pick("current", {one = 100})
+    assert(#calls == 1 and pool[1].id == "two-first")
+end)
+
+test("balanced initial account page and fresh ready stock need no extra requests", function()
+    local rows = {}; for i = 1, 24 do rows[#rows + 1] = {"two-" .. i, 2} end
+    local native = support.DeviceNative({reservePolicy = "Balanced", now = function() return 100 end,
+        alive = function() return true end, fetch = function() error("unnecessary request") end})
+    assert(native.Seed(nativePage(rows, "more")))
+    assert(not native.NeedsRefill("current", {}) and #native.Pick("current", {}, nil, 24) == 24)
+    local visited = {}; for i = 1, 9 do visited["two-" .. i] = 100 end
+    assert(native.NeedsRefill("current", visited))
+end)
+
+test("balanced backup refresh starts again at best native head after sixty seconds without extending old freshness", function()
+    local clock, calls = 100, {}
+    local old = {}; for i = 1, 24 do old[#old + 1] = {"old-" .. i, 2} end
+    local new = {}; for i = 1, 24 do new[#new + 1] = {"new-" .. i, 2} end
+    local native = support.DeviceNative({reservePolicy = "Balanced", now = function() return clock end,
+        alive = function() return true end, fetch = function(order, cursor)
+            calls[#calls+1] = {order = order, cursor = cursor}
+            assert(order == "BestLatency" and cursor == nil)
+            return nativePage(new, "other-page")
+        end})
+    assert(native.Seed(nativePage(old, "old-continuation")))
+    clock = 159; assert(not native.NeedsRefill("current", {}))
+    clock = 160; assert(native.NeedsRefill("current", {}))
+    assert(native.Pick("current", {}, nil, 24)[1].id == "new-1" and #calls == 1)
+end)
+
+test("balanced refresh retains valid one-player priority and finishes despite old primary rows", function()
+    local clock, saved, calls = 100, nil, 0
+    local old = {}; for i = 1, 76 do old[#old + 1] = {"three-" .. i, 3} end
+    for i = 1, 23 do old[#old + 1] = {"old-" .. i, 2} end
+    old[#old + 1] = {"one-old", 1}
+    local new = {}; for i = 1, 30 do new[#new + 1] = {"new-" .. i, 2} end
+    local native = support.DeviceNative({reservePolicy = "Balanced", now = function() return clock end,
+        alive = function() return true end, save = function(value) saved = value end,
+        fetch = function(order, cursor) calls += 1; assert(cursor == nil); return nativePage(new, "next") end})
+    assert(native.Seed(nativePage(old, "previous")))
+    clock = 160
+    local pool = native.Pick("current", {}, nil, 24)
+    assert(#pool == 24 and pool[1].id == "one-old" and pool[2].id == "new-1" and calls == 1 and not saved.balancedInProgress)
+    assert(saved.rows['one-old'].nativeRank > saved.rank)
+    local restored = support.DeviceNative({reservePolicy = "Balanced", now = function() return clock end,
+        alive = function() return true end, fetch = function() error("unnecessary request") end})
+    assert(restored.Restore(saved) and #restored.Pick("current", {}) == 24)
+end)
+
+test("balanced refill migrates strict observed options without losing the ready primary pool", function()
+    local saved
+    local strict = support.DeviceNative({now = function() return 100 end, alive = function() return true end,
+        save = function(value) saved = value end, fetch = function() error("unexpected") end})
+    assert(strict.Seed(nativePage({{"one", 1}, {"two", 2}}, "deep-page")))
+    local balanced = support.DeviceNative({reservePolicy = "Balanced", now = function() return 110 end,
+        alive = function() return true end, fetch = function() error("ready click must not query") end})
+    assert(balanced.Restore(saved) and balanced.NeedsRefill("current", {}))
+    assert(balanced.Pick("current", {})[1].id == "one")
+    assert(balanced.Pick("current", {one = 100})[1].id == "two")
+end)
+
+test("balanced empty or errored native pages cannot invent backup quality from legacy ping", function()
+    local calls = 0
+    local native = support.DeviceNative({reservePolicy = "Balanced", now = function() return 100 end,
+        alive = function() return true end,
+        fetch = function() calls += 1; return nil, "authentication denied", 401 end})
+    assert(not native.Pick("current", {}) and calls == 1)
+    assert(not support.BalancedReserve({{id = "legacy", playing = 2, ping = 999}}, 100, "current", {}))
+end)
+
+test("balanced authentication rejection during refill never returns cached backups as success", function()
+    local clock = 100
+    local rows = {}; for i = 1, 24 do rows[#rows+1] = {"two-" .. i, 2} end
+    local native = support.DeviceNative({reservePolicy = "Balanced", now = function() return clock end,
+        alive = function() return true end, fetch = function() return nil, "auth rejected", 401 end})
+    assert(native.Seed(nativePage(rows, "next")))
+    clock = 160
+    assert(native.Pick("current", {}, nil, 24) == nil)
+end)
+
+test("balanced refill preserves ready stock while cancelled background cannot send another page", function()
+    local calls, active = 0, true
+    local native = support.DeviceNative({reservePolicy = "Balanced", now = function() return 100 end,
+        alive = function() return true end, fetch = function()
+            calls += 1
+            if calls == 1 then return nativePage({{"two", 2}}, "next") end
+            active = false; return nativePage({{"another", 2}}, "later")
+        end})
+    assert(not native.Pick("current", {}, function() return active end, 24) and calls == 2)
+    assert(native.Pick("current", {})[1].id == "two" and calls == 2)
+end)
+
+test("balanced small partial stock never chases pages beyond the quality budget", function()
+    local clock, calls, saved = 100, {}, nil
+    local native = support.DeviceNative({reservePolicy = "Balanced", now = function() return clock end,
+        alive = function() return true end, save = function(value) saved = value end,
+        fetch = function(order, cursor)
+            calls[#calls+1] = {order = order, cursor = cursor}; clock += 15
+            return nativePage({{"two-" .. #calls, 2}}, "page-" .. #calls)
+        end})
+    assert(#native.Pick("current", {}, nil, 24) == 5 and #calls == 5 and not saved.balancedInProgress)
+    native.Pick("current", {}, nil, 24)
+    assert(calls[6].cursor == nil)
+end)
+
 local function requestFixture(shared, delay)
     local clock, live, queued = 100, true, {}
     local env = {now = function() return clock end, clock = function() return clock end,

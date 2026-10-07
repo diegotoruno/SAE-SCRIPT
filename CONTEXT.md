@@ -1,5 +1,9 @@
 # Contexto del proyecto
 
+## Balance para revisar mas servidores (2026-10-07)
+
+Usuario prioriza encontrar el huevo con sus caracteristicas y pide balance cantidad/calidad. Autoriza expresamente 2/7 con buen ping cuando se agote la reserva rapida1/7, reemplazando la exigencia de probar ausencia global de1/7 antes de usar2/7 en DeviceCookie. Muestra real previa:3 candidatos1/7 y190 de2/7 recientes; ampliar solo1/7 no cubre cantidad. Reserva hasta24 con prioridad1/7, respaldo2/7 BestLatency, frescura1=180s/2=90s, refill al bajar de16 o respaldo>=60s desde primeras paginas. Cada pasada maximo5 paginas/75s para no perseguir candidatos de peor orden indefinidamente. Grupos3..6 mantienen prueba anterior cuando faltan1/2; bridge/legacy siguen reglas previas. Detector/filtros/ciclo/match intactos.146 regresiones Luau/diez Python pasan; montaje y recarga reales preservanAUTO/Eternal>=7B/cookie y alcanzan24 respaldos desde cero destinos rapidos. Ver WORKLOG para publicacion/hop.
+
 ## Best Ping atascado y precarga rapida (2026-10-07)
 
 Usuario confirma cuenta guardada en PC, pero Buscar queda en buscando Best Ping. Lectura real: DeviceCookie, HTTP200, lista parcial, cliente/snapshot vivos; no se observa crash de Roblox. Recorrido reiniciaba a los 180s, limitando paginas alcanzables. Usuario pide reserva de servidores 1/7 con buen ping para buscar rapidamente. Corregido cursor persistente/sanitizado, vencimiento individual de registros y reserva hasta ocho 1/7 que Hop/AUTO consumen sin HTTP. Progreso pagina/filas/contador mientras no hay reserva. Respeta orden BestLatency, grupos 2..6 solo con prueba nueva, cookie/config/AUTO y detector existentes. Build/134 regresiones/diez Python pasan; montaje real conserva AUTO apagado/filtros y reutiliza Chilli. Continuidad/hop real y publicacion se registran en WORKLOG al verificarse.
