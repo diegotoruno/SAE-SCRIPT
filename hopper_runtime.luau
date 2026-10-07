@@ -1325,7 +1325,7 @@ do
         setLabel("MATCH")
         setStatus(string.format("%s · %s/s · %s", match.name,
             eggSearch.FormatMinimum(match.income), match.area or "mapa"), COLORS.green)
-        matchAlert("Egg " .. eggSearch.config.rarity .. " encontrado", string.format(
+        matchAlert("Egg " .. match.rarity .. " encontrado", string.format(
             "%s · %s/s · %s. Objetivo encontrado; Chilli puede continuar.",
             match.name, eggSearch.FormatMinimum(match.income), match.area or "mapa"))
         print("[EggSearch] MATCH " .. HttpService:JSONEncode(match))
@@ -1727,11 +1727,11 @@ do
                             setLabel(remaining and string.format("EGG · %d:%02d",
                                 math.floor(remaining / 60), remaining % 60) or "Egg Search")
                             setStatus(cycle and not cycle.running
-                                and "sin " .. eggSearch.config.rarity .. " · ciclo pausado" or "sin " .. eggSearch.config.rarity .. " · esperando renovacion", COLORS.muted)
+                                and "sin " .. eggSearch.config.rarity .. "+ · ciclo pausado" or "sin " .. eggSearch.config.rarity .. "+ · esperando renovacion", COLORS.muted)
                         else
                             setStatus(info.continuingCycle
                                 and "no está aquí · búsqueda del ciclo vigente; buscando servidor"
-                                or string.format("%d %s; ninguno cumple · buscando servidor",
+                                or string.format("%d %s+; ninguno cumple · buscando servidor",
                                     info.rarityCount, eggSearch.config.rarity), COLORS.green)
                             -- El vigilante sigue escaneando durante reintentos o renovaciones.
                             setBusy(true)

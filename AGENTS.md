@@ -2,7 +2,7 @@
 
 Lee `CONTEXT.md`, `ARCHITECTURE.md`, `DECISIONS.md` y `TESTING.md` antes de cambiar comportamiento. `DEVELOPMENT.md` explica el proyecto de VS Code. `WORKLOG.md` registra el estado verificado.
 
-- Mantener el flujo acordado: sin Divine ni observacion vigente esperar; Divine insuficiente inicia hops y su observacion permite continuar aunque falte en otro servidor; Divine que cumpla quedarse; al empezar la noche siguiente caduca la observacion, esperar snapshot nuevo y repetir.
+- La rareza seleccionada es un minimo inclusivo segun Data.Rarity.Rarities/Rank: Eternal acepta Divine y superiores. Sin esa rareza o superior ni observacion vigente esperar; huevos insuficientes iniciar hops y recordar la observacion del ciclo; cualquiera que cumpla quedarse; al empezar la noche siguiente esperar snapshot nuevo y repetir.
 - Validar teclado/clics manualmente. No simular entradas ni disparar conexiones de GUI durante pruebas en el cliente publico; hubo expulsiones BAC tras esas pruebas. No interceptar kicks ni modificar anticheat.
 - Solo inspeccionar spawns disponibles del mapa: `EggState.ReadFieldEggs().Records` con `State == "Slot"`. No agregar huevos de bases o inventarios.
 - Usar el ingreso exacto calculado por los modulos del juego. No comparar la etiqueta redondeada B/s.

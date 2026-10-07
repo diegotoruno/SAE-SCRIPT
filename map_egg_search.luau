@@ -89,6 +89,36 @@ local function createMapEggSearch(readJson, writeJson)
     local function rarityId(rarity)
         return type(rarity) == "table" and rarity._id or rarity
     end
+    local function rarityRanks(directory, rarities)
+        local ranks = {}
+        if rarities then
+            for id, rarity in pairs(rarities) do
+                if type(id) == "string" and type(rarity) == "table" and finite(rarity.Rank) then
+                    ranks[string.lower(id)] = rarity.Rank
+                end
+            end
+        else
+            for _, catalog in pairs(directory) do
+                local rarity = catalog.Rarity
+                if type(rarity) == "table" and type(rarity._id) == "string" and finite(rarity.Rank) then
+                    ranks[string.lower(rarity._id)] = rarity.Rank
+                end
+            end
+        end
+        return ranks
+    end
+    local function matchesRarity(rarity, minimum, ranks)
+        local id = rarityId(rarity)
+        if type(id) ~= "string" then return nil end
+        id, minimum = string.lower(id), string.lower(minimum)
+        if id == minimum then return true end
+        if ranks[id] == nil or ranks[minimum] == nil then return nil end
+        return ranks[id] >= ranks[minimum]
+    end
+    function search.RarityMatches(rarity, minimum, rarities)
+        rarities = rarities or (search.modules and search.modules.rarities.Rarities)
+        return matchesRarity(rarity, minimum, rarityRanks({}, rarities))
+    end
     function search.RarityOptions(directory, rarities)
         if directory == nil then
             local modules = search.modules
@@ -166,13 +196,15 @@ local function createMapEggSearch(readJson, writeJson)
     end
 
     function search.Summary()
-        return string.format("%s >= %s/s", search.config.rarity, search.FormatMinimum(search.config.minIncome))
+        return string.format("%s+ >= %s/s", search.config.rarity, search.FormatMinimum(search.config.minIncome))
     end
 
     function search.Explain(egg, catalog, income, filters)
         filters = filters or search.config
         if not catalog then return "Datos de especie no disponibles" end
-        if string.lower(tostring(rarityId(catalog.Rarity))) ~= string.lower(filters.rarity) then return "Rareza distinta" end
+        local rarityOk = search.RarityMatches(catalog.Rarity, filters.rarity)
+        if rarityOk == nil then return "Datos de rareza no disponibles" end
+        if not rarityOk then return "Rareza inferior al mínimo" end
         if #filters.categories > 0 and not table.find(filters.categories, egg.AssetCategory) then return "Especie excluida" end
         local name = string.lower(catalog.DisplayName or egg.AssetCategory)
         local needle = string.lower(filters.nameContains)
@@ -211,8 +243,10 @@ local function createMapEggSearch(readJson, writeJson)
     end
 
     -- Funcion pura: tambien permite verificar los filtros sin teleports.
-    function search.Evaluate(records, directory, incomeFor, filters)
+    function search.Evaluate(records, directory, incomeFor, filters, rarities)
         filters = normalize(filters or search.config)
+        rarities = rarities or (search.modules and search.modules.rarities.Rarities)
+        local ranks = rarityRanks(directory, rarities)
         local available = {}
         for _, catalog in pairs(directory) do
             local id = rarityId(catalog.Rarity)
@@ -231,9 +265,10 @@ local function createMapEggSearch(readJson, writeJson)
                 local catalog = directory[egg.AssetCategory]
                 local rarity = catalog and catalog.Rarity
                 local tier = rarityId(rarity)
-                if not catalog or type(tier) ~= "string" then
+                local rarityOk = matchesRarity(rarity, filters.rarity, ranks)
+                if not catalog or rarityOk == nil then
                     info.errors += 1
-                elseif string.lower(tier) == string.lower(filters.rarity) then
+                elseif rarityOk then
                     info.rarityCount += 1
                     local name = catalog.DisplayName or egg.AssetCategory
                     local nameOk = filters.nameContains == ""
@@ -422,7 +457,7 @@ local function createMapEggSearch(readJson, writeJson)
                 return cached.income
             end
             local count, unknown = 0, 0
-            local selectedTier = string.lower(search.config.rarity)
+            local ranks = rarityRanks(modules.assets.Directory, modules.rarities.Rarities)
             for key, egg in pairs(snapshot.Records) do
                 if egg.State == "Slot" then
                     count += 1
@@ -430,9 +465,10 @@ local function createMapEggSearch(readJson, writeJson)
                     active[id] = true
                     local catalog = modules.assets.Directory[egg.AssetCategory]
                     local tier = catalog and rarityId(catalog.Rarity)
-                    if type(tier) ~= "string" then unknown += 1 end
-                    local selected = type(tier) == "string" and string.lower(tier) == selectedTier
-                    -- AUTO only needs full inputs of the selected rarity. The
+                    local rarityOk = matchesRarity(catalog and catalog.Rarity, search.config.rarity, ranks)
+                    if rarityOk == nil then unknown += 1 end
+                    local selected = rarityOk == true
+                    -- AUTO needs full inputs of the minimum rarity and above. The
                     -- panel requests all rows explicitly; unrelated spawns
                     -- still contribute availability/error counts.
                     if includeMapIncome or selected then
@@ -469,7 +505,8 @@ local function createMapEggSearch(readJson, writeJson)
                 best, details, matches = analysisResult.match, analysisResult.info, analysisResult.matches
             else
                 search.stats.analyses += 1
-                best, details, matches = search.Evaluate(snapshot.Records, modules.assets.Directory, incomeFor)
+                best, details, matches = search.Evaluate(snapshot.Records, modules.assets.Directory, incomeFor,
+                    search.config, modules.rarities.Rarities)
                 details.ready = details.errors == 0
                 analysisKey, analysisResult = key, {match = best, info = details, matches = matches}
             end

@@ -18,7 +18,7 @@ No se mantiene el bundle manualmente. `dist/` es generado y esta ignorado por Gi
 
 ## Detector
 
-`Evaluate(records, directory, incomeFor, filters)` no usa Roblox directamente. Normaliza filtros, recorre solo Slot, verifica rareza, nombre literal, mutaciones y categorias exactas, calcula ingresos y ordena coincidencias. Devuelve mejor candidato, conteos y todas las coincidencias.
+`Evaluate(records, directory, incomeFor, filters, rarities)` no usa Roblox directamente. La rareza es un minimo inclusivo: acepta el mismo ID o un Rank mayor o igual de Data.Rarity.Rarities. El quinto argumento es opcional; usa el registro ya cargado en search.modules o los metadatos Rank de Directory. Conserva validacion del ID seleccionado contra el catalogo. Rangos faltantes/no finitos para IDs diferentes producen datos pendientes. Recorre solo Slot y mantiene ingreso exacto, nombre literal, mutaciones y especies exactas; devuelve mejor candidato, conteos y coincidencias. `rarityCount` incluye todos los rangos que alcanzan el minimo, aun si fallan otros filtros. `RarityMatches` comparte esa regla con el selector de especies y Explain.
 
 `Decide(match, info, cycle)` devuelve `match`, `loading`, `hop` o `wait`. Ademas de la presencia local, conserva una observacion de la rareza seleccionada para continuar cuando falta en otro servidor. `Scan()` obtiene snapshot y calcula datos con los modulos reales, evitando noche y snapshots pendientes. Un fallo de datos espera; si el ciclo cambia durante el scan se descarta esa lectura.
 
@@ -26,7 +26,7 @@ No se mantiene el bundle manualmente. `dist/` es generado y esta ignorado por Gi
 
 La cache de analisis incorpora el ciclo para no trasladar decisiones entre periodos sin senal de renovacion. La informacion de scan incluye el reloj capturado antes de leer los records; Decide rechaza un snapshot del periodo anterior. El panel distingue busqueda vigente sin rareza local de espera inicial.
 
-El runtime coordina AUTO, revisa otra vez antes del teleport y conserva estado entre servidores. Un teleport ya enviado no se puede retirar; la decision nueva se aplica antes del siguiente intento y al llegar al destino.
+El runtime coordina AUTO, revisa otra vez antes del teleport y conserva estado entre servidores. Un teleport ya enviado no se puede retirar; la decision nueva se aplica antes del siguiente intento y al llegar al destino. La observacion del ciclo recuerda el minimo seleccionado aunque el spawn observado sea superior; no requiere migrar la configuracion ni la ventana persistida.
 
 ## API publica
 
@@ -70,6 +70,8 @@ Las acciones y Luau se fijan por commit/version y checksum. El job de PR solo ti
 Una actualizacion de Chilli o de los modulos del juego ocurre fuera de este repositorio. CI no la detecta por si sola; las pruebas reales con Potassium siguen siendo necesarias para esas dependencias.
 
 ## Rendimiento, recuperacion y opciones
+
+AUTO calcula ingresos de la rareza minima y todos los rangos superiores, tambien con el panel cerrado. Sus firmas de cache incluyen esos spawns y los metadatos de Rank; los cambios de ingresos o elegibilidad invalidan el analisis. El resto de rarezas conserva la optimizacion de no calcular ingresos salvo que el panel los solicite.
 
 `Scan(fresh)` conserva ingresos por UID y firma de los datos replicados. Comparte el analisis de filtros mientras no cambien records, revision, modulos o configuracion. AUTO no calcula ingresos de otras rarezas con el panel cerrado. `Scan(true)` antes de cada teleport fuerza el calculo exacto. `MapSnapshot()` proporciona al panel filas y coincidencias del mismo snapshot, con ingresos para las tarjetas. Noche y ausencia de snapshot invalidan las caches y el ultimo resultado visible.
 
