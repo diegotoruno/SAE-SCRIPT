@@ -1,5 +1,11 @@
 # Estado del trabajo
 
+## 2026-10-07 - Guardado visible y preview actualizable
+
+- Usuario pregunta como saber si se guardo y confirma cargador con SHA e0f669..., que no puede cambiar. Documentado preview de rama actualizable con sustitucion unica del cargador; no requiere cambiar cookie ya persistida.
+- Formulario deja confirmacion de guardado verificado visible en vez de cerrarse, botones distinguen comprobacion, launcher indica GUARDADA/SOLO SESION y reapertura informa estado. API de estado agrega connecting/message sin secretos. AUTO y detector intactos.
+- Build/compilacion y las 125 regresiones existentes pasan. Feedback real en Delta y autenticacion/paste/persistencia aun no confirmados; se conserva el preview y stable no cambia.
+
 ## 2026-10-07 - Espera al guardar cookie en Delta
 
 - Usuario reporta pausa y confirma trigger Guardar y usar AUTO. Mensaje provenia del gate propio y no confirma 429. Hallado deadline 35s menor que cooldown 60s y perdida de borrador al fallar comprobacion.

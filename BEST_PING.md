@@ -8,17 +8,23 @@ La candidata incluye un formulario dentro de Roblox. En un dispositivo nuevo se 
 
 Pega el valor completo de `.ROBLOSECURITY` en el campo oculto. **Guardar y usar AUTO** comprueba una consulta BestLatency, guarda la cookie solo en el workspace local del executor y activa AUTO con los filtros actuales. **Solo esta sesion** no conserva la cookie al reejecutar o cambiar de servidor; al llegar habra que pegarla otra vez. Las decisiones de huevos, rareza minima e ingresos exactos no cambian.
 
+Pulsar Guardar no confirma por si solo el guardado. Mientras consulta Roblox, los botones muestran **Comprobando**. Tras escribir y releer el archivo correctamente, la ventana queda abierta con **Cookie guardada en este dispositivo**; al cerrarla el launcher dice **CUENTA · GUARDADA**. Reabrir conserva esa confirmacion; al reejecutar se muestra solo si la cookie se recupero del archivo. La opcion temporal confirma **Cookie activa solo en esta sesion; no se guardo**. El aviso de guardado es independiente de que AUTO encuentre una coincidencia y se apague.
+
 La cookie recordada vive en `sae_account_cookie_<UserId>.json`, separada por cuenta de Roblox. Es un archivo **sin cifrado**: otros scripts con acceso al executor pueden leerlo. No usar almacenamiento compartido entre personas. El codigo no transmite credenciales al autor, GitHub ni al proceso de su PC; declara peticiones autenticadas solo a `https://games.roblox.com`. El modo directo no necesita Python, PC ni proxy.
 
 **Borrar cookie y desconectar** borra/sobrescribe ese archivo, limpia la credencial en memoria y apaga AUTO. Se mantiene el transporte seleccionado, esperando una nueva cookie; no pasa silenciosamente al bridge de otra PC ni al modo legacy. No revoca la sesion de Roblox. Una peticion o teleport ya enviado puede terminar.
 
 El modo guardado es `{"mode":"BestLatency","transport":"DeviceCookie"}` en `server_hop_button_connection.json`; ese archivo no incluye la cookie. `GetStatus().serverConnection.credential` solo tiene `configured` y `remembered`. `OpenServerAccount()`, `CloseServerAccount()` y `ServerAccountStatus()` permiten abrir/cerrar/inspeccionar la ventana sin devolver secretos.
 
+`ServerAccountStatus()` tambien devuelve `connecting` y `message`, con el texto sanitizado de la ventana.
+
 El executor debe ofrecer `request`, `http_request`, `syn.request` o `http.request` con headers y respuesta HTTP, ademas de archivos locales. Se solicita `Redirect=false` y se rechazan respuestas 3xx/destinos finales ajenos a games.roblox.com; **el respeto a ese parametro depende del executor y no se ha verificado en Delta**. No se usa HttpGet como sustituto de una consulta autenticada. Errores de autenticacion detienen las consultas hasta reconectar; 429 espera 60s, y todas las peticiones del modo directo se espacian 15s incluso entre llegadas.
 
 Al conectar, el formulario muestra el contador y distingue el intervalo propio de 15s, HTTP 429 con espera de 60s y una consulta pendiente del executor. La comprobacion inicial tiene prioridad sobre consultas de fondo y reintenta una vez ante 429; conserva el valor oculto para reintentar mientras la ventana siga abierta. Una espera legitima de 60s no expira a los 35s. Si el executor no termina una peticion en 30s, se conserva el bloqueo para evitar peticiones duplicadas y se indica reiniciar Roblox si sigue pendiente. Reejecutar el script no libera por la fuerza una peticion nativa anterior. `GetStatus().serverConnection.request` expone solo kind/seconds/lastHttpStatus, sin secretos.
 
 Para continuar entre hops, **la misma candidata debe estar en autoexec** del dispositivo. El cargador habitual de main/stable aun no incorpora esta funcion. Verificacion local: 117 regresiones Luau y diez pruebas Python; formulario montado/reabierto y limpiado en Potassium con almacenamiento simulado, sin cookies reales ni teleports. Autenticacion y persistencia real desde Delta/iPad pendientes de la prueba del usuario.
+
+El preview actualizable usa `https://raw.githubusercontent.com/diegotoruno/SAE-SCRIPT/refs/heads/codex/cookie-ipad-preview/preview/chilli_hopper.luau`. Un cargador que apunta a un SHA como `e0f669...` queda fijado a esa version; requiere cambiar una sola vez a la rama para recibir futuras actualizaciones al ejecutarse de nuevo. La cookie local ya guardada se conserva al cambiar de cargador. Un script ya ejecutado no se actualiza automaticamente.
 
 ## Proceso de PC (alternativa existente)
 

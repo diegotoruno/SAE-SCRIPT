@@ -1859,6 +1859,17 @@ do
         close.TextSize = 12; close.TextColor3 = secondary; close.BackgroundTransparency = 1
         close.Size = UDim2.fromOffset(64, 44); close.Position = UDim2.new(1, -74, 0, 5); close.Parent = panel
         local draft, updating, connecting = nil, false, false
+        local function savedMessage(state)
+            return state.remembered and "Cookie guardada en este dispositivo. Puedes cerrar esta ventana."
+                or "Cookie activa solo en esta sesion; no se guardo."
+        end
+        local function updateEntry()
+            uiAccess()
+            local state = deviceCookie.Status()
+            entry.Text = connecting and "CUENTA · COMPROBANDO"
+                or state.configured and (state.remembered and "CUENTA · GUARDADA" or "CUENTA · SOLO SESION")
+                or "CUENTA / BEST PING"
+        end
         local function fit()
             uiAccess()
             local camera = workspace.CurrentCamera
@@ -1870,7 +1881,7 @@ do
             uiAccess(); fit(); panel.Visible = true; entry.Visible = false
             local state = deviceCookie.Status()
             message.Text = connecting and support.DeviceWaitMessage(deviceTransport.State())
-                or state.configured and (state.remembered and "Conectada en este dispositivo." or "Conectada solo en esta sesion.")
+                or state.configured and savedMessage(state)
                 or "Pega tu cookie para conectar tu propia cuenta."
         end
         local function hide()
@@ -1894,6 +1905,7 @@ do
             local candidate = draft; draft = nil
             input:ReleaseFocus(); mask.Text = "Cookie recibida (oculta)"
             connecting = true; session.accountConnecting = true; save.Active = false; once.Active = false
+            save.Text = "Comprobando con Roblox..."; once.Text = "Espera la comprobacion..."; updateEntry()
             setAuto(false); uiAccess(); message.Text = "Comprobando la conexion con Roblox..."
             task.spawn(function()
                 local generation = credentialGeneration
@@ -1908,6 +1920,7 @@ do
                 if not session.alive or generation ~= credentialGeneration then candidate = nil; return end
                 local ok = false
                 if page then
+                    uiAccess(); message.Text = persist and "Guardando y verificando el archivo local..." or "Activando solo en esta sesion..."
                     ok, reason = deviceCookie.Set(candidate, persist)
                     if ok then
                         connectionConfig = {mode = "BestLatency", transport = "DeviceCookie"}
@@ -1921,9 +1934,14 @@ do
                 if not ok and panel.Visible then draft = draft or candidate end
                 candidate = nil; connecting = false; session.accountConnecting = false
                 uiAccess(); save.Active = true; once.Active = true
+                save.Text = "Guardar y usar AUTO"; once.Text = "Solo esta sesion"; updateEntry()
                 if ok then
                     credentialGeneration += 1; deviceFatal = nil; serverOrder = "BestLatency"; resetDeviceNative()
-                    nativeStatus = {state = "connected"}; hide(); setAuto(true)
+                    -- Confirm verified storage before starting AUTO, which may
+                    -- change the map status or begin a later hop independently.
+                    draft = nil; input.Text = ""; mask.Text = "Toca aqui para cambiar la cookie"
+                    message.Text = savedMessage(deviceCookie.Status())
+                    nativeStatus = {state = "connected"}; setAuto(true)
                 else
                     message.Text = reason or "No se pudo conectar. Pega la cookie y reintenta."
                     mask.Text = draft and "Cookie recibida (oculta); puedes reintentar" or "Toca aqui y pega la cookie completa"
@@ -1942,6 +1960,7 @@ do
             serverOrder = "BestLatency"; writeJson(CONNECTION_FILE, connectionConfig)
             uiAccess(); input.Text = ""; mask.Text = "Toca aqui y pega la cookie completa"
             save.Active = true; once.Active = true
+            save.Text = "Guardar y usar AUTO"; once.Text = "Solo esta sesion"; updateEntry()
             message.Text = removed and "Cookie borrada. AUTO apagado." or "AUTO apagado. No se pudo borrar el archivo local; revisa el executor."
         end)
         hopperEnvironment.ChilliEggSearch.OpenServerAccount = show
@@ -1949,10 +1968,11 @@ do
         hopperEnvironment.ChilliEggSearch.ServerAccountStatus = function()
             uiAccess()
             local state = deviceCookie.Status()
-            return {open = panel.Visible, launcherVisible = entry.Visible, configured = state.configured, remembered = state.remembered}
+            return {open = panel.Visible, launcherVisible = entry.Visible, configured = state.configured, remembered = state.remembered,
+                connecting = connecting, message = message.Text}
         end
         session.DisposeAccount = function() draft = nil; session.accountConnecting = false end
-        fit()
+        fit(); updateEntry()
         if connectionConfig.transport ~= "LocalBridge" and not deviceCookie.Status().configured
             and connectionConfig.mode ~= "BestLatency" then show()
         elseif connectionConfig.transport == "DeviceCookie" and not deviceCookie.Status().configured then show() end
