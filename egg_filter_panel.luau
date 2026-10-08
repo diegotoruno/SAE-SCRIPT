@@ -561,7 +561,7 @@ local function mountEggFilterPanel(context)
         if #orderedRows == 0 then
             if not empty then empty = text("Empty", scroll, "", 0, 0, 494, 130, C.muted, 16); empty.TextWrapped = true; empty.TextXAlignment = Enum.TextXAlignment.Center end
             empty.Text = not snapshot.info.ready and (snapshot.info.reason or "Esperando datos del mapa")
-                or onlyMatches and "Ningún huevo disponible cumple zona, rareza y mínimo.\nAUTO sigue la búsqueda configurada." or "No hay spawns disponibles en el mapa."
+                or onlyMatches and "Ningún huevo disponible cumple zona, rareza y mínimo." or "No hay spawns disponibles en el mapa."
         elseif empty then empty:Destroy() end
         panel.stats.lastMs = (os.clock() - started) * 1000
     end
