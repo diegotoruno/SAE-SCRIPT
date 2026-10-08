@@ -1,5 +1,77 @@
 # Estado del trabajo
 
+## 2026-10-08 - Minimo visible 10b corregido y cargado
+
+Usuario reporta 10b mostrado como 1e+01b. FormatMinimum probaba primero
+una cifra significativa con %g, que usa notacion cientifica para 10.
+Ahora omite candidatos abreviados con exponentes y aumenta precision hasta
+encontrar texto decimal que vuelve al mismo numero exacto al parsearlo.
+10b/100b/500k/10m/10t/10q/1000q quedan en notacion decimal; el fallback
+numerico para valores extremos permanece. No cambia ingreso ni deteccion.
+
+Correccion en verification/zone-filter (la raiz antigua no contiene este
+formateador). Build/compilacion y 164 regresiones correctas, incluidos
+9999999999/10000000000/10000000001 y roundtrip exacto. Bundle 231438 bytes,
+SHA256 48fcb711b15bed5729e41dfb0cd28b300f90d5bb70da912efeab244db4338e0a.
+
+Potassium confirma antes 1e+01b y despues 10b, valor 10000000000 intacto.
+Conservados Eternal, nombre/mutacion, cuenta guardada, AUTO apagado y JobId.
+Una GUI/una EggFilterPanel, conexiones anteriores retiradas y Chilli
+reutilizado. Panel abierto para probar; 13 zonas disponibles. El cliente
+habia vuelto a la version publica tras cambiar de servidor: se recargo la
+candidata con zonas y formato corregido. Autoexec intacto; main/stable sin
+publicar. Evidencia privada: verification/minimum-format-live-report.json.
+
+## 2026-10-08 - Candidata por zonas cargada en Roblox local
+
+Usuario solicita cargarla para probar. Ejecutado el bundle de
+verification/zone-filter, fuente 06536a8, 231406 bytes/SHA256
+dd16a5af4846dca238354f8841afd79d4c584ac1dbf2e43c5538b0f15ac35123,
+desde el workspace del executor. Version antigua retirada: alive=false y sus
+30 conexiones desconectadas; una GUI/una EggFilterPanel, Chilli reutilizado.
+
+Panel abierto en Elegir zonas: 13 opciones oficiales/13 filas con checks.
+Filtros Eternal >=10B/s, mutacion/nombre, AUTO activo, visual pets y cuenta
+configurada/recordada conservados; zonas sin restriccion inicial. Detector
+listo en wait, panel sin error y mismo JobId. No se seleccionaron zonas ni
+se forzo teleport. AUTO y los clicks de prueba quedan a cargo del usuario.
+
+Autoexec intacto, SHA256
+66cf4b731ee1277dd5f8fa1788c615d09a0de78b1f010d589a2231f21b01e11c.
+Main/stable siguen sin publicar el filtro: al reconectar/saltar el cargador
+habitual recupera la version publicada anterior. Archivo local de candidata
+sae_zone_filter_dd16a5af.luau fuera de Git. Evidencia privada:
+verification/zone-local-load-report.json. Prueba tactil/iPad pendiente.
+
+## Filtro por zonas verificado (2026-10-08)
+
+La candidata `verification/zone-filter`, rama `codex/filtro-zonas`, parte de
+main `599f6c6` y conserva la reserva adaptativa/cuenta/teleports publicados.
+Build y compilacion de las siete entradas pasan; 163 regresiones Luau y diez
+Python correctas. La raiz anterior conserva sus cambios pendientes y pasa
+72 regresiones; no distribuir su bundle antiguo en lugar de la candidata.
+
+Casos nuevos: 13 opciones con orden/nombres oficiales, Forest frente a
+Enchanted Forest con la misma especie, multiples zonas, ausencia de
+restriccion, ingreso exacto/nombre/mutacion, Slot, zona ausente, persistencia y
+copias aisladas, JSON/presets antiguos, IDs/listas invalidas, cache invalidada
+por AreaId/configuracion/catalogo y Divine valido con minimo Eternal.
+
+Potassium Windows: 34 comprobaciones aisladas con fuentes de la candidata y
+modulos reales. Trece filas/checkboxes, nombres y orden reales, borrador vacio
+rechazado, aplicar solo Enchanted Forest, check Forest apagado, restauracion
+al remontar, Todas, limites a UIScale 0.7 y una GUI de prueba tras recarga.
+Snapshot real de 64 Slot comparado con calculo independiente: cero candidatos
+del filtro probado. Coincidencias controladas con especie/rango reales no se
+inyectaron en EggState. Configuracion real Eternal >=10B/s, AUTO y JobId
+intactos; cero teleports, UI/archivos de prueba retirados. Guardado y relectura
+en archivo temporal del executor tambien comprobados; no se tocaron cookies
+ni autoexec. Checks por API, sin clicks/teclado simulados.
+
+No se ha observado un huevo real Eternal/Divine que cumpla ni probado el gesto
+tactil/iPad. La seleccion vacia se puede corregir con Todas o eligiendo zonas.
+Fuentes y evidencia privada en verification/; main/stable aun sin publicar.
+
 ## 2026-10-07 - Reposicion adaptativa tras prueba prolongada
 
 - PR12 integrado en main6779ab6, CI37607861598 valido/publico build35. Bundle publico227568 bytes/SHA25634789849521776239ba49b4f66863ded6eb33fbc48c03441f5dc87a18e82baff identico a candidata; main sigue apuntando a stable.

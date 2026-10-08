@@ -50,7 +50,7 @@ loadstring(game:HttpGet("https://raw.githubusercontent.com/diegotoruno/SAE-SCRIP
 
 ## Busqueda
 
-La rareza seleccionada es un minimo inclusivo segun el Rank del juego: Eternal acepta Eternal, Divine y cualquier rango superior. El filtro inicial busca Divine o superior que generen al menos 7.000.000.000 por segundo. Ingreso, mutacion, nombre y especies exactas siguen aplicandose. Solo usa huevos disponibles en el mapa (`Slot`).
+La rareza seleccionada es un minimo inclusivo segun el Rank del juego: Eternal acepta Eternal, Divine y cualquier rango superior. El filtro inicial busca Divine o superior que generen al menos 7.000.000.000 por segundo. Ingreso, mutacion, nombre y zonas exactas siguen aplicandose. Solo usa huevos disponibles en el mapa (`Slot`).
 
 - Sin huevos de la rareza minima o superiores ni una observacion vigente en el ciclo, espera la siguiente renovacion en el servidor actual.
 - Con huevos de la rareza minima o superiores que no cumplan los filtros, hace hop y vuelve a escanear al llegar; una observacion vigente permite continuar aunque falten en el destino.
@@ -65,7 +65,7 @@ Estilo grafito con acento champan, tipografia Gotham y tarjetas con ingreso dest
 
 **EGG FILTERS** abre el panel. **Alt izquierdo** alterna abrir/cerrar el panel, tambien cuando estas editando un filtro. La lista principal muestra exclusivamente huevos actuales del mapa, con imagen o modelo, ingreso, rareza, escala, peso, mutaciones y zona.
 
-**Elegir especies** abre un catalogo separado con especies de la rareza minima y las superiores. **Aplicar filtros** guarda rareza minima, ingreso minimo por segundo, mutacion, nombre y especies elegidas. Una lista explicita de especies sigue restringiendo los candidatos; vacia acepta todas. El selector de rareza usa solo las rarezas con especies en el catalogo del juego, en orden de su rango real.
+**Elegir zonas** muestra las 13 zonas actuales con checks, en orden de progreso del juego. Pulsa **Limpiar seleccion**, marca **Enchanted Forest** y luego **Aplicar filtros** para buscar solo en esa zona; Forest queda excluido. Puedes marcar varias zonas o usar **Todas**. No puedes aplicar un borrador sin ninguna zona marcada. Rareza minima, ingreso exacto, mutacion y nombre siguen siendo obligatorios. La seleccion se conserva al recargar y en presets. El filtro anterior de especies se retira.
 
 El minimo acepta `500k`, `25m`, `7b`, `7.5b`, `1t` o `1q`, tambien en mayusculas. Puedes usar coma decimal (`7,5b`). Sin sufijo, el valor son unidades por segundo: `7` significa 7/s. La configuracion anterior de 7B conserva su valor y aparece como `7b`; editar y volver a aplicar conserva el limite exacto.
 
@@ -84,13 +84,14 @@ finder.Configure({
     minIncome = "7b", -- tambien acepta 7000000000 como numero exacto
     nameContains = "",
     mutation = "",
-    categories = {}, -- vacio acepta todas las especies
+    zones = {"Enchanted Forest"}, -- {} acepta todas las zonas
 })
 finder.Start()
 -- finder.Stop()
 -- finder.OpenPanel()
 -- finder.GetStatus()
 -- finder.RarityOptions() -- IDs, nombres y rangos reales del catalogo
+-- finder.ZoneOptions() -- IDs, nombres y orden de las zonas oficiales
 ```
 
 ## Chilli Hub

@@ -1,5 +1,29 @@
 # Arquitectura
 
+## Filtro por zonas (2026-10-08)
+
+El selector **Elegir zonas** reemplaza el filtro por especies. Ofrece las 13
+entradas actuales de `Data.Areas.Directory`, ordenadas por
+`Areas.GetProgressionOrder(area)`, con checks independientes y acciones Todas y
+Limpiar seleccion. La lista incluye zonas sin huevos presentes y no depende de
+la rareza elegida. El ID interno `Light Dark` se muestra como Angels & Demons.
+
+La configuracion usa `zones = {"Enchanted Forest"}` para buscar solo alli;
+compara el `AreaId` exacto de cada spawn Slot, por lo que Forest queda excluido.
+Varias zonas se combinan con OR; rareza minima inclusiva, ingreso exacto,
+mutacion y nombre siguen siendo obligatorios. `zones = {}` significa todas las
+zonas y muestra todos los checks activos. Limpiar todos los checks en el panel
+deja un borrador vacio que bloquea Aplicar/AUTO/presets hasta elegir al menos
+una zona o Todas; no convierte una seleccion vacia accidental en todas.
+
+Los JSON/presets antiguos conservan rareza, ingreso, nombre y mutacion; se
+ignora `categories` y se inicia sin restriccion de zona. Nuevos guardados usan
+`zones`. Configure ya no acepta categories. Elegir otra rareza conserva zonas.
+Un AreaId ausente con zonas restringidas, catalogo de zonas pendiente o zona
+guardada retirada del juego produce loading. rarityCount sigue contando la
+rareza minima y superiores en todo el mapa: un huevo de zona excluida es
+insuficiente y permite hop; sin esa rareza ni evidencia vigente se espera.
+
 ## Reserva balanceada DeviceCookie (2026-10-07)
 
 Reposicion adaptativa: cada Pick consulta como maximo5 paginas. Una pasada con menos16 opciones conserva cursor entre llamadas hasta12 paginas o180s; con stock>=16 termina al presupuesto normal5 paginas/75s.24 registros frescos de la pasada o fin de lista terminan antes. Tras interrupcion>=180s se vuelve a cabeza. Restore conserva pasadas parciales; TTL individual no se extiende por paginar. Los saltos siguen consumiendo inmediatamente cualquier reserva vigente.
@@ -51,11 +75,11 @@ No se mantiene el bundle manualmente. `dist/` es generado y esta ignorado por Gi
 
 ## Detector
 
-`Evaluate(records, directory, incomeFor, filters, rarities)` no usa Roblox directamente. La rareza es un minimo inclusivo: acepta el mismo ID o un Rank mayor o igual de Data.Rarity.Rarities. El quinto argumento es opcional; usa el registro ya cargado en search.modules o los metadatos Rank de Directory. Conserva validacion del ID seleccionado contra el catalogo. Rangos faltantes/no finitos para IDs diferentes producen datos pendientes. Recorre solo Slot y mantiene ingreso exacto, nombre literal, mutaciones y especies exactas; devuelve mejor candidato, conteos y coincidencias. `rarityCount` incluye todos los rangos que alcanzan el minimo, aun si fallan otros filtros. `RarityMatches` comparte esa regla con el selector de especies y Explain.
+`Evaluate(records, directory, incomeFor, filters, rarities)` no usa Roblox directamente. La rareza es un minimo inclusivo: acepta el mismo ID o un Rank mayor o igual de Data.Rarity.Rarities. El quinto argumento es opcional; usa el registro ya cargado en search.modules o los metadatos Rank de Directory. Conserva validacion del ID seleccionado contra el catalogo. Rangos faltantes/no finitos para IDs diferentes producen datos pendientes. Recorre solo Slot y mantiene ingreso exacto, nombre literal, mutaciones y zonas exactas; devuelve mejor candidato, conteos y coincidencias. `rarityCount` incluye todos los rangos que alcanzan el minimo, aun si fallan otros filtros. `RarityMatches` comparte esa regla con los controles de rareza y Explain.
 
 `Decide(match, info, cycle)` devuelve `match`, `loading`, `hop` o `wait`. Ademas de la presencia local, conserva una observacion de la rareza seleccionada para continuar cuando falta en otro servidor. `Scan()` obtiene snapshot y calcula datos con los modulos reales, evitando noche y snapshots pendientes. Un fallo de datos espera; si el ciclo cambia durante el scan se descarta esa lectura.
 
-`chilli_egg_search_cycle.json` guarda version, rareza, periodIndex, nextReset, periodSeconds, nightSeconds, seenAt y untilTime. La ventana termina al empezar la noche siguiente (`nextReset - nightSeconds`). Cambio de rareza, periodo u overrides, datos futuros/corruptos o expiracion invalidan esa memoria. Un reloj desconocido/pausado espera; cambiar minimo/especies conserva la observacion de la misma rareza. El guardado usa la persistencia verificada existente y no se repite en cada poll. `GetStatus().searchWindow` devuelve una copia de lo guardado; su existencia no demuestra vigencia ni presencia actual.
+`chilli_egg_search_cycle.json` guarda version, rareza, periodIndex, nextReset, periodSeconds, nightSeconds, seenAt y untilTime. La ventana termina al empezar la noche siguiente (`nextReset - nightSeconds`). Cambio de rareza, periodo u overrides, datos futuros/corruptos o expiracion invalidan esa memoria. Un reloj desconocido/pausado espera; cambiar minimo/zonas conserva la observacion de la misma rareza. El guardado usa la persistencia verificada existente y no se repite en cada poll. `GetStatus().searchWindow` devuelve una copia de lo guardado; su existencia no demuestra vigencia ni presencia actual.
 
 La cache de analisis incorpora el ciclo para no trasladar decisiones entre periodos sin senal de renovacion. La informacion de scan incluye el reloj capturado antes de leer los records; Decide rechaza un snapshot del periodo anterior. El panel distingue busqueda vigente sin rareza local de espera inicial.
 
@@ -69,7 +93,7 @@ Antes de la primera decision de cada sesion/ciclo, Scan espera game:IsLoaded(), 
 local finder = getgenv().ChilliEggSearch
 finder.Configure({
     rarity = "Divine", minIncome = 7000000000,
-    nameContains = "", mutation = "", categories = {},
+    nameContains = "", mutation = "", zones = {"Enchanted Forest"},
 })
 finder.Scan()
 finder.Start()

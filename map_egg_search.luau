@@ -124,12 +124,12 @@ local function createMapEggSearch(readJson, writeJson)
         return minimum
     end
     function search.FormatMinimum(value)
-        -- Only abbreviate when parsing the text restores the exact threshold.
+        -- Prefer ordinary decimal suffixes, preserving the exact threshold.
         for _, suffix in ipairs({ "q", "t", "b", "m", "k" }) do
             if value >= units[suffix] then
                 for precision = 1, 17 do
                     local text = string.format("%." .. precision .. "g", value / units[suffix]) .. suffix
-                    if search.ParseMinimum(text) == value then return text end
+                    if not string.find(text, "[eE]") and search.ParseMinimum(text) == value then return text end
                 end
             end
         end
@@ -207,16 +207,55 @@ local function createMapEggSearch(readJson, writeJson)
         local mutation = config.mutation or ""
         assert(type(name) == "string" and type(mutation) == "string",
             "nameContains y mutation deben ser texto")
-        local categories, seen = {}, {}
-        assert(config.categories == nil or type(config.categories) == "table", "categories debe ser una lista")
-        for _, category in ipairs(config.categories or {}) do
-            assert(type(category) == "string" and category ~= "", "Especie no valida")
-            if not seen[category] then table.insert(categories, category); seen[category] = true end
+        -- Retired categories from older saved configs/presets are ignored.
+        local zones, seen = {}, {}
+        assert(config.zones == nil or type(config.zones) == "table", "zones debe ser una lista")
+        local zoneCount = 0
+        for key in pairs(config.zones or {}) do
+            assert(type(key) == "number" and key % 1 == 0 and key >= 1 and key <= #config.zones,
+                "zones debe ser una lista continua")
+            zoneCount += 1
         end
-        table.sort(categories)
+        assert(zoneCount == #(config.zones or {}), "zones debe ser una lista continua")
+        for _, id in ipairs(config.zones or {}) do
+            assert(type(id) == "string" and id ~= "", "Zona no valida")
+            if not seen[id] then table.insert(zones, id); seen[id] = true end
+        end
+        table.sort(zones)
         return { rarity = rarity, minIncome = minimum,
-            nameContains = name, mutation = mutation, categories = categories }
+            nameContains = name, mutation = mutation, zones = zones }
     end
+    -- The whole official catalog is offered, regardless of local egg spawns.
+    function search.ZoneOptions(areas)
+        areas = areas or (search.modules and search.modules.areas)
+        if not areas or type(areas.Directory) ~= "table" then return {} end
+        local options = {}
+        for id, area in pairs(areas.Directory) do
+            if type(id) == "string" and type(area) == "table" then
+                local rank = area.ProgressionOrder
+                if type(areas.GetProgressionOrder) == "function" then
+                    local ok, value = pcall(areas.GetProgressionOrder, area)
+                    if ok and finite(value) then rank = value end
+                end
+                table.insert(options, {id = id, label = area.DisplayName or id,
+                    rank = finite(rank) and rank or math.huge, icon = area.Icon})
+            end
+        end
+        table.sort(options, function(a, b)
+            if a.rank ~= b.rank then return a.rank < b.rank end
+            return a.id < b.id
+        end)
+        return options
+    end
+    local function validateZones(config)
+        if #config.zones == 0 then return end
+        local areas = search.modules and search.modules.areas
+        assert(areas and type(areas.Directory) == "table", "Espera a que carguen las zonas del juego")
+        for _, id in ipairs(config.zones) do
+            assert(areas.Directory[id], "Zona desconocida: " .. id)
+        end
+    end
+
     local ok, config = pcall(normalize, readJson(CONFIG_FILE, {}))
     search.config = ok and config or normalize({})
 
@@ -224,7 +263,7 @@ local function createMapEggSearch(readJson, writeJson)
         assert(search.modules, "Espera a que cargue el catálogo del juego")
         local result = normalize(config)
         result.rarity = canonicalRarity(result.rarity, search.RarityOptions())
-        for _, id in ipairs(result.categories) do assert(search.modules.assets.Directory[id], "Especie desconocida: " .. id) end
+        validateZones(result)
         return result
     end
 
@@ -238,10 +277,11 @@ local function createMapEggSearch(readJson, writeJson)
         end
         nextConfig = normalize(nextConfig)
         nextConfig.rarity = canonicalRarity(nextConfig.rarity, search.RarityOptions())
+        validateZones(nextConfig)
         assert(writeJson(CONFIG_FILE, nextConfig), "No se pudieron guardar los filtros")
         search.config = nextConfig
         search.lastScan = nil
-        local copy = table.clone(nextConfig); copy.categories = table.clone(nextConfig.categories); return copy
+        local copy = table.clone(nextConfig); copy.zones = table.clone(nextConfig.zones); return copy
     end
 
     function search.Summary()
@@ -254,7 +294,10 @@ local function createMapEggSearch(readJson, writeJson)
         local rarityOk = search.RarityMatches(catalog.Rarity, filters.rarity)
         if rarityOk == nil then return "Datos de rareza no disponibles" end
         if not rarityOk then return "Rareza inferior al mínimo" end
-        if #filters.categories > 0 and not table.find(filters.categories, egg.AssetCategory) then return "Especie excluida" end
+        if #(filters.zones or {}) > 0 then
+            if type(egg.AreaId) ~= "string" or egg.AreaId == "" then return "Zona no disponible" end
+            if not table.find(filters.zones, egg.AreaId) then return "Zona excluida" end
+        end
         local name = string.lower(catalog.DisplayName or egg.AssetCategory)
         local needle = string.lower(filters.nameContains)
         if needle ~= "" and not string.find(name, needle, 1, true)
@@ -304,8 +347,8 @@ local function createMapEggSearch(readJson, writeJson)
         filters.rarity = canonicalRarity(filters.rarity, available)
         local found = {}
         local info = { count = 0, rarityCount = 0, eligible = 0, errors = 0 }
-        local categorySet = {}
-        for _, category in ipairs(filters.categories) do categorySet[category] = true end
+        local zoneSet = {}
+        for _, id in ipairs(filters.zones) do zoneSet[id] = true end
         for _, egg in pairs(records) do
             -- Slot es un spawn disponible. Carried, GuardCarried, Dropped y
             -- Claimed no son huevos que hayan aparecido libres en el nido.
@@ -332,8 +375,10 @@ local function createMapEggSearch(readJson, writeJson)
                     if egg.BaseMutation and string.lower(egg.BaseMutation) == string.lower(filters.mutation) then
                         mutationOk = true
                     end
-                    local categoryOk = #filters.categories == 0 or categorySet[egg.AssetCategory]
-                    if nameOk and mutationOk and categoryOk then
+                    local zoneKnown = type(egg.AreaId) == "string" and egg.AreaId ~= ""
+                    local zoneOk = #filters.zones == 0 or (zoneKnown and zoneSet[egg.AreaId])
+                    if #filters.zones > 0 and not zoneKnown then info.errors += 1 end
+                    if nameOk and mutationOk and zoneOk then
                         info.eligible += 1
                         local incomeOk, income = pcall(incomeFor, egg)
                         if not incomeOk or type(income) ~= "number"
@@ -415,7 +460,7 @@ local function createMapEggSearch(readJson, writeJson)
                     return require(source)
                 end
                 return {
-                    assets = module(data, "Assets"), eggs = module(client, "EggState"),
+                    areas = module(data, "Areas"), assets = module(data, "Assets"), eggs = module(client, "EggState"),
                     rarities = module(data, "Rarity"), numbers = module(shared:WaitForChild("Utils", 30), "Numbers"),
                     records = module(util, "EggRecords"), earnings = module(util, "AssetEarnings"),
                     cycle = module(util, "AreaEggCycle"),
@@ -496,6 +541,7 @@ local function createMapEggSearch(readJson, writeJson)
                 analysisKey, analysisResult = nil, nil
                 return nil, {ready = false, reason = "esperando spawns del mapa"}
             end
+            validateZones(search.config)
             local snapshotCycle = search.CycleStatus()
             local snapshot = modules.eggs.ReadFieldEggs()
             assert(type(snapshot) == "table" and type(snapshot.Records) == "table", "Snapshot del mapa incompatible")
@@ -572,7 +618,7 @@ local function createMapEggSearch(readJson, writeJson)
                 row.match = matching[row.uid] == true
                 row.reason = search.Explain(row.egg, row.catalog, row.income)
             end
-            if not details.ready then details.reason = "datos de especie o ingreso no disponibles; esperando recuperación" end
+            if not details.ready then details.reason = "datos de especie, zona o ingreso no disponibles; esperando recuperación" end
             local afterCycle = search.CycleStatus()
             if afterCycle and (not snapshotCycle or snapshotCycle.periodIndex ~= afterCycle.periodIndex
                 or snapshotCycle.nextReset ~= afterCycle.nextReset or snapshotCycle.periodSeconds ~= afterCycle.periodSeconds
