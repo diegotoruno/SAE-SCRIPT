@@ -1,5 +1,15 @@
 # Arquitectura
 
+## Semantica de tarjetas y zonas (2026-10-08)
+
+Solo ZonePicker contiene checks de seleccion. createCard abre detalle y no
+modifica el borrador. updateCard usa exclusivamente row.match de MapSnapshot
+para CUMPLE y el resaltado; pertenecer a una zona elegida no marca una tarjeta.
+Apply confirma la configuracion completa y activa SetOnlyMatches(true), cuya
+preferencia se guarda. La vista Mapa sigue ofreciendo todos los Slot con
+CUMPLE/FUERA. No cambia Evaluate, los rangos inclusivos ni las decisiones
+wait/hop/match. El estado wait menciona la rareza minima que se espera.
+
 ## Filtro por zonas (2026-10-08)
 
 El selector **Elegir zonas** reemplaza el filtro por especies. Ofrece las 13

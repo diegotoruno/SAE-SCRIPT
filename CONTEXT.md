@@ -1,5 +1,21 @@
 # Contexto del proyecto
 
+## Coincidencias combinadas en el panel (2026-10-08)
+
+Los checks pertenecen solo a las 13 zonas. Las tarjetas del mapa no seleccionan
+pets ni alternan zonas al tocarlas: abren el detalle. Solo se resaltan como
+CUMPLE cuando el detector confirma TODOS los filtros guardados: zona exacta,
+rareza minima inclusiva, ingreso exacto, nombre y mutacion. Aplicar filtros
+activa y persiste Solo filtro para mostrar unicamente esas coincidencias;
+Mapa conserva la vista completa con FUERA para los descartados.
+
+Ejemplo Eternal + Enchanted Forest + 10b: un Common de99b en esa zona, un
+Eternal de9999999999/s alli o un Eternal de99b deForest quedan fuera.
+Eternal de10000000000/s y Divine o superior que cumpla todo son validos.
+Esperando Eternal+ indica ausencia de esa rareza, no una coincidencia.
+Se mantiene el flujo acordado de esperar renovacion cuando no hay rareza ni
+observacion vigente, hacer hop ante insuficientes y quedarse solo con match.
+
 ## Filtro por zonas (2026-10-08)
 
 El selector **Elegir zonas** reemplaza el filtro por especies. Ofrece las 13

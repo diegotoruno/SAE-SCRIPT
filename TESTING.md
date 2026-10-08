@@ -1,5 +1,21 @@
 # Pruebas y validacion
 
+## 2026-10-08 - Tarjetas con zona, rareza e ingreso combinados
+
+166 regresiones Luau y compilacion de siete entradas pasan. Casos agregados:
+Enchanted Forest/Eternal/10b rechaza Common99b, Eternal9999999999 alli y
+Eternal99b enForest; acepta Eternal exacto y Divine superior. MapSnapshot
+marca solo la interseccion y comparte sus resultados con el detector.
+
+Potassium: 28 comprobaciones aisladas, catalogos/rangos oficiales y guardado
+en memoria. Mapa muestra cinco spawns controlados con dos CUMPLE, sin checks
+ni resaltado en los otros. Aplicar activa/persiste Solo filtro y deja solo dos;
+si bajan del minimo, lista vacia. Trece checks de zonas conservados. Lectura
+real65 Slot/cero coincidencias. No se insertan records en EggState, no se
+simulan entradas/conexiones, no se activa AUTO ni se hacen teleports; filtros,
+AUTO apagado y JobId reales intactos. Evidencia privada en
+verification/zone-conjunction-smoke-report.json fuera de Git.
+
 ## 2026-10-08 - Minimo visible 10b corregido y cargado
 
 Usuario reporta 10b mostrado como 1e+01b. FormatMinimum probaba primero

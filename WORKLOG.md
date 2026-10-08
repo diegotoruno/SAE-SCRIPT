@@ -1,5 +1,21 @@
 # Estado del trabajo
 
+## 2026-10-08 - Correccion de marcas de pets por zona
+
+Candidata verification/zone-conjunction, codex/coincidencias-zona, basada en
+mainc193bb6 publicado. Las tarjetas resaltaban seleccion[row.area] aunque
+row.match fuera false. Se retiran check y resaltado por pertenencia a zona;
+solo CUMPLE usa la interseccion del detector. Tocar tarjeta abre detalle y no
+alterna zonas. Aplicar activa/persiste Solo filtro; Mapa conserva inspeccion
+completa. Trece checks de zonas, filtros persistidos y detector intactos.
+
+Usuario aclara estado Esperando huevos nuevos; no se ha observado un MATCH
+incorrecto. Se conserva espera sin rareza objetivo/observacion del ciclo y
+se muestra Esperando Eternal+ para distinguirla de una coincidencia.
+166 regresiones/compilacion y 28 comprobaciones aisladas Potassium correctas;
+Common99b, Eternal bajo10b y Eternal deForest no son candidatos del ejemplo.
+Cuenta, AUTO apagado, filtros y servidor reales conservados en la prueba.
+
 ## 2026-10-08 - Minimo visible 10b corregido y cargado
 
 Usuario reporta 10b mostrado como 1e+01b. FormatMinimum probaba primero

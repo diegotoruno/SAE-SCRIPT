@@ -855,6 +855,36 @@ test("map snapshot includes higher matches and the correct reason", function()
         else assert(not row.match and row.reason == "Rareza inferior al mínimo") end
     end
 end)
+
+test("Enchanted Forest Eternal 10b requires every condition together", function()
+    local _, _, evaluateMinimum = minimumFixture()
+    local common = egg("common-high", 99e9, "common"); common.AreaId = "Enchanted Forest"
+    local below = egg("eternal-below", 9999999999, "eternal"); below.AreaId = "Enchanted Forest"
+    local forest = egg("eternal-forest", 99e9, "eternal")
+    local eternal = egg("eternal-exact", 10e9, "eternal"); eternal.AreaId = "Enchanted Forest"
+    local divine = egg("divine-higher", 11e9); divine.AreaId = "Enchanted Forest"
+    local filters = {minIncome = 10e9, zones = {"Enchanted Forest"}}
+    local mode, best, info, matches = evaluateMinimum({common, below, forest, eternal, divine}, filters)
+    assert(mode == "match" and best.uid == "divine-higher" and #matches == 2)
+    assert(matches[2].uid == "eternal-exact" and info.rarityCount == 4)
+    assert(evaluateMinimum({common}, filters) == "wait")
+    assert(evaluateMinimum({common, below, forest}, filters) == "hop")
+end)
+
+test("map cards match only the full zone rarity and exact income intersection", function()
+    local finder, state = minimumFixture()
+    finder.Configure({minIncome = 10e9, zones = {"Enchanted Forest"}})
+    state.records = {egg("common-high", 99e9, "common"), egg("eternal-below", 9999999999, "eternal"),
+        egg("eternal-exact", 10e9, "eternal"), egg("eternal-forest", 99e9, "eternal")}
+    for index = 1, 3 do state.records[index].AreaId = "Enchanted Forest" end
+    finder.MapSnapshot(); loadClock += 10
+    local snapshot = finder.MapSnapshot()
+    assert(snapshot.info.ready and #snapshot.rows == 4 and #snapshot.matches == 1)
+    for _, row in ipairs(snapshot.rows) do
+        assert(row.match == (row.uid == "eternal-exact"))
+        if row.match then assert(row.reason == "Cumple todos los filtros") end
+    end
+end)
 test("higher observation persists the minimum hunt until the next night", function()
     local _, read, write = memoryStore(); local finder = minimumFixture(read, write)
     local function decideMinimumCycle(target, input, now)

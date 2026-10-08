@@ -1,5 +1,16 @@
 # Decisiones de producto e implementacion
 
+## Zona restringe candidatos; no selecciona todos sus pets (2026-10-08)
+
+Usuario reporta checks en pets de cualquier rareza al elegir una zona. Esas
+marcas representaban pertenencia a la zona, aunque row.match fuera false.
+Se retiran checks/resaltado por zona de las tarjetas y el gesto que alternaba
+la zona tocando un pet; el detalle reemplaza esa accion. Solo filtro se activa
+al aplicar para mostrar la interseccion de TODAS las condiciones guardadas.
+Los checks del catalogo de zonas permanecen. El usuario aclara que AUTO
+mostraba Esperando huevos nuevos, no Objetivo encontrado: la espera acordada
+sin Eternal+ no se cambia ni se interpreta como aceptar un pet inferior.
+
 ## Reemplazo de especies por zonas (2026-10-08)
 
 Usuario quiere excluir eternals de Forest y buscar en Enchanted Forest.
