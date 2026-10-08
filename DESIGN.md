@@ -37,8 +37,9 @@ No aplicar verde de coincidencia a todos los ingresos.
   otra tarjeta envolvente. El aviso de guardado/error tiene una fila propia.
 - Tarjetas de 116 px, separadas por 8 px, con imagen oficial de 88 px.
   Nombre, ingreso, escala/peso y rareza/mutaciones/zona tienen filas distintas.
-- Catalogo de especies separado del mapa. Ambos usan el mismo vocabulario
-  de seleccion, tipografia y superficies.
+- Selector de zonas separado del mapa: 13 filas actuales de 44 px con casillas
+  cuadradas y check geometrico, seleccion multiple, Todas y Limpiar seleccion.
+  Usa los mismos colores, tipografia y superficies del panel.
 - El escalado existente mantiene el panel dentro del viewport; posicion y
   preferencias conservan el archivo de persistencia existente.
 

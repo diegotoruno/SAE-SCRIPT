@@ -24,9 +24,15 @@ local rarities = {
     Transcendent = {_id = "Transcendent", DisplayName = "Transcendent", Rank = 10},
 }
 search.modules = {assets = {Directory = catalog}, rarities = {Rarities = rarities}}
+local areasFixture = {Directory = {}, GetProgressionOrder = function(area) return area.ProgressionOrder end}
+for rank, id in ipairs({"Forest", "Lake", "Desert", "Jungle", "Snow", "Volcano", "Abyss Ocean",
+    "Prehistoric", "Cosmic", "Cherry Blossom", "Titan Temple", "Light Dark", "Enchanted Forest"}) do
+    areasFixture.Directory[id] = {DisplayName = id == "Light Dark" and "Angels & Demons" or id, ProgressionOrder = rank}
+end
+search.modules.areas = areasFixture
 local function egg(uid, rate, category, state, mutations)
     return {Uid = uid, rate = rate, AssetCategory = category or "divine",
-            State = state or "Slot", Mutations = mutations or {}, AreaId = "forest"}
+            State = state or "Slot", Mutations = mutations or {}, AreaId = "Forest"}
 end
 local function evaluate(records, filters)
     local match, info, all = search.Evaluate(records, catalog, function(record) return record.rate end, filters)
@@ -59,9 +65,9 @@ test("name filter is literal and case insensitive", function()
     assert(evaluate({egg("a", 7e9)}, {nameContains = "ALPHA"}) ~= nil)
     assert(evaluate({egg("a", 7e9)}, {nameContains = ".*"}) == nil)
 end)
-test("species filter is exact", function()
-    assert(evaluate({egg("a", 7e9)}, {categories = {"divine2"}}) == nil)
-    assert(evaluate({egg("a", 7e9)}, {categories = {"divine"}}) ~= nil)
+test("zone filter is exact", function()
+    assert(evaluate({egg("a", 7e9)}, {zones = {"Enchanted Forest"}}) == nil)
+    assert(evaluate({egg("a", 7e9)}, {zones = {"Forest"}}) ~= nil)
 end)
 test("invalid and unavailable income waits", function()
     for _, rate in ipairs({-1, math.huge, "7B"}) do
@@ -126,18 +132,18 @@ test("saved numeric thresholds retain units on reload", function()
     local restored = factory(function() return {minIncome = 7e9} end, function() return true end)
     assert(restored.config.minIncome == 7e9 and restored.FormatMinimum(restored.config.minIncome) == "7b")
 end)
-test("configuration deduplicates and persists exact species", function()
-    local config = search.Configure({categories = {"divine2", "divine", "divine2"}})
-    assert(#config.categories == 2 and config.categories[1] == "divine")
-    assert(saved["chilli_egg_search_config.json"].categories[2] == "divine2")
+test("configuration deduplicates and persists exact zones", function()
+    local config = search.Configure({zones = {"Forest", "Enchanted Forest", "Forest"}})
+    assert(#config.zones == 2 and config.zones[1] == "Enchanted Forest")
+    assert(saved["chilli_egg_search_config.json"].zones[2] == "Forest")
 end)
 -- Restore default selection; all subsequent scenarios use the actual Scan entrypoint.
-assert(saved["chilli_egg_search_config.json"].categories[2] == "divine2")
-search.Configure({categories = {}})
+assert(saved["chilli_egg_search_config.json"].zones[2] == "Forest")
+search.Configure({zones = {}})
 local records, night, hasSnapshot = {}, false, true
 local rateCalls = 0
 search.modules = {
-    assets = {Directory = catalog},
+    areas = areasFixture, assets = {Directory = catalog},
     rarities = {Rarities = rarities},
     eggs = {HasFieldSnapshot = function() return hasSnapshot end,
             ReadFieldEggs = function() return {Records = records} end},
@@ -184,7 +190,7 @@ test("obsolete saved rarity waits rather than hopping", function()
 end)
 test("unwritable filters do not silently apply", function()
     local failed = factory(function() return {} end, function() return false end)
-    failed.modules = {assets = {Directory = catalog}, rarities = {Rarities = rarities}}
+    failed.modules = {areas = areasFixture, assets = {Directory = catalog}, rarities = {Rarities = rarities}}
     assert(not pcall(failed.Configure, {minIncome = 8e9}))
     assert(failed.config.minIncome == 7e9)
 end)
@@ -213,12 +219,12 @@ test("display explains exact boundary and base mutation", function()
     assert(search.Explain(record, catalog.divine, record.rate) == "Ingreso inferior al mínimo")
     record.BaseMutation = "Golden"
     assert(search.Explain(record, catalog.divine, 7e9, {rarity = "Divine", minIncome = 7e9,
-        nameContains = "", mutation = "golden", categories = {}}) == "Cumple todos los filtros")
+        nameContains = "", mutation = "golden", zones = {}}) == "Cumple todos los filtros")
 end)
-test("preset validation cannot change live filters or accept removed species", function()
-    local validated = search.Validate({rarity = "divine", minIncome = "8b", categories = {"divine"}})
+test("preset validation cannot change live filters or accept removed zones", function()
+    local validated = search.Validate({rarity = "divine", minIncome = "8b", zones = {"Forest"}})
     assert(validated.rarity == "Divine" and validated.minIncome == 8e9 and search.config.minIncome == 7e9)
-    assert(not pcall(search.Validate, {categories = {"removed"}}))
+    assert(not pcall(search.Validate, {zones = {"removed"}}))
 end)
 test("store verifies writes, copies values and recovers backup", function()
     local disk, encoded, serial = {}, {}, 0
@@ -535,7 +541,7 @@ test("catalog income and rarity changes invalidate analysis", function()
 end)
 local function cycleFactory(read, write)
     local finder = factory(read, write)
-    finder.modules = {assets = {Directory = catalog}, rarities = {Rarities = rarities}}
+    finder.modules = {areas = areasFixture, assets = {Directory = catalog}, rarities = {Rarities = rarities}}
     return finder
 end
 local function cycle(now, overrides)
@@ -609,7 +615,7 @@ end)
 test("changed rarity resets memory but income filters keep the current rarity hunt", function()
     local _, read, write = memoryStore(); local finder = cycleFactory(read, write)
     assert(decideCycle(finder, {egg("a", 6e9)}, 100) == "hop")
-    finder.Configure({minIncome = 8e9, categories = {"divine2"}})
+    finder.Configure({minIncome = 8e9, zones = {"Enchanted Forest"}})
     assert(decideCycle(finder, {}, 101) == "hop")
     finder.Configure({rarity = "Common"})
     assert(decideCycle(finder, {}, 102) == "wait")
@@ -659,7 +665,7 @@ test("cycle renewal during a scan discards the pre-reset match", function()
     local _, read, write = memoryStore(); local finder = cycleFactory(read, write)
     local sample = 0
     finder.CycleStatus = function() sample += 1; return sample == 1 and cycle(289) or cycle(301) end
-    finder.modules = {assets = {Directory = catalog}, rarities = {Rarities = rarities}, eggs = {HasFieldSnapshot = function() return true end,
+    finder.modules = {areas = areasFixture, assets = {Directory = catalog}, rarities = {Rarities = rarities}, eggs = {HasFieldSnapshot = function() return true end,
         ReadFieldEggs = function() return {Records = {egg("old", 8e9)}} end},
         records = {ToAssetItemData = function(e) return e end},
         earnings = {MutationOnlyRatePerSecond = function(e) return e.rate end},
@@ -735,7 +741,7 @@ local function minimumFixture(read, write)
     }
     local finder = factory(read or function() return {} end, write or function() return true end)
     local state = {records = {}, reads = 0}
-    finder.modules = {assets = {Directory = entries}, rarities = {Rarities = definitions},
+    finder.modules = {areas = areasFixture, assets = {Directory = entries}, rarities = {Rarities = definitions},
         eggs = {HasFieldSnapshot = function() return true end,
             ReadFieldEggs = function() return {Records = state.records} end},
         records = {ToAssetItemData = function(e) return e end},
@@ -773,13 +779,13 @@ test("minimum never considers lower rank income or starts a hop", function()
     info.ready = info.errors == 0
     assert(reads == 0 and info.rarityCount == 0 and finder.Decide(match, info) == "wait")
 end)
-test("higher rank must still satisfy species name and mutation", function()
+test("higher rank must still satisfy zone name and mutation", function()
     local _, _, evaluateMinimum = minimumFixture()
-    for _, patch in ipairs({{categories = {"eternal"}}, {nameContains = "Eternal"}, {mutation = "Golden"}}) do
+    for _, patch in ipairs({{zones = {"Enchanted Forest"}}, {nameContains = "Eternal"}, {mutation = "Golden"}}) do
         assert(evaluateMinimum({egg("d", 8e9)}, patch) == "hop")
     end
     assert(evaluateMinimum({egg("d", 8e9, "divine", "Slot", {"Golden"})},
-        {categories = {"divine"}, nameContains = "Alpha", mutation = "Golden"}) == "match")
+        {zones = {"Forest"}, nameContains = "Alpha", mutation = "Golden"}) == "match")
 end)
 test("unavailable higher eggs are never evidence or a candidate", function()
     local _, _, evaluateMinimum = minimumFixture()
@@ -801,7 +807,7 @@ test("game rank metadata controls ordering and missing ranks wait", function()
         assert(evaluateMinimum({egg("d", 8e9)}, nil, registry) == "loading")
     end
 end)
-test("species membership and map explanations use the same minimum", function()
+test("rarity controls and map explanations use the same minimum", function()
     local finder, _, _, entries, definitions = minimumFixture()
     for _, id in ipairs({"Eternal", "Divine", "Titan", "Limited"}) do
         assert(finder.RarityMatches(id, "Eternal", definitions))
@@ -869,7 +875,7 @@ local function loadingFixture(read, write)
     local state = {records = {}, snapshot = true, now = 100, reads = 0, catalog = table.clone(catalog)}
     finder.CycleStatus = function() return cycle(state.now) end
     finder.modules = {
-        assets = {Directory = state.catalog}, rarities = {Rarities = rarities},
+        areas = areasFixture, assets = {Directory = state.catalog}, rarities = {Rarities = rarities},
         eggs = {HasFieldSnapshot = function() return state.snapshot end,
             ReadFieldEggs = function() state.reads += 1; return {Records = state.records} end},
         records = {ToAssetItemData = function(e) return e end},
@@ -1547,4 +1553,137 @@ test("completion cannot unlock an unrelated newer reservation", function()
     assert(transport.Run(function() shared.busy = replacement; return {data = {}}, nil, 200 end, alive))
     assert(shared.busy == replacement)
 end)
+
+test("zone list includes the full official catalog in progression order", function()
+    local options = search.ZoneOptions(areasFixture)
+    assert(#options == 13 and options[1].id == "Forest" and options[13].id == "Enchanted Forest")
+    assert(options[12].id == "Light Dark" and options[12].label == "Angels & Demons")
+    for i, option in ipairs(options) do assert(option.rank == i) end
+    local pending = factory(function() return {} end, function() return true end)
+    assert(#pending.ZoneOptions() == 0)
+end)
+
+test("same species in Forest cannot match Enchanted Forest selection", function()
+    local forest, enchanted = egg("forest", 99e9), egg("enchanted", 7e9)
+    enchanted.AreaId = "Enchanted Forest"
+    local best, info, all = evaluate({forest, enchanted}, {zones = {"Enchanted Forest"}})
+    assert(best.uid == "enchanted" and #all == 1 and info.rarityCount == 2 and info.eligible == 1)
+    assert(search.Decide(best, info) == "match")
+end)
+
+test("excluded zone is insufficient and still starts the agreed hop flow", function()
+    local best, info = evaluate({egg("forest", 99e9)}, {zones = {"Enchanted Forest"}})
+    assert(best == nil and info.rarityCount == 1 and search.Decide(best, info) == "hop")
+    best, info = evaluate({}, {zones = {"Enchanted Forest"}})
+    assert(search.Decide(best, info) == "wait")
+end)
+
+test("zone comparison is exact rather than a partial name match", function()
+    local enchanted = egg("enchanted", 8e9); enchanted.AreaId = "Enchanted Forest"
+    assert(evaluate({enchanted}, {zones = {"Forest"}}) == nil)
+    assert(evaluate({enchanted}, {zones = {"forest"}}) == nil)
+    assert(evaluate({enchanted}, {zones = {"Enchanted Forest"}}) ~= nil)
+end)
+
+test("multiple selected zones form a union and empty config accepts all", function()
+    local lake, enchanted = egg("lake", 8e9), egg("enchanted", 9e9)
+    lake.AreaId, enchanted.AreaId = "Lake", "Enchanted Forest"
+    local _, _, matches = evaluate({egg("forest", 10e9), lake, enchanted}, {zones = {"Lake", "Enchanted Forest"}})
+    assert(#matches == 2 and matches[1].uid == "enchanted")
+    local _, _, unrestricted = evaluate({egg("forest", 10e9), lake, enchanted}, {zones = {}})
+    assert(#unrestricted == 3)
+end)
+
+test("zone filter preserves exact income mutation and name requirements", function()
+    local record = egg("enchanted", 6999999999); record.AreaId = "Enchanted Forest"
+    local filters = {zones = {"Enchanted Forest"}, nameContains = "Alpha", mutation = "Golden"}
+    record.BaseMutation = "Golden"
+    assert(evaluate({record}, filters) == nil)
+    record.rate = 7e9; assert(evaluate({record}, filters) ~= nil)
+    record.BaseMutation = nil; assert(evaluate({record}, filters) == nil)
+    record.BaseMutation = "Golden"; filters.nameContains = "missing"; assert(evaluate({record}, filters) == nil)
+end)
+
+test("missing zone data waits when a zone restriction is active", function()
+    for _, id in ipairs({false, "", 13}) do
+        local record = egg("unknown", 99e9); record.AreaId = id or nil
+        local best, info = evaluate({record}, {zones = {"Enchanted Forest"}})
+        assert(best == nil and info.errors == 1 and search.Decide(best, info) == "loading")
+    end
+end)
+
+test("zone filtering never admits carried claimed or base eggs", function()
+    for _, state in ipairs({"Carried", "GuardCarried", "Dropped", "Claimed", "Base"}) do
+        local record = egg("unavailable", 99e9, "divine", state); record.AreaId = "Enchanted Forest"
+        local best, info = evaluate({record}, {zones = {"Enchanted Forest"}})
+        assert(best == nil and info.rarityCount == 0 and search.Decide(best, info) == "wait")
+    end
+end)
+
+test("legacy species preferences migrate without erasing other filters", function()
+    local restored = factory(function(key)
+        return key == "chilli_egg_search_config.json" and {rarity = "Eternal", minIncome = 10e9,
+            mutation = "Golden", nameContains = "Alpha", categories = {"old species"}} or {}
+    end, function() return true end)
+    assert(restored.config.rarity == "Eternal" and restored.config.minIncome == 10e9)
+    assert(restored.config.mutation == "Golden" and restored.config.nameContains == "Alpha")
+    assert(#restored.config.zones == 0 and restored.config.categories == nil)
+end)
+
+test("selected zones survive persistence and returned config is isolated", function()
+    local disk = {}
+    local finder = factory(function(key) return disk[key] or {} end,
+        function(key, value) disk[key] = value; return true end)
+    finder.modules = {areas = areasFixture, assets = {Directory = catalog}, rarities = {Rarities = rarities}}
+    local config = finder.Configure({zones = {"Enchanted Forest", "Forest", "Enchanted Forest"}})
+    config.zones[1] = "Lake"
+    assert(finder.config.zones[1] == "Enchanted Forest")
+    local restored = factory(function(key) return disk[key] or {} end, function() return true end)
+    assert(#restored.config.zones == 2 and restored.config.zones[1] == "Enchanted Forest")
+end)
+
+test("unknown and malformed zone configuration cannot replace saved filters", function()
+    local finder = factory(function() return {} end, function() error("must not save") end)
+    finder.modules = {areas = areasFixture, assets = {Directory = catalog}, rarities = {Rarities = rarities}}
+    for _, zones in ipairs({"Forest", {""}, {13}, {"Removed zone"}, {"forest"}, {Forest = true}, {[2] = "Forest"}}) do
+        assert(not pcall(finder.Configure, {zones = zones}))
+    end
+    assert(#finder.config.zones == 0 and finder.config.minIncome == 7e9)
+    assert(not pcall(finder.Configure, {categories = {"divine"}}))
+end)
+test("zone change invalidates a cached match and Explain agrees", function()
+    local finder, state, scan = loadingFixture()
+    local record = egg("moving", 8e9); record.AreaId = "Enchanted Forest"
+    state.records = {record}
+    finder.Configure({zones = {"Enchanted Forest"}})
+    loadClock = 0; assert(scan() == "loading")
+    loadClock = 10; assert(scan() == "match")
+    record.AreaId = "Forest"
+    assert(scan() == "hop")
+    assert(finder.Explain(record, state.catalog.divine, record.rate) == "Zona excluida")
+    finder.Configure({zones = {"Forest"}})
+    assert(scan() == "match")
+    finder.modules.areas = {Directory = {}}
+    assert(scan() == "loading")
+end)
+
+test("Enchanted Forest keeps the inclusive Eternal minimum", function()
+    local finder, _, evaluateMinimum = minimumFixture()
+    local divine = egg("divine", 7e9); divine.AreaId = "Enchanted Forest"
+    local forest = egg("forest", 99e9, "eternal")
+    local mode, best, _, all = evaluateMinimum({divine, forest}, {zones = {"Enchanted Forest"}})
+    assert(mode == "match" and best.rarity == "Divine" and #all == 1)
+    assert(finder.Explain(forest, finder.modules.assets.Directory.eternal, forest.rate,
+        {rarity = "Eternal", minIncome = 7e9, nameContains = "", mutation = "", zones = {"Enchanted Forest"}}) == "Zona excluida")
+end)
+
+test("old presets migrate species while new presets validate zone IDs", function()
+    local finder = cycleFactory(function() return {} end, function() error("validation must not save") end)
+    local old = finder.Validate({rarity = "Divine", minIncome = "10b", categories = {"removed species"}})
+    assert(old.minIncome == 10e9 and #old.zones == 0 and old.categories == nil)
+    local current = finder.Validate({rarity = "Divine", minIncome = "10b", zones = {"Enchanted Forest"}})
+    assert(current.zones[1] == "Enchanted Forest" and finder.config.minIncome == 7e9)
+    assert(not pcall(finder.Validate, {zones = {"Removed zone"}}))
+end)
+
 print(string.format("%d regression tests passed", passed))

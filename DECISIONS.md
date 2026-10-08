@@ -1,5 +1,16 @@
 # Decisiones de producto e implementacion
 
+## Reemplazo de especies por zonas (2026-10-08)
+
+Usuario quiere excluir eternals de Forest y buscar en Enchanted Forest.
+Reemplazar categories por zones exactas del AreaId; lista de las 13 zonas del
+catalogo oficial con checks y seleccion multiple. No limitar opciones a
+spawns locales o rareza. Todas conserva la ausencia de restriccion previa;
+un borrador vacio bloquea guardado/AUTO/presets. Migrar configuracion/presets
+antiguos conservando los demas filtros y retirando la restriccion de especies.
+La presencia de rareza y continuidad del ciclo conservan su alcance en todo
+el mapa: zona excluida es un filtro incumplido y permite buscar otro servidor.
+
 | Decision | Motivo y consecuencia |
 | --- | --- |
 | Explorar mas solo cuando escasea la reserva | Las primeras5 paginas reales a veces dejan1..6 opciones. Con menos16, continuar cursor hasta12 paginas/180s; stock suficiente termina a5/75s y24 nuevos detienen antes. Evita reiniciar siempre la misma muestra pobre sin acumular destinos vencidos ni recorrer indefinidamente. |
@@ -25,7 +36,7 @@
 | Reloj y snapshots del juego | La noche observada dura 10s en un periodo 300s; un temporizador local puede desincronizarse. |
 | Espera de carga antes de decidir | La memoria de busqueda no permite hop con la primera lectura del destino. Exigir juego cargado, snapshot valido, minimo 10s desde su lectura y 3s sin cambios Slot/revision. Mantener loading si siguen llegando datos y reiniciar al renovarse o perderse. |
 | Ingreso sin boosts personales | Comparar caracteristicas del egg de forma consistente entre servidores. |
-| Catalogo separado de la lista Mapa | Elegir especies es configuracion; las tarjetas del mapa deben ser spawns reales. |
+| Zonas separadas de la lista Mapa | Elegir zonas es configuracion del catalogo oficial; las tarjetas del mapa deben ser spawns reales. |
 | Recursos visuales replicados | Usar imagenes/modelos del juego; no hardcodear una lista de assets que se quede obsoleta. |
 | Rareza minima inclusiva, opciones del catalogo ordenadas por Rank | Excluir IDs auxiliares sin especies del selector, pero aceptar candidatos del mismo Rank o superior al minimo seleccionado. Eternal acepta Divine si cumple el ingreso exacto y los demas filtros. Compartir esta regla con AUTO, cache, especies y explicaciones; no inventar una escala 0-7. |
 | Tarjetas por mejor rareza primero | Usar Rank descendente del juego y desempatar por ingreso descendente; conservar Nombre A-Z como alternativa. |

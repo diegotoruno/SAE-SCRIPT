@@ -1,5 +1,29 @@
 # Contexto del proyecto
 
+## Filtro por zonas (2026-10-08)
+
+El selector **Elegir zonas** reemplaza el filtro por especies. Ofrece las 13
+entradas actuales de `Data.Areas.Directory`, ordenadas por
+`Areas.GetProgressionOrder(area)`, con checks independientes y acciones Todas y
+Limpiar seleccion. La lista incluye zonas sin huevos presentes y no depende de
+la rareza elegida. El ID interno `Light Dark` se muestra como Angels & Demons.
+
+La configuracion usa `zones = {"Enchanted Forest"}` para buscar solo alli;
+compara el `AreaId` exacto de cada spawn Slot, por lo que Forest queda excluido.
+Varias zonas se combinan con OR; rareza minima inclusiva, ingreso exacto,
+mutacion y nombre siguen siendo obligatorios. `zones = {}` significa todas las
+zonas y muestra todos los checks activos. Limpiar todos los checks en el panel
+deja un borrador vacio que bloquea Aplicar/AUTO/presets hasta elegir al menos
+una zona o Todas; no convierte una seleccion vacia accidental en todas.
+
+Los JSON/presets antiguos conservan rareza, ingreso, nombre y mutacion; se
+ignora `categories` y se inicia sin restriccion de zona. Nuevos guardados usan
+`zones`. Configure ya no acepta categories. Elegir otra rareza conserva zonas.
+Un AreaId ausente con zonas restringidas, catalogo de zonas pendiente o zona
+guardada retirada del juego produce loading. rarityCount sigue contando la
+rareza minima y superiores en todo el mapa: un huevo de zona excluida es
+insuficiente y permite hop; sin esa rareza ni evidencia vigente se espera.
+
 ## Reposicion adaptativa de reserva (2026-10-07)
 
 La prueba prolongada de build35 encontro pocas opciones en las primeras cinco paginas: reserva bajo de24 a1. Se amplia la pasada cuando hay menos16 destinos vigentes: continua el cursor nativo hasta12 paginas/180s, con maximo5 consultas por llamada. Con stock suficiente termina al presupuesto normal5 paginas/75s; con24 opciones nuevas o fin de lista termina antes. Frescura individual180/90s y prioridad1/7->2/7 siguen obligatorias.149 regresiones/diez Python pasan. Hop real de respaldo2/7 eligio destino en21.83ms sin HTTP adicional y llego al JobId exacto, conservandoAUTO/cuenta/Eternal>=7B; mediana56.32ms en ocho muestras y cuatro jugadores al medir. La ocupacion anunciada no es garantia al llegar.
@@ -75,13 +99,13 @@ El ciclo observado usa `Shared.Util.AreaEggCycle`: periodo de 300 segundos y noc
 
 La referencia visual fue el panel Steal de Chilli: tarjetas oscuras, imagen del elemento, rareza por color, ingreso y controles destacados. No se copiaron sus fuentes internas.
 
-La implementacion final tiene lista principal **Mapa**, que muestra los spawns actuales de todas las rarezas, y un selector separado **Elegir especies**, que contiene el catalogo para configurar filtros. El catalogo no representa presencia real en el servidor. Un cambio anterior que mostraba el catalogo en la lista principal se corrigio a esta separacion.
+La implementacion final tiene lista principal **Mapa**, que muestra los spawns actuales de todas las rarezas, y un selector separado **Elegir zonas**, que contiene las zonas oficiales para configurar filtros. El catalogo no representa presencia real en el servidor. Un cambio anterior que mostraba el catalogo en la lista principal se corrigio a esta separacion.
 
-Filtros: rareza minima inclusiva, minimo de ingreso por segundo, mutacion, nombre y varias especies exactas. El selector incluye solo IDs de `Data.Rarity.Rarities` usados por especies de `Assets.Directory`, ordenados por el `Rank` real. En el cliente del 2026-10-06 son Common, Uncommon, Rare, Epic, Legendary, Mythic, Cosmic, Secret, Eternal y Divine (rangos 1-10); no fijar esa lista ni una escala 0-7 en el codigo. Los otros IDs del modulo general no representan opciones disponibles del catalogo. El selector de especies ofrece la rareza minima y las superiores; una lista de especies explicita sigue siendo una restriccion exacta.
+Filtros: rareza minima inclusiva, minimo de ingreso por segundo, mutacion, nombre y varias zonas exactas. El selector incluye solo IDs de `Data.Rarity.Rarities` usados por especies de `Assets.Directory`, ordenados por el `Rank` real. En el cliente del 2026-10-06 son Common, Uncommon, Rare, Epic, Legendary, Mythic, Cosmic, Secret, Eternal y Divine (rangos 1-10); no fijar esa lista ni una escala 0-7 en el codigo. Los otros IDs del modulo general no representan opciones disponibles del catalogo. El selector de zonas ofrece todas las zonas oficiales; una lista de zonas explicita sigue siendo una restriccion exacta.
 
 El minimo acepta `k`, `m`, `b`, `t` y `q`, sin distinguir mayusculas, con decimal punto o coma: `500k`, `25m`, `7.5b`. Usa `Shared.Utils.Numbers.Parse` del juego tras validar el formato; un numero sin sufijo son unidades por segundo (`7` = 7/s). Los valores guardados y comparados siguen siendo numericos exactos; el campo abrevia solo si el texto conserva el mismo umbral al parsearlo. La configuracion previa de 7.000.000.000 sigue mostrando `7b`.
 
-Lista vacia de especies acepta todas. `Solo filtro` limita los spawns visibles a coincidencias. La tarjeta muestra ingreso, escala, peso, mutaciones y zona, con imagen oficial del huevo, imagen de la criatura o modelo 3D replicado. El orden principal es mejor rareza primero (Rank descendente del juego), con ingreso descendente dentro de cada rareza; se conserva la alternativa de ordenar por nombre. Aplica a huevos, criaturas y modelos 3D. La preferencia existente `sortBest` ahora representa este orden por rareza.
+Lista vacia de zonas en configuracion acepta todas. `Solo filtro` limita los spawns visibles a coincidencias. La tarjeta muestra ingreso, escala, peso, mutaciones y zona, con imagen oficial del huevo, imagen de la criatura o modelo 3D replicado. El orden principal es mejor rareza primero (Rank descendente del juego), con ingreso descendente dentro de cada rareza; se conserva la alternativa de ordenar por nombre. Aplica a huevos, criaturas y modelos 3D. La preferencia existente `sortBest` ahora representa este orden por rareza.
 
 Los cambios pendientes se aplican antes de encender AUTO. Un minimo invalido impide guardar e iniciar. El panel se arrastra, minimiza y reabre con `EGG FILTERS`; **Alt izquierdo** alterna abrir/cerrar el panel completo, incluyendo cuando hay un campo de texto enfocado. Alt derecho no lo alterna. Los controles de filtros se pueden plegar. Posicion, visual, orden y apertura se conservan en `chilli_egg_panel_ui.json`. Los modelos se crean solo para tarjetas visibles y usan imagen cuando falta el modelo.
 

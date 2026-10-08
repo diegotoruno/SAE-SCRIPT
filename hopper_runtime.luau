@@ -2001,6 +2001,7 @@ do
         end,
         CycleStatus = function() return eggSearch.CycleStatus() end,
         RarityOptions = function() return eggSearch.RarityOptions() end,
+        ZoneOptions = function() return eggSearch.ZoneOptions() end,
         Presets = function()
             local list = {}
             for name, config in pairs(preferences.presets) do

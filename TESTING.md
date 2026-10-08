@@ -1,5 +1,34 @@
 # Pruebas y validacion
 
+## Filtro por zonas verificado (2026-10-08)
+
+La candidata `verification/zone-filter`, rama `codex/filtro-zonas`, parte de
+main `599f6c6` y conserva la reserva adaptativa/cuenta/teleports publicados.
+Build y compilacion de las siete entradas pasan; 163 regresiones Luau y diez
+Python correctas. La raiz anterior conserva sus cambios pendientes y pasa
+72 regresiones; no distribuir su bundle antiguo en lugar de la candidata.
+
+Casos nuevos: 13 opciones con orden/nombres oficiales, Forest frente a
+Enchanted Forest con la misma especie, multiples zonas, ausencia de
+restriccion, ingreso exacto/nombre/mutacion, Slot, zona ausente, persistencia y
+copias aisladas, JSON/presets antiguos, IDs/listas invalidas, cache invalidada
+por AreaId/configuracion/catalogo y Divine valido con minimo Eternal.
+
+Potassium Windows: 34 comprobaciones aisladas con fuentes de la candidata y
+modulos reales. Trece filas/checkboxes, nombres y orden reales, borrador vacio
+rechazado, aplicar solo Enchanted Forest, check Forest apagado, restauracion
+al remontar, Todas, limites a UIScale 0.7 y una GUI de prueba tras recarga.
+Snapshot real de 64 Slot comparado con calculo independiente: cero candidatos
+del filtro probado. Coincidencias controladas con especie/rango reales no se
+inyectaron en EggState. Configuracion real Eternal >=10B/s, AUTO y JobId
+intactos; cero teleports, UI/archivos de prueba retirados. Guardado y relectura
+en archivo temporal del executor tambien comprobados; no se tocaron cookies
+ni autoexec. Checks por API, sin clicks/teclado simulados.
+
+No se ha observado un huevo real Eternal/Divine que cumpla ni probado el gesto
+tactil/iPad. La seleccion vacia se puede corregir con Todas o eligiendo zonas.
+Fuentes y evidencia privada en verification/; main/stable aun sin publicar.
+
 ## Reposicion adaptativa y salto de respaldo (2026-10-07)
 
 Montaje adaptativo real reutiliza Chilli, destruye sesion anterior y conserva AUTO/cuenta/filtros. La pasada continua paginas6..10:8 opciones antes de continuar y21 al terminar el bloque; comprobacion pagina9 confirma15 vigentes/cero duplicados/cero vencidos. La reserva es un maximo24, no una cantidad garantizada si Roblox ofrece pocos candidatos.

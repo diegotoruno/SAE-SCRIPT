@@ -1,5 +1,34 @@
 # Estado del trabajo
 
+## Filtro por zonas verificado (2026-10-08)
+
+La candidata `verification/zone-filter`, rama `codex/filtro-zonas`, parte de
+main `599f6c6` y conserva la reserva adaptativa/cuenta/teleports publicados.
+Build y compilacion de las siete entradas pasan; 163 regresiones Luau y diez
+Python correctas. La raiz anterior conserva sus cambios pendientes y pasa
+72 regresiones; no distribuir su bundle antiguo en lugar de la candidata.
+
+Casos nuevos: 13 opciones con orden/nombres oficiales, Forest frente a
+Enchanted Forest con la misma especie, multiples zonas, ausencia de
+restriccion, ingreso exacto/nombre/mutacion, Slot, zona ausente, persistencia y
+copias aisladas, JSON/presets antiguos, IDs/listas invalidas, cache invalidada
+por AreaId/configuracion/catalogo y Divine valido con minimo Eternal.
+
+Potassium Windows: 34 comprobaciones aisladas con fuentes de la candidata y
+modulos reales. Trece filas/checkboxes, nombres y orden reales, borrador vacio
+rechazado, aplicar solo Enchanted Forest, check Forest apagado, restauracion
+al remontar, Todas, limites a UIScale 0.7 y una GUI de prueba tras recarga.
+Snapshot real de 64 Slot comparado con calculo independiente: cero candidatos
+del filtro probado. Coincidencias controladas con especie/rango reales no se
+inyectaron en EggState. Configuracion real Eternal >=10B/s, AUTO y JobId
+intactos; cero teleports, UI/archivos de prueba retirados. Guardado y relectura
+en archivo temporal del executor tambien comprobados; no se tocaron cookies
+ni autoexec. Checks por API, sin clicks/teclado simulados.
+
+No se ha observado un huevo real Eternal/Divine que cumpla ni probado el gesto
+tactil/iPad. La seleccion vacia se puede corregir con Todas o eligiendo zonas.
+Fuentes y evidencia privada en verification/; main/stable aun sin publicar.
+
 ## 2026-10-07 - Reposicion adaptativa tras prueba prolongada
 
 - PR12 integrado en main6779ab6, CI37607861598 valido/publico build35. Bundle publico227568 bytes/SHA25634789849521776239ba49b4f66863ded6eb33fbc48c03441f5dc87a18e82baff identico a candidata; main sigue apuntando a stable.
