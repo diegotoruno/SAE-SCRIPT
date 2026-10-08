@@ -299,7 +299,7 @@ local function mountEggFilterPanel(context)
         local ok, config = pcall(api.Configure, patch)
         access()
         if not ok then changeLabel.Text = tostring(config); changeLabel.TextColor3 = C.red; return false end
-        setDraft(config); closePopup(); return true
+        setDraft(config); closePopup(); panel.SetOnlyMatches(true); return true
     end
     function panel.SelectZone(id)
         local options = search.ZoneOptions()
@@ -359,7 +359,7 @@ local function mountEggFilterPanel(context)
         popup = make("Frame", "ZonePicker", root, { Position = UDim2.fromOffset(22, 150), Size = UDim2.fromOffset(494, 506), BackgroundColor3 = C.bg, BorderSizePixel = 0, ZIndex = 60 })
         corner(popup, 12); stroke(popup, C.border)
         text("Title", popup, "Elegir zonas", 16, 12, 364, 25, C.white, 18, true).ZIndex = 61
-        text("Hint", popup, string.format("%d zonas · marca una o varias; luego aplica los filtros.", #options), 16, 45, 462, 18, C.muted, 11).ZIndex = 61
+        text("Hint", popup, string.format("%d zonas · aplica junto con la rareza y el mínimo.", #options), 16, 45, 462, 18, C.muted, 11).ZIndex = 61
         local done = button("Done", popup, "Cerrar", 398, 10, 80, 34); done.ZIndex = 62
         done.Activated:Connect(function() access(); closePopup() end)
         local selectAll = button("SelectAll", popup, "Todas", 16, 74, 100, 32); selectAll.ZIndex = 62
@@ -436,35 +436,31 @@ local function mountEggFilterPanel(context)
         entry.rarity = text("Rarity", card, "", 110, 88, 88, 16, C.gold, 10, true)
         entry.mutations = text("MutationsArea", card, "", 202, 88, 274, 16, C.muted, 10)
         entry.mutations.Size = UDim2.new(1, -216, 0, 16)
-        local mark = make("Frame", "Selected", card, {Position = UDim2.new(1, -40, 0, 9), Size = UDim2.fromOffset(24, 24), BackgroundTransparency = 1})
-        entry.select = selectionIcon(mark, false, 0, 0)
         entry.match = text("Match", card, "", 0, 40, 76, 20, C.muted, 10, true)
         entry.match.Position = UDim2.new(1, -86, 0, 40); entry.match.TextXAlignment = Enum.TextXAlignment.Right
         local more = button("Detail", card, "Detalle", 0, 64, 76, 20)
         more.Position = UDim2.new(1, -86, 0, 64); more.TextSize = 10
         more.Activated:Connect(function() access(); detail(entry.row) end)
-        card.Activated:Connect(function() access(); if entry.row.area then panel.SelectZone(entry.row.area) end end)
+        card.Activated:Connect(function() access(); detail(entry.row) end)
         panel.stats.created += 1
         return entry
     end
     local function updateCard(entry, row, index)
         access(); entry.row = row
         entry.card.LayoutOrder = index; entry.card.Position = UDim2.fromOffset(2, (index - 1) * (ROW_HEIGHT + ROW_GAP) + 2)
-        local selected = not allZones and selection[row.area] == true
         local key = row.key .. tostring(row.match) .. row.reason .. row.mutations
-            .. tostring(row.weight) .. tostring(row.eggIcon) .. visual .. tostring(selected)
+            .. tostring(row.weight) .. tostring(row.eggIcon) .. visual
         if entry.key == key and (visual ~= "models" or entry.viewport or not data.assetModels) then return end
         entry.key = key; panel.stats.updated += 1
         entry.card.Name = "Card_" .. row.uid
-        entry.card.BackgroundColor3 = row.match and C.success or selected and C.selected or C.card
-        entry.border.Color = row.match and C.green or selected and C.cyan or C.border; entry.border.Thickness = row.match and 2 or 1
+        entry.card.BackgroundColor3 = row.match and C.success or C.card
+        entry.border.Color = row.match and C.green or C.border; entry.border.Thickness = row.match and 2 or 1
         entry.name.Text = row.name; entry.name.TextColor3 = C.white
         entry.rarity.Text = row.rarity; entry.rarity.TextColor3 = rarityColor(row.catalog and row.catalog.Rarity)
         entry.income.Text = (row.income and number(row.income) or "?") .. "/s"
         entry.income.TextColor3 = row.match and C.green or C.white
         entry.weight.Text = string.format("x%.2f  ·  %s", row.scale or 1, row.weight)
         entry.mutations.Text = row.mutations .. (row.area and " · " .. tostring(row.area) or "")
-        entry.select(selected)
         entry.match.Text = row.match and "CUMPLE" or "FUERA"; entry.match.TextColor3 = row.match and C.green or C.muted
         local catalog = row.catalog or {}
         entry.image.Image = (visual == "pets" and catalog.Icon or row.eggIcon or (catalog.Egg and catalog.Egg.Icon)) or ""
@@ -565,7 +561,7 @@ local function mountEggFilterPanel(context)
         if #orderedRows == 0 then
             if not empty then empty = text("Empty", scroll, "", 0, 0, 494, 130, C.muted, 16); empty.TextWrapped = true; empty.TextXAlignment = Enum.TextXAlignment.Center end
             empty.Text = not snapshot.info.ready and (snapshot.info.reason or "Esperando datos del mapa")
-                or onlyMatches and "Ningún huevo actual cumple los filtros guardados.\nEsperando la próxima renovación." or "No hay spawns disponibles en el mapa."
+                or onlyMatches and "Ningún huevo disponible cumple zona, rareza y mínimo.\nAUTO sigue la búsqueda configurada." or "No hay spawns disponibles en el mapa."
         elseif empty then empty:Destroy() end
         panel.stats.lastMs = (os.clock() - started) * 1000
     end
@@ -749,11 +745,12 @@ local function mountEggFilterPanel(context)
             tabCatalog.Text = onlyMatches and "Solo filtro: ON" or "Solo filtro: OFF"
             paint(tabCatalog, onlyMatches and C.selected or C.card, onlyMatches and C.green or C.muted, onlyMatches and C.green or C.border)
             paint(tabMap, not onlyMatches and C.selected or C.card, not onlyMatches and C.green or C.muted, not onlyMatches and C.green or C.border)
-            foot.Text = "Alt izquierdo: abrir/cerrar · CUMPLE usa los filtros guardados."
+            foot.Text = dirty and "Cambios sin aplicar · AUTO usa los filtros guardados."
+                or "Alt izquierdo: abrir/cerrar · CUMPLE exige zona, rareza e ingreso."
             local cycle = status.cycle
             local info = status.lastScan and status.lastScan.info or {}
             tabMap.Text = string.format("Mapa · %d", info.count or 0)
-            local titles = { wait = "Esperando huevos nuevos", hop = "Buscando otro servidor", loading = "Esperando renovación / datos", match = "Objetivo encontrado", stopped = "Búsqueda detenida" }
+            local titles = { wait = "Esperando " .. status.config.rarity .. "+", hop = "Buscando otro servidor", loading = "Esperando renovación / datos", match = "Objetivo encontrado", stopped = "Búsqueda detenida" }
             stateTitle.Text = titles[status.mode] or "Escaneando mapa"
             stateTitle.TextColor3 = status.mode == "match" and C.green or C.white
             stateDot.BackgroundColor3 = status.mode == "match" and C.green or status.mode == "hop" and C.gold or status.active and C.cyan or C.muted
