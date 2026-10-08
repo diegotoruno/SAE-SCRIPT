@@ -126,12 +126,12 @@ local function createMapEggSearch(readJson, writeJson)
         return minimum
     end
     function search.FormatMinimum(value)
-        -- Only abbreviate when parsing the text restores the exact threshold.
+        -- Prefer ordinary decimal suffixes, preserving the exact threshold.
         for _, suffix in ipairs({ "q", "t", "b", "m", "k" }) do
             if value >= units[suffix] then
                 for precision = 1, 17 do
                     local text = string.format("%." .. precision .. "g", value / units[suffix]) .. suffix
-                    if search.ParseMinimum(text) == value then return text end
+                    if not string.find(text, "[eE]") and search.ParseMinimum(text) == value then return text end
                 end
             end
         end
@@ -209,16 +209,55 @@ local function createMapEggSearch(readJson, writeJson)
         local mutation = config.mutation or ""
         assert(type(name) == "string" and type(mutation) == "string",
             "nameContains y mutation deben ser texto")
-        local categories, seen = {}, {}
-        assert(config.categories == nil or type(config.categories) == "table", "categories debe ser una lista")
-        for _, category in ipairs(config.categories or {}) do
-            assert(type(category) == "string" and category ~= "", "Especie no valida")
-            if not seen[category] then table.insert(categories, category); seen[category] = true end
+        -- Retired categories from older saved configs/presets are ignored.
+        local zones, seen = {}, {}
+        assert(config.zones == nil or type(config.zones) == "table", "zones debe ser una lista")
+        local zoneCount = 0
+        for key in pairs(config.zones or {}) do
+            assert(type(key) == "number" and key % 1 == 0 and key >= 1 and key <= #config.zones,
+                "zones debe ser una lista continua")
+            zoneCount += 1
         end
-        table.sort(categories)
+        assert(zoneCount == #(config.zones or {}), "zones debe ser una lista continua")
+        for _, id in ipairs(config.zones or {}) do
+            assert(type(id) == "string" and id ~= "", "Zona no valida")
+            if not seen[id] then table.insert(zones, id); seen[id] = true end
+        end
+        table.sort(zones)
         return { rarity = rarity, minIncome = minimum,
-            nameContains = name, mutation = mutation, categories = categories }
+            nameContains = name, mutation = mutation, zones = zones }
     end
+    -- The whole official catalog is offered, regardless of local egg spawns.
+    function search.ZoneOptions(areas)
+        areas = areas or (search.modules and search.modules.areas)
+        if not areas or type(areas.Directory) ~= "table" then return {} end
+        local options = {}
+        for id, area in pairs(areas.Directory) do
+            if type(id) == "string" and type(area) == "table" then
+                local rank = area.ProgressionOrder
+                if type(areas.GetProgressionOrder) == "function" then
+                    local ok, value = pcall(areas.GetProgressionOrder, area)
+                    if ok and finite(value) then rank = value end
+                end
+                table.insert(options, {id = id, label = area.DisplayName or id,
+                    rank = finite(rank) and rank or math.huge, icon = area.Icon})
+            end
+        end
+        table.sort(options, function(a, b)
+            if a.rank ~= b.rank then return a.rank < b.rank end
+            return a.id < b.id
+        end)
+        return options
+    end
+    local function validateZones(config)
+        if #config.zones == 0 then return end
+        local areas = search.modules and search.modules.areas
+        assert(areas and type(areas.Directory) == "table", "Espera a que carguen las zonas del juego")
+        for _, id in ipairs(config.zones) do
+            assert(areas.Directory[id], "Zona desconocida: " .. id)
+        end
+    end
+
     local ok, config = pcall(normalize, readJson(CONFIG_FILE, {}))
     search.config = ok and config or normalize({})
 
@@ -226,7 +265,7 @@ local function createMapEggSearch(readJson, writeJson)
         assert(search.modules, "Espera a que cargue el catálogo del juego")
         local result = normalize(config)
         result.rarity = canonicalRarity(result.rarity, search.RarityOptions())
-        for _, id in ipairs(result.categories) do assert(search.modules.assets.Directory[id], "Especie desconocida: " .. id) end
+        validateZones(result)
         return result
     end
 
@@ -240,10 +279,11 @@ local function createMapEggSearch(readJson, writeJson)
         end
         nextConfig = normalize(nextConfig)
         nextConfig.rarity = canonicalRarity(nextConfig.rarity, search.RarityOptions())
+        validateZones(nextConfig)
         assert(writeJson(CONFIG_FILE, nextConfig), "No se pudieron guardar los filtros")
         search.config = nextConfig
         search.lastScan = nil
-        local copy = table.clone(nextConfig); copy.categories = table.clone(nextConfig.categories); return copy
+        local copy = table.clone(nextConfig); copy.zones = table.clone(nextConfig.zones); return copy
     end
 
     function search.Summary()
@@ -256,7 +296,10 @@ local function createMapEggSearch(readJson, writeJson)
         local rarityOk = search.RarityMatches(catalog.Rarity, filters.rarity)
         if rarityOk == nil then return "Datos de rareza no disponibles" end
         if not rarityOk then return "Rareza inferior al mínimo" end
-        if #filters.categories > 0 and not table.find(filters.categories, egg.AssetCategory) then return "Especie excluida" end
+        if #(filters.zones or {}) > 0 then
+            if type(egg.AreaId) ~= "string" or egg.AreaId == "" then return "Zona no disponible" end
+            if not table.find(filters.zones, egg.AreaId) then return "Zona excluida" end
+        end
         local name = string.lower(catalog.DisplayName or egg.AssetCategory)
         local needle = string.lower(filters.nameContains)
         if needle ~= "" and not string.find(name, needle, 1, true)
@@ -306,8 +349,8 @@ local function createMapEggSearch(readJson, writeJson)
         filters.rarity = canonicalRarity(filters.rarity, available)
         local found = {}
         local info = { count = 0, rarityCount = 0, eligible = 0, errors = 0 }
-        local categorySet = {}
-        for _, category in ipairs(filters.categories) do categorySet[category] = true end
+        local zoneSet = {}
+        for _, id in ipairs(filters.zones) do zoneSet[id] = true end
         for _, egg in pairs(records) do
             -- Slot es un spawn disponible. Carried, GuardCarried, Dropped y
             -- Claimed no son huevos que hayan aparecido libres en el nido.
@@ -334,8 +377,10 @@ local function createMapEggSearch(readJson, writeJson)
                     if egg.BaseMutation and string.lower(egg.BaseMutation) == string.lower(filters.mutation) then
                         mutationOk = true
                     end
-                    local categoryOk = #filters.categories == 0 or categorySet[egg.AssetCategory]
-                    if nameOk and mutationOk and categoryOk then
+                    local zoneKnown = type(egg.AreaId) == "string" and egg.AreaId ~= ""
+                    local zoneOk = #filters.zones == 0 or (zoneKnown and zoneSet[egg.AreaId])
+                    if #filters.zones > 0 and not zoneKnown then info.errors += 1 end
+                    if nameOk and mutationOk and zoneOk then
                         info.eligible += 1
                         local incomeOk, income = pcall(incomeFor, egg)
                         if not incomeOk or type(income) ~= "number"
@@ -417,7 +462,7 @@ local function createMapEggSearch(readJson, writeJson)
                     return require(source)
                 end
                 return {
-                    assets = module(data, "Assets"), eggs = module(client, "EggState"),
+                    areas = module(data, "Areas"), assets = module(data, "Assets"), eggs = module(client, "EggState"),
                     rarities = module(data, "Rarity"), numbers = module(shared:WaitForChild("Utils", 30), "Numbers"),
                     records = module(util, "EggRecords"), earnings = module(util, "AssetEarnings"),
                     cycle = module(util, "AreaEggCycle"),
@@ -498,6 +543,7 @@ local function createMapEggSearch(readJson, writeJson)
                 analysisKey, analysisResult = nil, nil
                 return nil, {ready = false, reason = "esperando spawns del mapa"}
             end
+            validateZones(search.config)
             local snapshotCycle = search.CycleStatus()
             local snapshot = modules.eggs.ReadFieldEggs()
             assert(type(snapshot) == "table" and type(snapshot.Records) == "table", "Snapshot del mapa incompatible")
@@ -574,7 +620,7 @@ local function createMapEggSearch(readJson, writeJson)
                 row.match = matching[row.uid] == true
                 row.reason = search.Explain(row.egg, row.catalog, row.income)
             end
-            if not details.ready then details.reason = "datos de especie o ingreso no disponibles; esperando recuperación" end
+            if not details.ready then details.reason = "datos de especie, zona o ingreso no disponibles; esperando recuperación" end
             local afterCycle = search.CycleStatus()
             if afterCycle and (not snapshotCycle or snapshotCycle.periodIndex ~= afterCycle.periodIndex
                 or snapshotCycle.nextReset ~= afterCycle.nextReset or snapshotCycle.periodSeconds ~= afterCycle.periodSeconds
@@ -703,9 +749,10 @@ local function mountEggFilterPanel(context)
             Rotation = rotation or 0, BackgroundColor3 = color or C.muted,
             BorderSizePixel = 0, ZIndex = zIndex or parent.ZIndex })
     end
-    local function selectionIcon(parent, selected, x, y, zIndex)
+    local function selectionIcon(parent, selected, x, y, zIndex, boxed)
         local mark = make("Frame", "SelectionMark", parent, { Position = UDim2.fromOffset(x, y),
             Size = UDim2.fromOffset(24, 24), BackgroundTransparency = 1, ZIndex = zIndex or parent.ZIndex })
+        if boxed then mark.BackgroundTransparency = 0; mark.BackgroundColor3 = C.input; corner(mark, 4); stroke(mark) end
         local short = line(mark, "Short", 8, 12, 6, 0, C.muted, mark.ZIndex)
         local long = line(mark, "Long", 12, 12, 12, 90, C.muted, mark.ZIndex)
         local function update(value)
@@ -716,6 +763,10 @@ local function mountEggFilterPanel(context)
             long.Rotation = value and -45 or 90
             short.BackgroundColor3 = value and C.green or C.muted
             long.BackgroundColor3 = short.BackgroundColor3
+            if boxed then
+                short.Visible = value == true; long.Visible = value == true
+                mark.Border.Color = value and C.green or C.muted
+            end
         end
         update(selected)
         return update
@@ -743,11 +794,13 @@ local function mountEggFilterPanel(context)
         return string.format("%.0f", value)
     end
     local function cloneConfig(config)
-        local copy = table.clone(config); copy.categories = table.clone(config.categories or {}); return copy
+        local copy = table.clone(config); copy.zones = table.clone(config.zones or {}); return copy
     end
     local draft = cloneConfig(search.config)
-    local selection = {}; for _, id in ipairs(draft.categories) do selection[id] = true end
+    local selection = {}; for _, id in ipairs(draft.zones) do selection[id] = true end
+    local allZones = #draft.zones == 0
     local function selectionList()
+        if allZones then return {} end
         local list = {}; for id, selected in pairs(selection) do if selected then table.insert(list, id) end end
         table.sort(list); return list
     end
@@ -757,8 +810,8 @@ local function mountEggFilterPanel(context)
     panel.stats = {created = 0, updated = 0, modelsCreated = 0, rendered = 0, lastMs = 0}
     local function sameConfig(a, b)
         if a.rarity ~= b.rarity or a.minIncome ~= b.minIncome or a.mutation ~= b.mutation or a.nameContains ~= b.nameContains then return false end
-        if #(a.categories or {}) ~= #(b.categories or {}) then return false end
-        for i, id in ipairs(a.categories or {}) do if id ~= b.categories[i] then return false end end
+        if #(a.zones or {}) ~= #(b.zones or {}) then return false end
+        for i, id in ipairs(a.zones or {}) do if id ~= b.zones[i] then return false end end
         return true
     end
     local visual = saved.visual or "eggs"
@@ -812,8 +865,8 @@ local function mountEggFilterPanel(context)
         ClearTextOnFocus = false, TextXAlignment = Enum.TextXAlignment.Left,
     })
     corner(nameBox); stroke(nameBox); make("UIPadding", "Padding", nameBox, { PaddingLeft = UDim.new(0, 10) })
-    local clear = button("AllSpecies", filters, "Todas las especies", 336, 78, 158, 34)
-    local selectionLabel = text("Selection", filters, "Todas las especies", 160, 133, 165, 18, C.muted, 10)
+    local clear = button("AllZones", filters, "Todas las zonas", 336, 78, 158, 34)
+    local selectionLabel = text("Selection", filters, "Todas las zonas", 160, 133, 165, 18, C.muted, 10)
     local changeLabel = text("Changes", filters, "Filtros guardados", 0, 165, 494, 17, C.muted, 10)
     local apply = button("ApplyFilters", filters, "Aplicar filtros", 336, 126, 158, 34, C.gold)
     paint(apply, C.gold, C.onAccent, C.gold)
@@ -827,10 +880,10 @@ local function mountEggFilterPanel(context)
         CanvasSize = UDim2.new(), AutomaticCanvasSize = Enum.AutomaticSize.None, ScrollingDirection = Enum.ScrollingDirection.Y,
     })
     make("UIPadding", "Padding", scroll, { PaddingTop = UDim.new(0, 2), PaddingLeft = UDim.new(0, 2), PaddingRight = UDim.new(0, 8), PaddingBottom = UDim.new(0, 4) })
-    local foot = text("Hint", root, "Toca una tarjeta para elegir especies; luego aplica los filtros.", 22, 668, 494, 16, C.muted, 10)
-    local chooseSpecies = button("ChooseSpecies", filters, "Elegir especies", 0, 126, 148, 34)
-    chooseSpecies.TextSize = 11
-    chevron(chooseSpecies)
+    local foot = text("Hint", root, "Elige una o varias zonas; luego aplica los filtros.", 22, 668, 494, 16, C.muted, 10)
+    local chooseZones = button("ChooseZones", filters, "Elegir zonas", 0, 126, 148, 34)
+    chooseZones.TextSize = 11
+    chevron(chooseZones)
     local function save()
         access()
         local ok = writeJson(FILE, { open = panel.open, visual = visual, filtersOpen = filtersOpen,
@@ -877,18 +930,19 @@ local function mountEggFilterPanel(context)
         access()
         dirty = true; signature = nil
         local count = #selectionList()
-        selectionLabel.Text = count == 0 and "Todas las especies" or string.format("%d especies seleccionadas", count)
+        selectionLabel.Text = allZones and "Todas las zonas" or string.format("%d zonas seleccionadas", count)
         changeLabel.Text = "Cambios sin aplicar"; changeLabel.TextColor3 = C.gold
     end
     local function setDraft(config)
         local minimumText = search.FormatMinimum(config.minIncome)
         access()
-        draft = cloneConfig(config); selection = {}; for _, id in ipairs(draft.categories) do selection[id] = true end
+        draft = cloneConfig(config); selection = {}; for _, id in ipairs(draft.zones) do selection[id] = true end
+        allZones = #draft.zones == 0
         income.Text = minimumText; nameBox.Text = draft.nameContains
         rarityButton.Text = draft.rarity
         mutationButton.Text = draft.mutation == "" and "Todas" or draft.mutation
-        local count = #draft.categories
-        selectionLabel.Text = count == 0 and "Todas las especies" or string.format("%d especies seleccionadas", count)
+        local count = #draft.zones
+        selectionLabel.Text = allZones and "Todas las zonas" or string.format("%d zonas seleccionadas", count)
         dirty = false; changeLabel.Text = "Filtros guardados"; changeLabel.TextColor3 = C.muted; signature = nil
     end
     function panel.Apply()
@@ -898,17 +952,30 @@ local function mountEggFilterPanel(context)
         if not minimum then
             changeLabel.Text = "Mínimo inválido: usa 500k, 25m o 7.5b"; changeLabel.TextColor3 = C.red; return false
         end
+        if not allZones and #selectionList() == 0 then
+            changeLabel.Text = "Selecciona al menos una zona o pulsa Todas las zonas"; changeLabel.TextColor3 = C.red
+            return false
+        end
         local patch = { rarity = draft.rarity, minIncome = minimum, mutation = draft.mutation,
-            nameContains = nameBox.Text, categories = selectionList() }
+            nameContains = nameBox.Text, zones = selectionList() }
         local ok, config = pcall(api.Configure, patch)
         access()
         if not ok then changeLabel.Text = tostring(config); changeLabel.TextColor3 = C.red; return false end
         setDraft(config); closePopup(); return true
     end
-    function panel.SelectCategory(id)
-        access(); assert(search.modules and search.modules.assets.Directory[id], "Especie desconocida")
+    function panel.SelectZone(id)
+        local options = search.ZoneOptions()
+        local known = false
+        for _, option in ipairs(options) do if option.id == id then known = true end end
+        access(); assert(known, "Zona desconocida")
+        if allZones then
+            selection = {}; for _, option in ipairs(options) do selection[option.id] = true end
+            allZones = false
+        end
         selection[id] = not selection[id]; markDirty()
     end
+    function panel.SelectAllZones() access(); selection = {}; allZones = true; markDirty() end
+    function panel.ClearZones() access(); selection = {}; allZones = false; markDirty() end
     function panel.SetView(view) access(); assert(view == "map", "El panel principal solo muestra el mapa"); panel.view = "map"; signature = nil; closePopup(); save() end
     function panel.SetVisual(mode)
         access(); assert(mode == "eggs" or mode == "pets" or mode == "models")
@@ -943,37 +1010,47 @@ local function mountEggFilterPanel(context)
         table.clear(entries); table.clear(metadata); orderedRows = {}; rowsKey = nil
         local empty = scroll:FindFirstChild("Empty"); if empty then empty:Destroy() end
     end
-    local function speciesPicker()
+    local function zonePicker()
         if popup then closePopup(); return end
-        if not search.modules then return end
-        popup = make("Frame", "SpeciesPicker", root, { Position = UDim2.fromOffset(22, 152), Size = UDim2.fromOffset(494, 504), BackgroundColor3 = C.bg, BorderSizePixel = 0, ZIndex = 60 })
+        local options = search.ZoneOptions()
+        access()
+        if #options == 0 then
+            changeLabel.Text = "Esperando las zonas del juego..."; changeLabel.TextColor3 = C.muted
+            return
+        end
+        popup = make("Frame", "ZonePicker", root, { Position = UDim2.fromOffset(22, 150), Size = UDim2.fromOffset(494, 506), BackgroundColor3 = C.bg, BorderSizePixel = 0, ZIndex = 60 })
         corner(popup, 12); stroke(popup, C.border)
-        text("Title", popup, "Elegir especies · catálogo", 16, 12, 364, 25, C.white, 18, true).ZIndex = 61
-        text("Hint", popup, "Esto selecciona filtros; no representa huevos del mapa.", 16, 43, 462, 18, C.muted, 11).ZIndex = 61
+        text("Title", popup, "Elegir zonas", 16, 12, 364, 25, C.white, 18, true).ZIndex = 61
+        text("Hint", popup, string.format("%d zonas · marca una o varias; luego aplica los filtros.", #options), 16, 45, 462, 18, C.muted, 11).ZIndex = 61
         local done = button("Done", popup, "Cerrar", 398, 10, 80, 34); done.ZIndex = 62
         done.Activated:Connect(function() access(); closePopup() end)
-        local list = make("ScrollingFrame", "Species", popup, { Position = UDim2.fromOffset(16, 73), Size = UDim2.fromOffset(462, 415), CanvasSize = UDim2.new(), AutomaticCanvasSize = Enum.AutomaticSize.Y, BackgroundTransparency = 1, ScrollBarThickness = 4, BorderSizePixel = 0, ZIndex = 61 })
-        make("UIListLayout", "Layout", list, { Padding = UDim.new(0, 6), SortOrder = Enum.SortOrder.LayoutOrder })
-        local options = {}
-        for id, catalog in pairs(search.modules.assets.Directory) do
-            if search.RarityMatches(catalog.Rarity, draft.rarity) then table.insert(options, {id = id, catalog = catalog}) end
+        local selectAll = button("SelectAll", popup, "Todas", 16, 74, 100, 32); selectAll.ZIndex = 62
+        local clearZones = button("ClearSelection", popup, "Limpiar selección", 126, 74, 150, 32); clearZones.ZIndex = 62
+        local list = make("ScrollingFrame", "Zones", popup, { Position = UDim2.fromOffset(16, 118), Size = UDim2.fromOffset(462, 370), CanvasSize = UDim2.new(), AutomaticCanvasSize = Enum.AutomaticSize.Y, BackgroundTransparency = 1, ScrollBarThickness = 4, ScrollBarImageColor3 = C.muted, BorderSizePixel = 0, ZIndex = 61 })
+        make("UIListLayout", "Layout", list, { Padding = UDim.new(0, 5), SortOrder = Enum.SortOrder.LayoutOrder })
+        local checks = {}
+        local function refreshChecks()
+            access()
+            for id, entry in pairs(checks) do
+                local selected = allZones or selection[id] == true
+                entry.check(selected)
+                paint(entry.button, selected and C.selected or C.card, C.white, selected and C.green or C.border)
+            end
         end
-        table.sort(options, function(a, b) return a.catalog.DisplayName < b.catalog.DisplayName end)
         for index, option in ipairs(options) do
-            local b = button("Species_" .. option.id, list, "", 0, 0, 450, 64)
+            local b = button("Zone_" .. option.id, list, "", 0, 0, 450, 44)
             b.ZIndex = 62; b.LayoutOrder = index
-            make("ImageLabel", "EggIcon", b, { Position = UDim2.fromOffset(4, 4), Size = UDim2.fromOffset(56, 56), Image = option.catalog.Egg.Icon, BackgroundTransparency = 1, ScaleType = Enum.ScaleType.Fit, ZIndex = 63 })
-            text("Name", b, option.catalog.DisplayName, 72, 7, 328, 25, C.white, 15, true).ZIndex = 63
-            text("BaseIncome", b, number(option.catalog.EarningRate) .. "/s base · x1.00", 72, 35, 328, 19, C.muted, 12).ZIndex = 63
-            local check = selectionIcon(b, selection[option.id], 414, 20, 63)
-            b.BackgroundColor3 = selection[option.id] and C.selected or C.card
+            text("Name", b, option.label, 12, 9, 382, 26, C.white, 14, true).ZIndex = 63
+            checks[option.id] = {button = b, check = selectionIcon(b, false, 414, 10, 63, true)}
             b.Activated:Connect(function()
-                access(); panel.SelectCategory(option.id); check(selection[option.id])
-                b.BackgroundColor3 = selection[option.id] and C.selected or C.card
+                access(); panel.SelectZone(option.id); refreshChecks()
             end)
         end
+        selectAll.Activated:Connect(function() access(); panel.SelectAllZones(); refreshChecks() end)
+        clearZones.Activated:Connect(function() access(); panel.ClearZones(); refreshChecks() end)
+        refreshChecks()
     end
-    panel.OpenSpecies = function() access(); speciesPicker() end
+    panel.OpenZones = function() access(); zonePicker() end
     local function luminance(color)
         local function linear(component)
             return component <= 0.04045 and component / 12.92 or ((component + 0.055) / 1.055) ^ 2.4
@@ -1028,14 +1105,14 @@ local function mountEggFilterPanel(context)
         local more = button("Detail", card, "Detalle", 0, 64, 76, 20)
         more.Position = UDim2.new(1, -86, 0, 64); more.TextSize = 10
         more.Activated:Connect(function() access(); detail(entry.row) end)
-        card.Activated:Connect(function() access(); if search.modules.assets.Directory[entry.row.category] then panel.SelectCategory(entry.row.category) end end)
+        card.Activated:Connect(function() access(); if entry.row.area then panel.SelectZone(entry.row.area) end end)
         panel.stats.created += 1
         return entry
     end
     local function updateCard(entry, row, index)
         access(); entry.row = row
         entry.card.LayoutOrder = index; entry.card.Position = UDim2.fromOffset(2, (index - 1) * (ROW_HEIGHT + ROW_GAP) + 2)
-        local selected = selection[row.category] == true
+        local selected = not allZones and selection[row.area] == true
         local key = row.key .. tostring(row.match) .. row.reason .. row.mutations
             .. tostring(row.weight) .. tostring(row.eggIcon) .. visual .. tostring(selected)
         if entry.key == key and (visual ~= "models" or entry.viewport or not data.assetModels) then return end
@@ -1175,8 +1252,9 @@ local function mountEggFilterPanel(context)
         access()
         local minimum = search.ParseMinimum(income.Text)
         assert(minimum, "Mínimo inválido: usa 500k, 25m o 7.5b")
+        assert(allZones or #selectionList() > 0, "Selecciona al menos una zona")
         return api.SavePreset(name, {rarity = draft.rarity, minIncome = minimum, mutation = draft.mutation,
-            nameContains = nameBox.Text, categories = selectionList()})
+            nameContains = nameBox.Text, zones = selectionList()})
     end
     function panel.OpenOptions()
         access(); closePopup()
@@ -1232,7 +1310,7 @@ local function mountEggFilterPanel(context)
     connect(optionsButton.Activated, panel.OpenOptions)
     function panel.GetStatus()
         access(); return { open = panel.open, view = "map", onlyMatches = onlyMatches, cards = panel.cards, dirty = dirty, error = panel.error,
-            selected = selectionList(), visual = visual, sortBest = sortBest, position = {x = root.AbsolutePosition.X, y = root.AbsolutePosition.Y},
+            selected = selectionList(), allZones = allZones, visual = visual, sortBest = sortBest, position = {x = root.AbsolutePosition.X, y = root.AbsolutePosition.Y},
             size = {x = root.AbsoluteSize.X, y = root.AbsoluteSize.Y}, scale = scale.Scale,
             stats = table.clone(panel.stats), resources = {mutations = data.mutations ~= nil, models = data.assetModels ~= nil} }
     end
@@ -1255,7 +1333,7 @@ local function mountEggFilterPanel(context)
     end)
     connect(filterToggle.Activated, function() filtersOpen = not filtersOpen; layout(); save() end)
     connect(apply.Activated, panel.Apply)
-    connect(clear.Activated, function() selection = {}; markDirty() end)
+    connect(clear.Activated, function() selection = {}; allZones = true; markDirty(); closePopup() end)
     connect(income:GetPropertyChangedSignal("Text"), function()
         local minimum = search.ParseMinimum(income.Text)
         access()
@@ -1268,7 +1346,7 @@ local function mountEggFilterPanel(context)
     connect(nameBox:GetPropertyChangedSignal("Text"), function()
         if nameBox.Text ~= draft.nameContains then markDirty() end
     end)
-    connect(chooseSpecies.Activated, function() panel.OpenSpecies() end)
+    connect(chooseZones.Activated, function() panel.OpenZones() end)
     connect(tabCatalog.Activated, function() onlyMatches = not onlyMatches; signature = nil; save() end)
     connect(tabMap.Activated, function() onlyMatches = false; signature = nil; save() end)
     connect(sortButton.Activated, function() sortBest = not sortBest; sortButton.Text = sortBest and "Rareza ↓" or "Nombre A–Z"; signature = nil; save() end)
@@ -1276,7 +1354,7 @@ local function mountEggFilterPanel(context)
     connect(rarityButton.Activated, function()
         if not search.modules then return end
         local options = search.RarityOptions()
-        dropdown(rarityButton, options, function(id) draft.rarity = id; rarityButton.Text = id; selection = {} end)
+        dropdown(rarityButton, options, function(id) draft.rarity = id; rarityButton.Text = id end)
     end)
     connect(mutationButton.Activated, function()
         if not data then return end
@@ -3371,6 +3449,7 @@ do
         end,
         CycleStatus = function() return eggSearch.CycleStatus() end,
         RarityOptions = function() return eggSearch.RarityOptions() end,
+        ZoneOptions = function() return eggSearch.ZoneOptions() end,
         Presets = function()
             local list = {}
             for name, config in pairs(preferences.presets) do
