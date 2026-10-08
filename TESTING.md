@@ -1,5 +1,48 @@
 # Pruebas y validacion
 
+## 2026-10-08 - Minimo visible 10b corregido y cargado
+
+Usuario reporta 10b mostrado como 1e+01b. FormatMinimum probaba primero
+una cifra significativa con %g, que usa notacion cientifica para 10.
+Ahora omite candidatos abreviados con exponentes y aumenta precision hasta
+encontrar texto decimal que vuelve al mismo numero exacto al parsearlo.
+10b/100b/500k/10m/10t/10q/1000q quedan en notacion decimal; el fallback
+numerico para valores extremos permanece. No cambia ingreso ni deteccion.
+
+Correccion en verification/zone-filter (la raiz antigua no contiene este
+formateador). Build/compilacion y 164 regresiones correctas, incluidos
+9999999999/10000000000/10000000001 y roundtrip exacto. Bundle 231438 bytes,
+SHA256 48fcb711b15bed5729e41dfb0cd28b300f90d5bb70da912efeab244db4338e0a.
+
+Potassium confirma antes 1e+01b y despues 10b, valor 10000000000 intacto.
+Conservados Eternal, nombre/mutacion, cuenta guardada, AUTO apagado y JobId.
+Una GUI/una EggFilterPanel, conexiones anteriores retiradas y Chilli
+reutilizado. Panel abierto para probar; 13 zonas disponibles. El cliente
+habia vuelto a la version publica tras cambiar de servidor: se recargo la
+candidata con zonas y formato corregido. Autoexec intacto; main/stable sin
+publicar. Evidencia privada: verification/minimum-format-live-report.json.
+
+## 2026-10-08 - Candidata por zonas cargada en Roblox local
+
+Usuario solicita cargarla para probar. Ejecutado el bundle de
+verification/zone-filter, fuente 06536a8, 231406 bytes/SHA256
+dd16a5af4846dca238354f8841afd79d4c584ac1dbf2e43c5538b0f15ac35123,
+desde el workspace del executor. Version antigua retirada: alive=false y sus
+30 conexiones desconectadas; una GUI/una EggFilterPanel, Chilli reutilizado.
+
+Panel abierto en Elegir zonas: 13 opciones oficiales/13 filas con checks.
+Filtros Eternal >=10B/s, mutacion/nombre, AUTO activo, visual pets y cuenta
+configurada/recordada conservados; zonas sin restriccion inicial. Detector
+listo en wait, panel sin error y mismo JobId. No se seleccionaron zonas ni
+se forzo teleport. AUTO y los clicks de prueba quedan a cargo del usuario.
+
+Autoexec intacto, SHA256
+66cf4b731ee1277dd5f8fa1788c615d09a0de78b1f010d589a2231f21b01e11c.
+Main/stable siguen sin publicar el filtro: al reconectar/saltar el cargador
+habitual recupera la version publicada anterior. Archivo local de candidata
+sae_zone_filter_dd16a5af.luau fuera de Git. Evidencia privada:
+verification/zone-local-load-report.json. Prueba tactil/iPad pendiente.
+
 ## Filtro por zonas verificado (2026-10-08)
 
 La candidata `verification/zone-filter`, rama `codex/filtro-zonas`, parte de

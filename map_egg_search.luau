@@ -124,12 +124,12 @@ local function createMapEggSearch(readJson, writeJson)
         return minimum
     end
     function search.FormatMinimum(value)
-        -- Only abbreviate when parsing the text restores the exact threshold.
+        -- Prefer ordinary decimal suffixes, preserving the exact threshold.
         for _, suffix in ipairs({ "q", "t", "b", "m", "k" }) do
             if value >= units[suffix] then
                 for precision = 1, 17 do
                     local text = string.format("%." .. precision .. "g", value / units[suffix]) .. suffix
-                    if search.ParseMinimum(text) == value then return text end
+                    if not string.find(text, "[eE]") and search.ParseMinimum(text) == value then return text end
                 end
             end
         end

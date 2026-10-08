@@ -99,7 +99,7 @@ test("malformed or overflowing minimum never saves", function()
     assert(search.config.minIncome == 7e9)
 end)
 test("editing a formatted minimum preserves exact boundary", function()
-    for _, minimum in ipairs({7e9, 6999999999, 7000000001, 500000, 25e6, 1.1e9, 1234567890.12345, 0.125, 1e15}) do
+    for _, minimum in ipairs({7e9, 10e9, 9999999999, 10000000001, 6999999999, 7000000001, 500000, 25e6, 1.1e9, 1234567890.12345, 0.125, 1e15}) do
         assert(search.ParseMinimum(search.FormatMinimum(minimum)) == minimum)
     end
     assert(search.FormatMinimum(7e9) == "7b")
@@ -1665,6 +1665,17 @@ test("zone change invalidates a cached match and Explain agrees", function()
     assert(scan() == "match")
     finder.modules.areas = {Directory = {}}
     assert(scan() == "loading")
+end)
+
+test("minimum display uses ordinary decimals with game suffixes", function()
+    for input, expected in pairs({[1e4] = "10k", [5e5] = "500k", [1e7] = "10m",
+        [1e10] = "10b", [1e11] = "100b", [1e13] = "10t", [1e16] = "10q", [1e18] = "1000q"}) do
+        local formatted = search.FormatMinimum(input)
+        assert(formatted == expected, formatted .. " should be " .. expected)
+        assert(search.ParseMinimum(formatted) == input)
+    end
+    assert(evaluate({egg("below", 9999999999)}, {minIncome = "10b"}) == nil)
+    assert(evaluate({egg("exact", 10000000000)}, {minIncome = "10b"}) ~= nil)
 end)
 
 test("Enchanted Forest keeps the inclusive Eternal minimum", function()
