@@ -1,5 +1,24 @@
 # Estado del trabajo
 
+## 2026-10-09 - Correccion del hop por zonas
+
+Reporte confirmado por consulta pasiva: Lava Dragon/Dragon/Eternal deVolcano,
+ingreso exacto102014590, fuera de Enchanted Forest/Light Dark/Titan Temple,
+pero rarezaCount1 en la version publica; ninguna coincidencia, AUTOapagado
+al inspeccionar. El usuario aclara que no debe iniciar hop por esa zona.
+
+Candidata sobre main4b48eba en verification/zone-hop, codex/hop-solo-zonas.
+rarityCount ahora aplica zonas; evidencia version2 liga rareza/zones y
+cierra la ventana al cambiar alcance. Memoria global anterior descartada.
+Mensajes distinguen espera/presencia en tus zonas. Build/compilacion siete
+entradas,176 regresiones/diez Python y17 asserts aislados Potassium correctos.
+Detector aislado conserva filtros/AUTO/JobId; snapshot65Slot/0rareza/0matches.
+Bundle completo cargado en main local desde la candidata232088bytes/SHA256
+38d52615e5e60953ba67bf71022143da22909b7b879ce04be20278a4af2ca2e1:
+misma configuracion/AUTOapagado/JobId/apertura, unaGUI/unpanel, sesion anterior
+alive=false/conexiones0 y Chilli reutilizado. Autoexec habitual sin cambios;
+publicacion pendiente. Evidencia privada verification/zone-hop-live-report.json.
+
 ## 2026-10-08 - Correccion de marcas de pets por zona
 
 Candidata verification/zone-conjunction, codex/coincidencias-zona, basada en

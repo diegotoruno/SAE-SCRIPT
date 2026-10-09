@@ -750,13 +750,14 @@ local function mountEggFilterPanel(context)
             local cycle = status.cycle
             local info = status.lastScan and status.lastScan.info or {}
             tabMap.Text = string.format("Mapa · %d", info.count or 0)
-            local titles = { wait = "Esperando " .. status.config.rarity .. "+", hop = "Buscando otro servidor", loading = "Esperando renovación / datos", match = "Objetivo encontrado", stopped = "Búsqueda detenida" }
+            local scope = #status.config.zones > 0 and "tus zonas" or "el mapa"
+            local titles = { wait = "Esperando " .. status.config.rarity .. "+ en " .. scope, hop = "Buscando otro servidor", loading = "Esperando renovación / datos", match = "Objetivo encontrado", stopped = "Búsqueda detenida" }
             stateTitle.Text = titles[status.mode] or "Escaneando mapa"
             stateTitle.TextColor3 = status.mode == "match" and C.green or C.white
             stateDot.BackgroundColor3 = status.mode == "match" and C.green or status.mode == "hop" and C.gold or status.active and C.cyan or C.muted
-            stateDetail.Text = string.format("%s+ · ≥ %s/s · mapa %d · rareza mínima %d", status.config.rarity, number(status.config.minIncome), info.count or 0, info.rarityCount or 0)
+            stateDetail.Text = string.format("%s+ · ≥ %s/s · mapa %d · en %s %d", status.config.rarity, number(status.config.minIncome), info.count or 0, scope, info.rarityCount or 0)
             if status.mode == "hop" and info.continuingCycle then
-                stateDetail.Text = status.config.rarity .. "+ observado en este ciclo · no está aquí; sigo buscando"
+                stateDetail.Text = status.config.rarity .. "+ observado en " .. scope .. " · no está aquí; sigo buscando"
             end
             if status.mode == "loading" and info.reason then stateDetail.Text = info.reason end
             if cycle then

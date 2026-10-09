@@ -1,5 +1,15 @@
 # Decisiones de producto e implementacion
 
+## Solo zonas elegidas activan hop (2026-10-09)
+
+El usuario reporta hop por Lava Dragon de Volcano con las ultimas tres zonas
+seleccionadas y aclara que no debe saltar. Reemplaza el alcance global anterior:
+solo spawns Slot de rareza minima o superior dentro de las zonas seleccionadas
+pueden iniciar y guardar la busqueda del ciclo. Una observacion vigente de ese
+mismo conjunto permite continuar cuando faltan en el destino. Cambiar zonas o
+rareza cierra la memoria; ingreso, nombre y mutacion siguen siendo filtros de
+calidad. Version2 guarda zonas y descarta evidencia global version1.
+
 ## Zona restringe candidatos; no selecciona todos sus pets (2026-10-08)
 
 Usuario reporta checks en pets de cualquier rareza al elegir una zona. Esas
@@ -19,8 +29,8 @@ catalogo oficial con checks y seleccion multiple. No limitar opciones a
 spawns locales o rareza. Todas conserva la ausencia de restriccion previa;
 un borrador vacio bloquea guardado/AUTO/presets. Migrar configuracion/presets
 antiguos conservando los demas filtros y retirando la restriccion de especies.
-La presencia de rareza y continuidad del ciclo conservan su alcance en todo
-el mapa: zona excluida es un filtro incumplido y permite buscar otro servidor.
+La regla global original de presencia queda reemplazada por la aclaracion
+2026-10-09: zona excluida no inicia busqueda; la evidencia es por rareza y zonas.
 
 | Decision | Motivo y consecuencia |
 | --- | --- |
