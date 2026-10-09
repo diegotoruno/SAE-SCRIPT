@@ -827,6 +827,16 @@ local function mountEggFilterPanel(context)
     local visual = saved.visual or "eggs"
     if visual ~= "eggs" and visual ~= "pets" and visual ~= "models" then visual = "eggs" end
     local sortBest, filtersOpen = saved.sortBest ~= false, saved.filtersOpen ~= false
+    -- Firma independiente del panel: sigue visible al minimizarlo.
+    local watermark = make("TextLabel", "ByMistakeWatermark", context.screenGui, {
+        AnchorPoint = Vector2.new(1, 1), Position = UDim2.new(1, -18, 1, -150),
+        Size = UDim2.fromOffset(112, 28), BackgroundColor3 = C.bg,
+        BackgroundTransparency = 0.16, BorderSizePixel = 0,
+        Text = "By Mistake", Font = Enum.Font.GothamMedium, TextSize = 12,
+        TextColor3 = C.gold, TextStrokeTransparency = 1,
+        Active = false, Selectable = false, ZIndex = 20,
+    })
+    corner(watermark, 8)
     local root = make("Frame", "EggFilterPanel", context.screenGui, {
         Size = UDim2.fromOffset(PANEL_WIDTH, PANEL_HEIGHT), Position = UDim2.fromOffset(800, 70),
         BackgroundColor3 = C.bg, BorderSizePixel = 0, Visible = panel.open, Active = true,
@@ -1324,7 +1334,7 @@ local function mountEggFilterPanel(context)
         if not panel.alive then return end
         access(); panel.alive = false
         for _, c in ipairs(connections) do c:Disconnect() end
-        table.clear(connections); cleanupCards(); root:Destroy(); launcher:Destroy()
+        table.clear(connections); cleanupCards(); root:Destroy(); launcher:Destroy(); watermark:Destroy()
     end
     connect(auto.Activated, function()
         panel.autoTouched = true
@@ -3035,8 +3045,8 @@ do
     local uiState = readJson(UI_FILE, {})
     local collapsed = (uiState.collapsed == true)
     local autoEnabled = (uiState.auto == true)
-    local EXPANDED_SIZE = Vector2.new(340, 96)
-    local COLLAPSED_SIZE = Vector2.new(210, 42)
+    local EXPANDED_SIZE = Vector2.new(340, 114)
+    local COLLAPSED_SIZE = Vector2.new(210, 60)
     local savedPosition = UDim2.new(0.5, 0, 0, 26)
     if type(uiState.pos) == "table" then
         local pos = uiState.pos
@@ -3156,6 +3166,23 @@ do
     statusLabel.TextColor3 = COLORS.muted
     statusLabel.TextXAlignment = Enum.TextXAlignment.Center
     statusLabel.Parent = holder
+
+    -- La firma tiene su propia fila en ambas versiones; no tapa AUTO ni estado.
+    local creditLabel = Instance.new("TextLabel")
+    creditLabel.Name = "ByMistakeCredit"
+    creditLabel.AnchorPoint = Vector2.new(0.5, 1)
+    creditLabel.Position = UDim2.new(0.5, 0, 1, -4)
+    creditLabel.Size = UDim2.new(1, -16, 0, 14)
+    creditLabel.BackgroundTransparency = 1
+    creditLabel.Font = Enum.Font.GothamMedium
+    creditLabel.Text = "By Mistake"
+    creditLabel.TextSize = 11
+    creditLabel.TextColor3 = COLORS.muted
+    creditLabel.TextStrokeTransparency = 1
+    creditLabel.Active = false
+    creditLabel.Selectable = false
+    creditLabel.ZIndex = 5
+    creditLabel.Parent = holder
 
     local function setLabel(text)
         if not session.alive then return end
