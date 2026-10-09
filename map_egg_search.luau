@@ -71,8 +71,9 @@ local function createMapEggSearch(readJson, writeJson)
             and cycle.serverTime < cycle.nextReset - cycle.nightSeconds
     end
     local function validWindow(cycle)
-        return cycleReady(cycle) and remembered.version == 1
+        return cycleReady(cycle) and remembered.version == 2
             and remembered.rarity == string.lower(search.config.rarity)
+            and sameInputs(remembered.zones, search.config.zones)
             and remembered.periodIndex == cycle.periodIndex and remembered.nextReset == cycle.nextReset
             and remembered.periodSeconds == cycle.periodSeconds and remembered.nightSeconds == cycle.nightSeconds
             and finite(remembered.seenAt) and remembered.seenAt <= cycle.serverTime
@@ -85,7 +86,7 @@ local function createMapEggSearch(readJson, writeJson)
         return false
     end
     function search.SearchWindow()
-        return table.clone(remembered)
+        return copyInputs(remembered)
     end
 
     local incomeCache = {}
@@ -278,6 +279,12 @@ local function createMapEggSearch(readJson, writeJson)
         nextConfig = normalize(nextConfig)
         nextConfig.rarity = canonicalRarity(nextConfig.rarity, search.RarityOptions())
         validateZones(nextConfig)
+        -- Evidence belongs to the selected rarity and exact zone set. Clear it
+        -- before changing scope, even if the user switches back before a scan.
+        if (string.lower(nextConfig.rarity) ~= string.lower(search.config.rarity)
+            or not sameInputs(nextConfig.zones, search.config.zones)) and next(remembered) ~= nil then
+            assert(saveWindow({}), "No se pudo cerrar la búsqueda de los filtros anteriores")
+        end
         assert(writeJson(CONFIG_FILE, nextConfig), "No se pudieron guardar los filtros")
         search.config = nextConfig
         search.lastScan = nil
@@ -361,7 +368,6 @@ local function createMapEggSearch(readJson, writeJson)
                 if not catalog or rarityOk == nil then
                     info.errors += 1
                 elseif rarityOk then
-                    info.rarityCount += 1
                     local name = catalog.DisplayName or egg.AssetCategory
                     local nameOk = filters.nameContains == ""
                         or string.find(string.lower(name), string.lower(filters.nameContains), 1, true)
@@ -378,6 +384,9 @@ local function createMapEggSearch(readJson, writeJson)
                     local zoneKnown = type(egg.AreaId) == "string" and egg.AreaId ~= ""
                     local zoneOk = #filters.zones == 0 or (zoneKnown and zoneSet[egg.AreaId])
                     if #filters.zones > 0 and not zoneKnown then info.errors += 1 end
+                    -- An excluded-zone egg neither starts nor seeds a hunt.
+                    -- Income/name/mutation remain quality filters within scope.
+                    if zoneOk then info.rarityCount += 1 end
                     if nameOk and mutationOk and zoneOk then
                         info.eligible += 1
                         local incomeOk, income = pcall(incomeFor, egg)
@@ -431,7 +440,8 @@ local function createMapEggSearch(readJson, writeJson)
         end
         if match then return "match" end
         if (info.rarityCount or 0) > 0 and not valid then
-            local window = {version = 1, rarity = string.lower(search.config.rarity), periodIndex = cycle.periodIndex,
+            local window = {version = 2, rarity = string.lower(search.config.rarity), zones = table.clone(search.config.zones),
+                periodIndex = cycle.periodIndex,
                 nextReset = cycle.nextReset, periodSeconds = cycle.periodSeconds, nightSeconds = cycle.nightSeconds,
                 untilTime = cycle.nextReset - cycle.nightSeconds, seenAt = cycle.serverTime}
             if not saveWindow(window) then info.reason = "no se pudo guardar la búsqueda para continuar al reconectar"; return "loading" end

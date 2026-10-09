@@ -1,5 +1,26 @@
 # Pruebas y validacion
 
+## 2026-10-09 - Hop solo por presencia en zonas elegidas
+
+Build y compilacion de siete entradas correctos;176 regresiones Luau y diez
+pruebas Python pasan. Diez regresiones nuevas verifican Lava Dragon/Volcano
+con el ingreso observado102014590 y con99b, cada una de las tres zonas,
+mapa mixto, continuidad tras hop con el mismo alcance, cambios de zonas sin
+scan intermedio, Todas, reordenacion/deduplicacion, copia de memoria,
+migracion version1, memoria ajena/malformada y errores al cerrar la ventana.
+
+Potassium ejecuta el detector exacto aislado con catalogos/rangos reales:
+17 comprobaciones pasan. Volcano devuelve wait/rarityCount0; un record
+controlado en zona elegida devuelve hop con19999999999 y match con20000000000.
+Snapshot real65Slot coincide con conteo independiente de zonas:0rareza/0matches.
+No se inyectan records en EggState ni se envia teleport; filtros/AUTO/JobId
+del finder activo intactos. La prueba no demuestra un nuevo hop real.
+
+Montaje del bundle candidato conserva config/AUTOapagado/JobId/apertura;
+unaGUI/unpanel, sesion anterioralive=false/cero conexiones y Chilli reutilizado.
+La barrera inicial vuelve a esperar un snapshot estable; autoexec sin cambios.
+Publicacion pendiente: un hop con el cargador main vuelve a la version anterior.
+
 ## 2026-10-08 - Tarjetas con zona, rareza e ingreso combinados
 
 166 regresiones Luau y compilacion de siete entradas pasan. Casos agregados:

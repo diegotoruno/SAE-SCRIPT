@@ -1,5 +1,16 @@
 # Contexto del proyecto
 
+## Hop limitado a las zonas elegidas (2026-10-09)
+
+El usuario aclara que un Lava Dragon de Volcano no debe causar hop cuando
+solo elige Titan Temple, Light Dark y Enchanted Forest. La presencia que
+inicia la busqueda y su memoria se limitan ahora a las zonas seleccionadas.
+Sin rareza minima en esas zonas ni evidencia vigente del mismo conjunto,
+esperar; con un huevo de esas zonas insuficiente, hop; con coincidencia, quedarse.
+La memoria version2 guarda zones; cambiar rareza o zonas la cierra, y la
+evidencia global antigua se descarta. Cambiar ingreso/nombre/mutacion conserva
+la observacion de la misma rareza y zonas hasta la siguiente noche.
+
 ## Coincidencias combinadas en el panel (2026-10-08)
 
 Los checks pertenecen solo a las 13 zonas. Las tarjetas del mapa no seleccionan
@@ -36,9 +47,9 @@ Los JSON/presets antiguos conservan rareza, ingreso, nombre y mutacion; se
 ignora `categories` y se inicia sin restriccion de zona. Nuevos guardados usan
 `zones`. Configure ya no acepta categories. Elegir otra rareza conserva zonas.
 Un AreaId ausente con zonas restringidas, catalogo de zonas pendiente o zona
-guardada retirada del juego produce loading. rarityCount sigue contando la
-rareza minima y superiores en todo el mapa: un huevo de zona excluida es
-insuficiente y permite hop; sin esa rareza ni evidencia vigente se espera.
+guardada retirada del juego produce loading. rarityCount cuenta la rareza
+minima y superiores solo en las zonas elegidas; una zona excluida no inicia
+hop ni guarda evidencia. Sin esa rareza en esas zonas ni evidencia vigente se espera.
 
 ## Reposicion adaptativa de reserva (2026-10-07)
 
@@ -101,7 +112,7 @@ La rareza seleccionada es un minimo inclusivo segun Data.Rarity.Rarities/Rank: E
 
 Hubo requisitos anteriores de esperar siempre en el mismo servidor o detener todo al reset. El usuario los reemplazo por el flujo anterior; no deben reintroducirse.
 
-La memoria de busqueda en `chilli_egg_search_cycle.json` vence al inicio de la noche siguiente, `NextResetTime(now) - NightLengthSeconds()`, usando los overrides del juego. Cambios de rareza/periodo/overrides invalidan esa ventana; minimo y demas filtros se vuelven a comprobar para cada spawn. El archivo es independiente del estado de teleport.
+La memoria de busqueda en `chilli_egg_search_cycle.json` vence al inicio de la noche siguiente, `NextResetTime(now) - NightLengthSeconds()`, usando los overrides del juego. Cambios de rareza/zonas/periodo/overrides invalidan esa ventana; minimo y demas filtros se vuelven a comprobar para cada spawn. El archivo es independiente del estado de teleport.
 
 ## Datos y significado de 7B
 

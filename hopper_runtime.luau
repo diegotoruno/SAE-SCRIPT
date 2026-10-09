@@ -2647,10 +2647,11 @@ do
                             setStatus(info.reason or "esperando datos del mapa...", COLORS.amber)
                         elseif mode == "wait" then
                             local remaining = cycle and math.ceil(cycle.secondsUntilReset)
+                            local scope = #eggSearch.config.zones > 0 and " en tus zonas" or ""
                             setLabel(remaining and string.format("EGG · %d:%02d",
                                 math.floor(remaining / 60), remaining % 60) or "Egg Search")
                             setStatus(cycle and not cycle.running
-                                and "sin " .. eggSearch.config.rarity .. "+ · ciclo pausado" or "sin " .. eggSearch.config.rarity .. "+ · esperando renovacion", COLORS.muted)
+                                and "sin " .. eggSearch.config.rarity .. "+" .. scope .. " · ciclo pausado" or "sin " .. eggSearch.config.rarity .. "+" .. scope .. " · esperando renovacion", COLORS.muted)
                         else
                             setStatus(info.continuingCycle
                                 and "no está aquí · búsqueda del ciclo vigente; buscando servidor"

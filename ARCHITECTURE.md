@@ -30,9 +30,9 @@ Los JSON/presets antiguos conservan rareza, ingreso, nombre y mutacion; se
 ignora `categories` y se inicia sin restriccion de zona. Nuevos guardados usan
 `zones`. Configure ya no acepta categories. Elegir otra rareza conserva zonas.
 Un AreaId ausente con zonas restringidas, catalogo de zonas pendiente o zona
-guardada retirada del juego produce loading. rarityCount sigue contando la
-rareza minima y superiores en todo el mapa: un huevo de zona excluida es
-insuficiente y permite hop; sin esa rareza ni evidencia vigente se espera.
+guardada retirada del juego produce loading. rarityCount cuenta la rareza
+minima y superiores solo en las zonas elegidas; una zona excluida no inicia
+hop ni guarda evidencia. Sin esa rareza en esas zonas ni evidencia vigente se espera.
 
 ## Reserva balanceada DeviceCookie (2026-10-07)
 
@@ -85,11 +85,11 @@ No se mantiene el bundle manualmente. `dist/` es generado y esta ignorado por Gi
 
 ## Detector
 
-`Evaluate(records, directory, incomeFor, filters, rarities)` no usa Roblox directamente. La rareza es un minimo inclusivo: acepta el mismo ID o un Rank mayor o igual de Data.Rarity.Rarities. El quinto argumento es opcional; usa el registro ya cargado en search.modules o los metadatos Rank de Directory. Conserva validacion del ID seleccionado contra el catalogo. Rangos faltantes/no finitos para IDs diferentes producen datos pendientes. Recorre solo Slot y mantiene ingreso exacto, nombre literal, mutaciones y zonas exactas; devuelve mejor candidato, conteos y coincidencias. `rarityCount` incluye todos los rangos que alcanzan el minimo, aun si fallan otros filtros. `RarityMatches` comparte esa regla con los controles de rareza y Explain.
+`Evaluate(records, directory, incomeFor, filters, rarities)` no usa Roblox directamente. La rareza es un minimo inclusivo: acepta el mismo ID o un Rank mayor o igual de Data.Rarity.Rarities. El quinto argumento es opcional; usa el registro ya cargado en search.modules o los metadatos Rank de Directory. Conserva validacion del ID seleccionado contra el catalogo. Rangos faltantes/no finitos para IDs diferentes producen datos pendientes. Recorre solo Slot y mantiene ingreso exacto, nombre literal, mutaciones y zonas exactas; devuelve mejor candidato, conteos y coincidencias. `count` abarca todos los Slot del mapa; `rarityCount` incluye los rangos que alcanzan el minimo dentro de las zonas elegidas, aun si fallan ingreso, nombre o mutacion. `RarityMatches` comparte esa regla con los controles de rareza y Explain.
 
 `Decide(match, info, cycle)` devuelve `match`, `loading`, `hop` o `wait`. Ademas de la presencia local, conserva una observacion de la rareza seleccionada para continuar cuando falta en otro servidor. `Scan()` obtiene snapshot y calcula datos con los modulos reales, evitando noche y snapshots pendientes. Un fallo de datos espera; si el ciclo cambia durante el scan se descarta esa lectura.
 
-`chilli_egg_search_cycle.json` guarda version, rareza, periodIndex, nextReset, periodSeconds, nightSeconds, seenAt y untilTime. La ventana termina al empezar la noche siguiente (`nextReset - nightSeconds`). Cambio de rareza, periodo u overrides, datos futuros/corruptos o expiracion invalidan esa memoria. Un reloj desconocido/pausado espera; cambiar minimo/zonas conserva la observacion de la misma rareza. El guardado usa la persistencia verificada existente y no se repite en cada poll. `GetStatus().searchWindow` devuelve una copia de lo guardado; su existencia no demuestra vigencia ni presencia actual.
+`chilli_egg_search_cycle.json` guarda version2, rareza, zones normalizadas, periodIndex, nextReset, periodSeconds, nightSeconds, seenAt y untilTime. La ventana termina al empezar la noche siguiente (`nextReset - nightSeconds`). Cambio de rareza o conjunto de zonas cierra la memoria antes de aplicar la configuracion; si falla ese guardado, no aplica el nuevo filtro. Periodo/overrides distintos, datos futuros/corruptos o expiracion tambien la invalidan. La version1 global se descarta porque no demuestra presencia en las zonas actuales. Un reloj desconocido/pausado espera; cambiar minimo/nombre/mutacion conserva la observacion de la misma rareza y zonas. El guardado usa la persistencia verificada existente y no se repite en cada poll. `GetStatus().searchWindow` devuelve una copia profunda de lo guardado; su existencia no demuestra vigencia ni presencia actual.
 
 La cache de analisis incorpora el ciclo para no trasladar decisiones entre periodos sin senal de renovacion. La informacion de scan incluye el reloj capturado antes de leer los records; Decide rechaza un snapshot del periodo anterior. El panel distingue busqueda vigente sin rareza local de espera inicial.
 

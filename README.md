@@ -52,8 +52,8 @@ loadstring(game:HttpGet("https://raw.githubusercontent.com/diegotoruno/SAE-SCRIP
 
 La rareza seleccionada es un minimo inclusivo segun el Rank del juego: Eternal acepta Eternal, Divine y cualquier rango superior. El filtro inicial busca Divine o superior que generen al menos 7.000.000.000 por segundo. Ingreso, mutacion, nombre y zonas exactas siguen aplicandose. Solo usa huevos disponibles en el mapa (`Slot`).
 
-- Sin huevos de la rareza minima o superiores ni una observacion vigente en el ciclo, espera la siguiente renovacion en el servidor actual.
-- Con huevos de la rareza minima o superiores que no cumplan los filtros, hace hop y vuelve a escanear al llegar; una observacion vigente permite continuar aunque falten en el destino.
+- Sin huevos de la rareza minima o superiores en las zonas elegidas ni una observacion vigente de esas zonas en el ciclo, espera la siguiente renovacion en el servidor actual. Un huevo de una zona excluida no inicia hop.
+- Con huevos de la rareza minima o superiores en las zonas elegidas que no cumplan ingreso, nombre o mutacion, hace hop y vuelve a escanear al llegar; una observacion vigente de la misma rareza y zonas permite continuar aunque falten en el destino. Cambiar zonas o rareza cierra esa memoria.
 - Con cualquier huevo que cumpla, se queda en el servidor y apaga AUTO. Chilli continua con su configuracion.
 - Si se renuevan los huevos durante la busqueda, espera los nuevos datos y repite la decision.
 

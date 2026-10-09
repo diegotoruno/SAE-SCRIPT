@@ -615,7 +615,7 @@ end)
 test("changed rarity resets memory but income filters keep the current rarity hunt", function()
     local _, read, write = memoryStore(); local finder = cycleFactory(read, write)
     assert(decideCycle(finder, {egg("a", 6e9)}, 100) == "hop")
-    finder.Configure({minIncome = 8e9, zones = {"Enchanted Forest"}})
+    finder.Configure({minIncome = 8e9, nameContains = "missing", mutation = "Golden"})
     assert(decideCycle(finder, {}, 101) == "hop")
     finder.Configure({rarity = "Common"})
     assert(decideCycle(finder, {}, 102) == "wait")
@@ -781,7 +781,8 @@ test("minimum never considers lower rank income or starts a hop", function()
 end)
 test("higher rank must still satisfy zone name and mutation", function()
     local _, _, evaluateMinimum = minimumFixture()
-    for _, patch in ipairs({{zones = {"Enchanted Forest"}}, {nameContains = "Eternal"}, {mutation = "Golden"}}) do
+    assert(evaluateMinimum({egg("d", 8e9)}, {zones = {"Enchanted Forest"}}) == "wait")
+    for _, patch in ipairs({{nameContains = "Eternal"}, {mutation = "Golden"}}) do
         assert(evaluateMinimum({egg("d", 8e9)}, patch) == "hop")
     end
     assert(evaluateMinimum({egg("d", 8e9, "divine", "Slot", {"Golden"})},
@@ -866,7 +867,7 @@ test("Enchanted Forest Eternal 10b requires every condition together", function(
     local filters = {minIncome = 10e9, zones = {"Enchanted Forest"}}
     local mode, best, info, matches = evaluateMinimum({common, below, forest, eternal, divine}, filters)
     assert(mode == "match" and best.uid == "divine-higher" and #matches == 2)
-    assert(matches[2].uid == "eternal-exact" and info.rarityCount == 4)
+    assert(matches[2].uid == "eternal-exact" and info.rarityCount == 3)
     assert(evaluateMinimum({common}, filters) == "wait")
     assert(evaluateMinimum({common, below, forest}, filters) == "hop")
 end)
@@ -1597,15 +1598,134 @@ test("same species in Forest cannot match Enchanted Forest selection", function(
     local forest, enchanted = egg("forest", 99e9), egg("enchanted", 7e9)
     enchanted.AreaId = "Enchanted Forest"
     local best, info, all = evaluate({forest, enchanted}, {zones = {"Enchanted Forest"}})
-    assert(best.uid == "enchanted" and #all == 1 and info.rarityCount == 2 and info.eligible == 1)
+    assert(best.uid == "enchanted" and #all == 1 and info.rarityCount == 1 and info.eligible == 1)
     assert(search.Decide(best, info) == "match")
 end)
 
-test("excluded zone is insufficient and still starts the agreed hop flow", function()
+test("excluded zone cannot start a hunt even with sufficient income", function()
     local best, info = evaluate({egg("forest", 99e9)}, {zones = {"Enchanted Forest"}})
-    assert(best == nil and info.rarityCount == 1 and search.Decide(best, info) == "hop")
+    assert(best == nil and info.rarityCount == 0 and search.Decide(best, info) == "wait")
     best, info = evaluate({}, {zones = {"Enchanted Forest"}})
     assert(search.Decide(best, info) == "wait")
+end)
+
+test("Lava Dragon in Volcano cannot seed the last-three-zone hunt", function()
+    for _, rate in ipairs({102014590, 99e9}) do
+        local _, read, write, _, writes = memoryStore()
+        local finder, _, _, entries = minimumFixture(read, write)
+        finder.Configure({minIncome = 20e9, zones = {"Enchanted Forest", "Light Dark", "Titan Temple"}})
+        entries.Dragon = {DisplayName = "Lava Dragon", Rarity = "Eternal"}
+        local lava = egg("lava", rate, "Dragon"); lava.AreaId = "Volcano"
+        local before = writes()
+        local match, info = finder.Evaluate({lava}, entries, function(e) return e.rate end)
+        info.ready = info.errors == 0
+        assert(match == nil and info.count == 1 and info.rarityCount == 0)
+        assert(finder.Decide(match, info, cycle(100)) == "wait")
+        assert(next(finder.SearchWindow()) == nil and writes() == before)
+        local absent, absentInfo = finder.Evaluate({}, entries, function(e) return e.rate end)
+        absentInfo.ready = true
+        assert(finder.Decide(absent, absentInfo, cycle(101)) == "wait")
+    end
+end)
+
+test("each selected zone can start a hunt for insufficient minimum rarity", function()
+    for _, id in ipairs({"Enchanted Forest", "Light Dark", "Titan Temple"}) do
+        local _, read, write = memoryStore(); local finder = cycleFactory(read, write)
+        finder.Configure({zones = {"Enchanted Forest", "Light Dark", "Titan Temple"}})
+        local selected = egg("selected", 6999999999); selected.AreaId = id
+        local mode, info = decideCycle(finder, {selected}, 100)
+        assert(mode == "hop" and info.rarityCount == 1 and info.eligible == 1)
+        assert(finder.SearchWindow().version == 2 and #finder.SearchWindow().zones == 3)
+    end
+end)
+
+test("mixed zones count only in-scope rarity while retaining all map rows", function()
+    local _, read, write = memoryStore(); local finder = cycleFactory(read, write)
+    finder.Configure({zones = {"Enchanted Forest"}})
+    local selected = egg("selected", 6e9); selected.AreaId = "Enchanted Forest"
+    local outside = egg("outside", 99e9); outside.AreaId = "Volcano"
+    local mode, info = decideCycle(finder, {selected, outside}, 100)
+    assert(mode == "hop" and info.count == 2 and info.rarityCount == 1)
+end)
+
+test("scoped hunt resumes after hop with only an excluded egg present", function()
+    local _, read, write = memoryStore(); local finder = cycleFactory(read, write)
+    finder.Configure({zones = {"Enchanted Forest"}})
+    local selected = egg("selected", 6e9); selected.AreaId = "Enchanted Forest"
+    assert(decideCycle(finder, {selected}, 100) == "hop")
+    local resumed = cycleFactory(read, write)
+    local mode, info = decideCycle(resumed, {egg("outside", 99e9)}, 101)
+    assert(mode == "hop" and info.rarityCount == 0 and info.continuingCycle)
+    assert(resumed.SearchWindow().zones[1] == "Enchanted Forest")
+    assert(resumed.Decide(nil, {ready = false}, cycle(290)) == "loading")
+    assert(decideCycle(cycleFactory(read, write), {egg("outside", 99e9)}, 301) == "wait")
+end)
+
+test("changing zones closes evidence before switching back without a scan", function()
+    local files, read, write = memoryStore(); local finder = cycleFactory(read, write)
+    finder.Configure({zones = {"Forest"}})
+    assert(decideCycle(finder, {egg("seen", 6e9)}, 100) == "hop")
+    finder.Configure({zones = {"Enchanted Forest"}})
+    assert(next(files["chilli_egg_search_cycle.json"]) == nil)
+    finder.Configure({zones = {"Forest"}})
+    assert(decideCycle(finder, {}, 101) == "wait")
+    assert(decideCycle(cycleFactory(read, write), {}, 102) == "wait")
+end)
+
+test("all-zone and selected-zone evidence cannot be reused across scopes", function()
+    for _, initial in ipairs({{}, {"Forest"}}) do
+        local _, read, write = memoryStore(); local finder = cycleFactory(read, write)
+        finder.Configure({zones = initial})
+        assert(decideCycle(finder, {egg("seen", 6e9)}, 100) == "hop")
+        finder.Configure({zones = #initial == 0 and {"Forest"} or {}})
+        assert(decideCycle(finder, {}, 101) == "wait")
+    end
+end)
+
+test("zone order duplicates and quality edits preserve the same scoped hunt", function()
+    local _, read, write = memoryStore(); local finder = cycleFactory(read, write)
+    finder.Configure({zones = {"Forest", "Lake"}})
+    assert(decideCycle(finder, {egg("seen", 6e9)}, 100) == "hop")
+    finder.Configure({zones = {"Lake", "Forest", "Lake"}, minIncome = 8e9,
+        mutation = "Golden", nameContains = "missing"})
+    assert(decideCycle(finder, {}, 101) == "hop")
+    local copy = finder.SearchWindow(); copy.zones[1] = "Volcano"
+    assert(finder.SearchWindow().zones[1] == "Forest")
+    assert(decideCycle(cycleFactory(read, write), {}, 102) == "hop")
+end)
+
+test("legacy global evidence cannot resume a zone-restricted hunt", function()
+    local files, read, write = memoryStore(); local finder = cycleFactory(read, write)
+    finder.Configure({zones = {"Enchanted Forest"}})
+    local selected = egg("seen", 6e9); selected.AreaId = "Enchanted Forest"
+    assert(decideCycle(finder, {selected}, 100) == "hop")
+    files["chilli_egg_search_cycle.json"].version = 1
+    files["chilli_egg_search_cycle.json"].zones = nil
+    local resumed = cycleFactory(read, write)
+    assert(decideCycle(resumed, {egg("outside", 99e9)}, 101) == "wait")
+    assert(next(resumed.SearchWindow()) == nil)
+    assert(decideCycle(resumed, {selected}, 102) == "hop")
+end)
+
+test("saved evidence with other or malformed zones cannot drive a hop", function()
+    for _, zones in ipairs({{"Volcano"}, {"forest"}, "Forest", {}}) do
+        local files, read, write = memoryStore(); local finder = cycleFactory(read, write)
+        finder.Configure({zones = {"Forest"}})
+        assert(decideCycle(finder, {egg("seen", 6e9)}, 100) == "hop")
+        files["chilli_egg_search_cycle.json"].zones = zones
+        assert(decideCycle(cycleFactory(read, write), {}, 101) == "wait")
+    end
+end)
+
+test("failed scope-memory cleanup rejects new zones and keeps saved config", function()
+    local files, read, write, fail = memoryStore(); local finder = cycleFactory(read, write)
+    finder.Configure({zones = {"Forest"}})
+    assert(decideCycle(finder, {egg("seen", 6e9)}, 100) == "hop")
+    fail(true)
+    assert(not pcall(finder.Configure, {zones = {"Enchanted Forest"}}))
+    assert(finder.config.zones[1] == "Forest" and files["chilli_egg_search_config.json"].zones[1] == "Forest")
+    fail(false); finder.Configure({zones = {"Enchanted Forest"}})
+    assert(decideCycle(finder, {}, 101) == "wait")
 end)
 
 test("zone comparison is exact rather than a partial name match", function()
@@ -1689,7 +1809,7 @@ test("zone change invalidates a cached match and Explain agrees", function()
     loadClock = 0; assert(scan() == "loading")
     loadClock = 10; assert(scan() == "match")
     record.AreaId = "Forest"
-    assert(scan() == "hop")
+    assert(scan() == "wait")
     assert(finder.Explain(record, state.catalog.divine, record.rate) == "Zona excluida")
     finder.Configure({zones = {"Forest"}})
     assert(scan() == "match")
