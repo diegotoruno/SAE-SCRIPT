@@ -1,5 +1,14 @@
 # Arquitectura
 
+## Firma y ciclo de vida (2026-10-09)
+
+egg_filter_panel crea ByMistakeWatermark como hijo de ServerHopButton:112x28,
+18px del borde derecho/150px del inferior,GothamMedium12,fuera del panel plegable.
+Destroy del panel tambien elimina la firma. hopper_runtime crea ByMistakeCredit
+en Holder,alineada abajo en su propia fila; expandido340x114/plegado210x60.
+La firma forma parte de las superficies de arrastre existentes y no tiene
+acciones propias. Destroy/reejecucion retiran ambos objetos con su sesion.
+
 ## Semantica de tarjetas y zonas (2026-10-08)
 
 Solo ZonePicker contiene checks de seleccion. createCard abre detalle y no

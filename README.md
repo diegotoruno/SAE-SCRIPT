@@ -65,6 +65,8 @@ Estilo grafito con acento champan, tipografia Gotham y tarjetas con ingreso dest
 
 **EGG FILTERS** abre el panel. **Alt izquierdo** alterna abrir/cerrar el panel, tambien cuando estas editando un filtro. La lista principal muestra exclusivamente huevos actuales del mapa, con imagen o modelo, ingreso, rareza, escala, peso, mutaciones y zona.
 
+La marca **By Mistake** permanece en la esquina inferior derecha de la pantalla, tambien al minimizar el panel. El boton rojo la muestra tanto expandido como plegado, en una fila separada de AUTO y del estado.
+
 **Elegir zonas** muestra las 13 zonas actuales con checks, en orden de progreso del juego. Pulsa **Limpiar seleccion**, marca **Enchanted Forest** y luego **Aplicar filtros** para buscar solo en esa zona; Forest queda excluido. Puedes marcar varias zonas o usar **Todas**. No puedes aplicar un borrador sin ninguna zona marcada. Rareza minima, ingreso exacto, mutacion y nombre siguen siendo obligatorios. La seleccion se conserva al recargar y en presets. El filtro anterior de especies se retira.
 
 El minimo acepta `500k`, `25m`, `7b`, `7.5b`, `1t` o `1q`, tambien en mayusculas. Puedes usar coma decimal (`7,5b`). Sin sufijo, el valor son unidades por segundo: `7` significa 7/s. La configuracion anterior de 7B conserva su valor y aparece como `7b`; editar y volver a aplicar conserva el limite exacto.

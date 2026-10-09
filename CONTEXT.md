@@ -1,5 +1,13 @@
 # Contexto del proyecto
 
+## Firma visual By Mistake (2026-10-09)
+
+El usuario pide una marca visual y tambien en el boton rojo expandido/plegado.
+By Mistake aparece en una etiqueta pasiva grafito/champan cerca de la esquina
+inferior derecha,sobre los timers del juego,y permanece con el panel cerrado.
+El boton rojo incorpora una fila propia de18px:340x114 expandido,210x60 plegado.
+No cambia filtros,AUTO,ciclo,teleports ni el codigo externo de Chilli.
+
 ## Hop limitado a las zonas elegidas (2026-10-09)
 
 El usuario aclara que un Lava Dragon de Volcano no debe causar hop cuando
