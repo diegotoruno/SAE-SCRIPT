@@ -155,6 +155,16 @@ local function mountEggFilterPanel(context)
     local visual = saved.visual or "eggs"
     if visual ~= "eggs" and visual ~= "pets" and visual ~= "models" then visual = "eggs" end
     local sortBest, filtersOpen = saved.sortBest ~= false, saved.filtersOpen ~= false
+    -- Firma independiente del panel: sigue visible al minimizarlo.
+    local watermark = make("TextLabel", "ByMistakeWatermark", context.screenGui, {
+        AnchorPoint = Vector2.new(1, 1), Position = UDim2.new(1, -18, 1, -150),
+        Size = UDim2.fromOffset(112, 28), BackgroundColor3 = C.bg,
+        BackgroundTransparency = 0.16, BorderSizePixel = 0,
+        Text = "By Mistake", Font = Enum.Font.GothamMedium, TextSize = 12,
+        TextColor3 = C.gold, TextStrokeTransparency = 1,
+        Active = false, Selectable = false, ZIndex = 20,
+    })
+    corner(watermark, 8)
     local root = make("Frame", "EggFilterPanel", context.screenGui, {
         Size = UDim2.fromOffset(PANEL_WIDTH, PANEL_HEIGHT), Position = UDim2.fromOffset(800, 70),
         BackgroundColor3 = C.bg, BorderSizePixel = 0, Visible = panel.open, Active = true,
@@ -652,7 +662,7 @@ local function mountEggFilterPanel(context)
         if not panel.alive then return end
         access(); panel.alive = false
         for _, c in ipairs(connections) do c:Disconnect() end
-        table.clear(connections); cleanupCards(); root:Destroy(); launcher:Destroy()
+        table.clear(connections); cleanupCards(); root:Destroy(); launcher:Destroy(); watermark:Destroy()
     end
     connect(auto.Activated, function()
         panel.autoTouched = true

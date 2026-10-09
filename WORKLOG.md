@@ -1,5 +1,15 @@
 # Estado del trabajo
 
+## 2026-10-09 - By Mistake en interfaz y ambas versiones del boton
+
+Candidata verification/by-mistake,codex/marca-by-mistake sobre maind2d9c3e.
+Firma pasiva de pantalla y fila separada en boton rojo expandido/plegado.
+Build/compilacion176Luau/diezPython correctos y montaje real conservando
+Eternal>=20b/treszonas/AUTOactivo/JobId/apertura/posicion. UnaGUI/sesion antigua
+retirada/Chilli reutilizado. Capturas privadas y geometria de ambas versiones
+verificadas;sonda temporal retirada,plegado/posicion restaurados. Publicacion
+se registra en el WORKLOG del workspace al verificar CI y descarga normal.
+
 ## 2026-10-09 - Correccion del hop por zonas
 
 Reporte confirmado por consulta pasiva: Lava Dragon/Dragon/Eternal deVolcano,

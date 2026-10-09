@@ -45,6 +45,12 @@ No aplicar verde de coincidencia a todos los ingresos.
 
 ## Interaccion
 
+La firma `By Mistake` aparece en una etiqueta grafito/champan de112x28px,
+anclada a18px del borde derecho y150px del inferior, sobre los timers del juego. Es pasiva y
+permanece al minimizar Egg Finder. El boton rojo lleva la misma firma en
+una fila inferior propia de18px: expandido340x114,plegado210x60; la fila
+conserva libres AUTO,plegado,texto principal y estado.
+
 AUTO apagado es neutro; AUTO encendido usa verde suave y texto oscuro.
 Aplicar filtros usa champan con texto oscuro. No confundir apagado con error.
 Chevron, minimizar y marcas de seleccion usan geometria nativa de Roblox.

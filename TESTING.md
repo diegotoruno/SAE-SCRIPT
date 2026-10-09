@@ -1,5 +1,19 @@
 # Pruebas y validacion
 
+## 2026-10-09 - By Mistake
+
+Build/compilacion siete entradas/176 regresiones Luau y diez Python correctos.
+Detector Impeccable sin hallazgos. Potassium monta la candidata con una GUI,
+sesion anterioralive=false/conexiones0,Chilli reutilizado y config/AUTO activo/
+JobId/panel cerrado iguales. Firma de pantalla visible; credito plegado210x60
+cabe sin recorte. Layout expandido340x114 probado con el helper de las fuentes,
+sin disparar conexiones ni inputs; credito visible/no solapa estado/texto cabe.
+Capturas privadas de ambas vistas inspeccionadas; se eleva la marca de pantalla
+para dejar libres timers. Posicion y plegado originales restaurados,sin guardar
+preferencias de prueba. Primera sonda auxiliar omitio ARROW_UP/DOWN y fallo;
+se corrigio/retiro y la comprobacion afectada paso. Sin pruebas nuevas del
+detector porque no cambian decisiones. iPad real no comprobado en esta tarea.
+
 ## 2026-10-09 - Hop solo por presencia en zonas elegidas
 
 Build y compilacion de siete entradas correctos;176 regresiones Luau y diez
