@@ -73,8 +73,9 @@ local function createMapEggSearch(readJson, writeJson)
             and cycle.serverTime < cycle.nextReset - cycle.nightSeconds
     end
     local function validWindow(cycle)
-        return cycleReady(cycle) and remembered.version == 1
+        return cycleReady(cycle) and remembered.version == 2
             and remembered.rarity == string.lower(search.config.rarity)
+            and sameInputs(remembered.zones, search.config.zones)
             and remembered.periodIndex == cycle.periodIndex and remembered.nextReset == cycle.nextReset
             and remembered.periodSeconds == cycle.periodSeconds and remembered.nightSeconds == cycle.nightSeconds
             and finite(remembered.seenAt) and remembered.seenAt <= cycle.serverTime
@@ -87,7 +88,7 @@ local function createMapEggSearch(readJson, writeJson)
         return false
     end
     function search.SearchWindow()
-        return table.clone(remembered)
+        return copyInputs(remembered)
     end
 
     local incomeCache = {}
@@ -280,6 +281,12 @@ local function createMapEggSearch(readJson, writeJson)
         nextConfig = normalize(nextConfig)
         nextConfig.rarity = canonicalRarity(nextConfig.rarity, search.RarityOptions())
         validateZones(nextConfig)
+        -- Evidence belongs to the selected rarity and exact zone set. Clear it
+        -- before changing scope, even if the user switches back before a scan.
+        if (string.lower(nextConfig.rarity) ~= string.lower(search.config.rarity)
+            or not sameInputs(nextConfig.zones, search.config.zones)) and next(remembered) ~= nil then
+            assert(saveWindow({}), "No se pudo cerrar la búsqueda de los filtros anteriores")
+        end
         assert(writeJson(CONFIG_FILE, nextConfig), "No se pudieron guardar los filtros")
         search.config = nextConfig
         search.lastScan = nil
@@ -363,7 +370,6 @@ local function createMapEggSearch(readJson, writeJson)
                 if not catalog or rarityOk == nil then
                     info.errors += 1
                 elseif rarityOk then
-                    info.rarityCount += 1
                     local name = catalog.DisplayName or egg.AssetCategory
                     local nameOk = filters.nameContains == ""
                         or string.find(string.lower(name), string.lower(filters.nameContains), 1, true)
@@ -380,6 +386,9 @@ local function createMapEggSearch(readJson, writeJson)
                     local zoneKnown = type(egg.AreaId) == "string" and egg.AreaId ~= ""
                     local zoneOk = #filters.zones == 0 or (zoneKnown and zoneSet[egg.AreaId])
                     if #filters.zones > 0 and not zoneKnown then info.errors += 1 end
+                    -- An excluded-zone egg neither starts nor seeds a hunt.
+                    -- Income/name/mutation remain quality filters within scope.
+                    if zoneOk then info.rarityCount += 1 end
                     if nameOk and mutationOk and zoneOk then
                         info.eligible += 1
                         local incomeOk, income = pcall(incomeFor, egg)
@@ -433,7 +442,8 @@ local function createMapEggSearch(readJson, writeJson)
         end
         if match then return "match" end
         if (info.rarityCount or 0) > 0 and not valid then
-            local window = {version = 1, rarity = string.lower(search.config.rarity), periodIndex = cycle.periodIndex,
+            local window = {version = 2, rarity = string.lower(search.config.rarity), zones = table.clone(search.config.zones),
+                periodIndex = cycle.periodIndex,
                 nextReset = cycle.nextReset, periodSeconds = cycle.periodSeconds, nightSeconds = cycle.nightSeconds,
                 untilTime = cycle.nextReset - cycle.nightSeconds, seenAt = cycle.serverTime}
             if not saveWindow(window) then info.reason = "no se pudo guardar la búsqueda para continuar al reconectar"; return "loading" end
@@ -1412,13 +1422,14 @@ local function mountEggFilterPanel(context)
             local cycle = status.cycle
             local info = status.lastScan and status.lastScan.info or {}
             tabMap.Text = string.format("Mapa · %d", info.count or 0)
-            local titles = { wait = "Esperando " .. status.config.rarity .. "+", hop = "Buscando otro servidor", loading = "Esperando renovación / datos", match = "Objetivo encontrado", stopped = "Búsqueda detenida" }
+            local scope = #status.config.zones > 0 and "tus zonas" or "el mapa"
+            local titles = { wait = "Esperando " .. status.config.rarity .. "+ en " .. scope, hop = "Buscando otro servidor", loading = "Esperando renovación / datos", match = "Objetivo encontrado", stopped = "Búsqueda detenida" }
             stateTitle.Text = titles[status.mode] or "Escaneando mapa"
             stateTitle.TextColor3 = status.mode == "match" and C.green or C.white
             stateDot.BackgroundColor3 = status.mode == "match" and C.green or status.mode == "hop" and C.gold or status.active and C.cyan or C.muted
-            stateDetail.Text = string.format("%s+ · ≥ %s/s · mapa %d · rareza mínima %d", status.config.rarity, number(status.config.minIncome), info.count or 0, info.rarityCount or 0)
+            stateDetail.Text = string.format("%s+ · ≥ %s/s · mapa %d · en %s %d", status.config.rarity, number(status.config.minIncome), info.count or 0, scope, info.rarityCount or 0)
             if status.mode == "hop" and info.continuingCycle then
-                stateDetail.Text = status.config.rarity .. "+ observado en este ciclo · no está aquí; sigo buscando"
+                stateDetail.Text = status.config.rarity .. "+ observado en " .. scope .. " · no está aquí; sigo buscando"
             end
             if status.mode == "loading" and info.reason then stateDetail.Text = info.reason end
             if cycle then
@@ -4092,10 +4103,11 @@ do
                             setStatus(info.reason or "esperando datos del mapa...", COLORS.amber)
                         elseif mode == "wait" then
                             local remaining = cycle and math.ceil(cycle.secondsUntilReset)
+                            local scope = #eggSearch.config.zones > 0 and " en tus zonas" or ""
                             setLabel(remaining and string.format("EGG · %d:%02d",
                                 math.floor(remaining / 60), remaining % 60) or "Egg Search")
                             setStatus(cycle and not cycle.running
-                                and "sin " .. eggSearch.config.rarity .. "+ · ciclo pausado" or "sin " .. eggSearch.config.rarity .. "+ · esperando renovacion", COLORS.muted)
+                                and "sin " .. eggSearch.config.rarity .. "+" .. scope .. " · ciclo pausado" or "sin " .. eggSearch.config.rarity .. "+" .. scope .. " · esperando renovacion", COLORS.muted)
                         else
                             setStatus(info.continuingCycle
                                 and "no está aquí · búsqueda del ciclo vigente; buscando servidor"
