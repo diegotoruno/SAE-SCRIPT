@@ -678,7 +678,7 @@ local function mountEggFilterPanel(context)
     local TweenService = game:GetService("TweenService")
     local FILE = "chilli_egg_panel_ui.json"
     local saved = readJson(FILE, {})
-    local panel: { [string]: any } = { alive = true, open = saved.open ~= false, view = "map", cards = 0 }
+    local panel: { [string]: any } = { alive = true, open = saved.open ~= false, view = "map", cards = 0, matches = 0 }
     local onlyMatches = saved.onlyMatches == true
     local connections = {}
     -- Paleta compartida: acento para acciones, colores semanticos para estados.
@@ -690,8 +690,11 @@ local function mountEggFilterPanel(context)
         cyan = Color3.fromRGB(174, 206, 229), gold = Color3.fromRGB(224, 197, 149),
         selected = Color3.fromRGB(38, 53, 53), success = Color3.fromRGB(28, 46, 43),
         onAccent = Color3.fromRGB(35, 29, 20), onSuccess = Color3.fromRGB(15, 35, 29),
+        scrim = Color3.fromRGB(6, 8, 11),
     }
-    local PANEL_WIDTH, PANEL_HEIGHT, ROW_HEIGHT, ROW_GAP = 540, 700, 116, 8
+    -- Rejilla de 8 px: margen 22, contenido 496, columnas 160/244 con hueco 8.
+    local PANEL_WIDTH, PANEL_HEIGHT, ROW_HEIGHT, ROW_GAP = 540, 700, 100, 8
+    local PAD, CONTENT = 22, 496
     local function access() if type(setthreadidentity) == "function" then setthreadidentity(8) end end
     access()
     local function make(class, name, parent, properties)
@@ -714,6 +717,12 @@ local function mountEggFilterPanel(context)
             TextXAlignment = Enum.TextXAlignment.Left, TextTruncate = Enum.TextTruncate.AtEnd,
             TextStrokeTransparency = 1,
         })
+    end
+    -- Texto de varias lineas que se corta al final en lugar de salirse de su caja.
+    local function paragraph(name, parent, value, x, y, width, height, color, size)
+        local label = text(name, parent, value, x, y, width, height, color, size)
+        label.TextWrapped = true; label.TextYAlignment = Enum.TextYAlignment.Top
+        return label
     end
     -- Solo se anima la respuesta al puntero; listas, ingresos y reloj son inmediatos.
     -- Estas conexiones pertenecen al objeto, se retiran al destruir tarjetas/popups.
@@ -752,6 +761,17 @@ local function mountEggFilterPanel(context)
         object.TextColor3 = foreground or C.white
         object.Border.Color = borderColor or C.border
     end
+    local function primary(object) paint(object, C.gold, C.onAccent, C.gold); object.Font = Enum.Font.GothamBold end
+    local function field(name, parent, value, placeholder, x, y, width, height)
+        local box = make("TextBox", name, parent, {
+            Position = UDim2.fromOffset(x, y), Size = UDim2.fromOffset(width, height),
+            BackgroundColor3 = C.input, BorderSizePixel = 0, Text = value, PlaceholderText = placeholder,
+            PlaceholderColor3 = C.muted, Font = Enum.Font.GothamMedium, TextSize = 14, TextColor3 = C.white,
+            ClearTextOnFocus = false, TextXAlignment = Enum.TextXAlignment.Left, TextTruncate = Enum.TextTruncate.AtEnd,
+        })
+        corner(box); stroke(box); make("UIPadding", "Padding", box, { PaddingLeft = UDim.new(0, 12), PaddingRight = UDim.new(0, 12) })
+        return box
+    end
     -- Geometria nativa: evita depender de glifos que faltan en algunas fuentes.
     local function line(parent, name, x, y, width, rotation, color, zIndex)
         return make("Frame", name, parent, { AnchorPoint = Vector2.new(0.5, 0.5),
@@ -775,18 +795,25 @@ local function mountEggFilterPanel(context)
             long.BackgroundColor3 = short.BackgroundColor3
             if boxed then
                 short.Visible = value == true; long.Visible = value == true
+                mark.BackgroundColor3 = value and C.selected or C.input
                 mark.Border.Color = value and C.green or C.muted
             end
         end
         update(selected)
-        return update
+        return update, mark
     end
+    -- Selector desplegable: texto a la izquierda y chevron en su propio margen.
     local function chevron(object)
         for index, rotation in ipairs({45, -45}) do
             local segment = line(object, "Chevron" .. index, 0, 0, 6, rotation, C.muted)
-            segment.Position = UDim2.new(1, index == 1 and -18 or -14, 0.5, 0)
+            -- Las posiciones son relativas al area con padding: el chevron vive en el margen.
+            segment.Position = UDim2.new(1, index == 1 and 12 or 16, 0.5, 0)
         end
-        make("UIPadding", "ChevronSpace", object, { PaddingRight = UDim.new(0, 20), PaddingLeft = UDim.new(0, 4) })
+        object.TextXAlignment = Enum.TextXAlignment.Left
+        make("UIPadding", "ChevronSpace", object, { PaddingRight = UDim.new(0, 30), PaddingLeft = UDim.new(0, 12) })
+    end
+    local function crossIcon(object)
+        line(object, "Cross1", 16, 16, 12, 45, C.muted); line(object, "Cross2", 16, 16, 12, -45, C.muted)
     end
     local function connect(signal, callback)
         local c = signal:Connect(function(...)
@@ -803,6 +830,24 @@ local function mountEggFilterPanel(context)
         if value >= 1e3 then return string.format("%.1fK", value / 1e3) end
         return string.format("%.0f", value)
     end
+    local function sentence(value)
+        value = tostring(value or "")
+        return string.upper(string.sub(value, 1, 1)) .. string.sub(value, 2)
+    end
+    local function escape(value)
+        return (tostring(value):gsub("&", "&amp;"):gsub("<", "&lt;"):gsub(">", "&gt;"))
+    end
+    local function hex(color)
+        return string.format("#%02X%02X%02X", math.round(color.R * 255), math.round(color.G * 255), math.round(color.B * 255))
+    end
+    local zoneLabels = {}
+    local function zoneName(id)
+        if id == nil then return "Zona desconocida" end
+        if next(zoneLabels) == nil then
+            for _, option in ipairs(search.ZoneOptions()) do zoneLabels[option.id] = option.label end
+        end
+        return tostring(zoneLabels[id] or id)
+    end
     local function cloneConfig(config)
         local copy = table.clone(config); copy.zones = table.clone(config.zones or {}); return copy
     end
@@ -813,6 +858,12 @@ local function mountEggFilterPanel(context)
         if allZones then return {} end
         local list = {}; for id, selected in pairs(selection) do if selected then table.insert(list, id) end end
         table.sort(list); return list
+    end
+    local function zonesText(list, everything)
+        if everything then return "Todas las zonas" end
+        if #list == 0 then return "Ninguna zona" end
+        if #list == 1 then return zoneName(list[1]) end
+        return string.format("%d zonas", #list)
     end
     local dirty, signature, popup, data = false, nil, nil, {}
     local entries, metadata, orderedRows, rowsKey = {}, {}, {}, nil
@@ -831,12 +882,12 @@ local function mountEggFilterPanel(context)
     local watermark = make("TextLabel", "ByMistakeWatermark", context.screenGui, {
         AnchorPoint = Vector2.new(1, 1), Position = UDim2.new(1, -18, 1, -150),
         Size = UDim2.fromOffset(112, 28), BackgroundColor3 = C.bg,
-        BackgroundTransparency = 0.16, BorderSizePixel = 0,
+        BackgroundTransparency = 0.2, BorderSizePixel = 0,
         Text = "By Mistake", Font = Enum.Font.GothamMedium, TextSize = 12,
         TextColor3 = C.gold, TextStrokeTransparency = 1,
         Active = false, Selectable = false, ZIndex = 20,
     })
-    corner(watermark, 8)
+    corner(watermark, 14); stroke(watermark).Transparency = 0.5
     local root = make("Frame", "EggFilterPanel", context.screenGui, {
         Size = UDim2.fromOffset(PANEL_WIDTH, PANEL_HEIGHT), Position = UDim2.fromOffset(800, 70),
         BackgroundColor3 = C.bg, BorderSizePixel = 0, Visible = panel.open, Active = true,
@@ -844,66 +895,74 @@ local function mountEggFilterPanel(context)
     })
     corner(root, 14); stroke(root, C.border)
     local scale = make("UIScale", "ResponsiveScale", root, { Scale = 1 })
-    local launcher = button("OpenEggFilters", context.screenGui, "EGG FILTERS", 0, 0, 150, 38, C.card)
-    paint(launcher, C.card, C.gold)
+    local launcher = button("OpenEggFilters", context.screenGui, "Egg Finder", 0, 0, 128, 36, C.bg)
+    paint(launcher, C.bg, C.gold); launcher.Font = Enum.Font.GothamBold; launcher.TextSize = 13
     launcher.AnchorPoint = Vector2.new(1, 0); launcher.Position = UDim2.new(1, -18, 0, 18); launcher.ZIndex = 20
     launcher.Visible = not panel.open
-    local header = make("Frame", "Header", root, { Size = UDim2.new(1, 0, 0, 72), BackgroundTransparency = 1, BorderSizePixel = 0, Active = true })
-    text("Title", header, "Egg Finder", 22, 14, 220, 30, C.white, 24, true)
-    text("Subtitle", header, "Solo huevos del mapa", 23, 45, 230, 16, C.muted, 11)
-    make("Frame", "HeaderDivider", root, { Position = UDim2.fromOffset(22, 72), Size = UDim2.new(1, -44, 0, 1), BackgroundColor3 = C.border, BorderSizePixel = 0 })
-    local optionsButton = button("Options", header, "Opciones", 260, 20, 88, 34)
-    local auto = button("ToggleSearch", header, "AUTO", 360, 20, 106, 34, C.card)
-    local minimize = button("Minimize", header, "", 478, 20, 38, 34)
-    line(minimize, "Minus", 19, 17, 12, 0, C.muted)
-    local stateDot = make("Frame", "StateDot", root, { Position = UDim2.fromOffset(22, 97), Size = UDim2.fromOffset(6, 6), BackgroundColor3 = C.muted, BorderSizePixel = 0 })
-    corner(stateDot, 3)
-    local stateTitle = text("SearchState", root, "Conectando detector...", 36, 86, 330, 26, C.white, 15, true)
-    local clock = text("ResetClock", root, "RESET --:--", 376, 86, 140, 26, C.cyan, 12, true)
-    clock.TextXAlignment = Enum.TextXAlignment.Right
-    local stateDetail = text("SearchDetail", root, "Divine+ · mínimo 7B/s", 22, 119, 390, 18, C.muted, 11)
-    local filterToggle = button("ToggleFilters", root, "Filtros −", 430, 117, 86, 28)
-    local filters = make("Frame", "Filters", root, { Position = UDim2.fromOffset(22, 162), Size = UDim2.fromOffset(494, 182), BackgroundTransparency = 1, BorderSizePixel = 0 })
-    text("RarityLabel", filters, "RAREZA MÍNIMA", 0, 2, 135, 18, C.muted, 10)
-    text("IncomeLabel", filters, "MÍNIMO /s · k m b t q", 158, 2, 120, 18, C.muted, 10)
-    text("MutationLabel", filters, "MUTACIÓN", 294, 2, 200, 18, C.muted, 10)
-    local rarityButton = button("Rarity", filters, draft.rarity, 0, 28, 144, 36)
-    chevron(rarityButton)
-    local income = make("TextBox", "MinimumIncome", filters, {
-        Position = UDim2.fromOffset(158, 28), Size = UDim2.fromOffset(122, 36),
-        BackgroundColor3 = C.input, BorderSizePixel = 0, Text = search.FormatMinimum(draft.minIncome),
-        PlaceholderText = "Ej. 7b", PlaceholderColor3 = C.muted, Font = Enum.Font.GothamBold, TextSize = 17, TextColor3 = C.gold,
-        ClearTextOnFocus = false,
-    })
-    corner(income); stroke(income)
-    local mutationButton = button("Mutation", filters, draft.mutation == "" and "Todas" or draft.mutation, 294, 28, 200, 36)
-    chevron(mutationButton)
-    local nameBox = make("TextBox", "NameFilter", filters, {
-        Position = UDim2.fromOffset(0, 78), Size = UDim2.fromOffset(322, 34), BackgroundColor3 = C.input,
-        BorderSizePixel = 0, Text = draft.nameContains, PlaceholderText = "Buscar / filtrar por nombre...",
-        Font = Enum.Font.GothamMedium, TextSize = 13, TextColor3 = C.white, PlaceholderColor3 = C.muted,
-        ClearTextOnFocus = false, TextXAlignment = Enum.TextXAlignment.Left,
-    })
-    corner(nameBox); stroke(nameBox); make("UIPadding", "Padding", nameBox, { PaddingLeft = UDim.new(0, 10) })
-    local clear = button("AllZones", filters, "Todas las zonas", 336, 78, 158, 34)
-    local selectionLabel = text("Selection", filters, "Todas las zonas", 160, 133, 165, 18, C.muted, 10)
-    local changeLabel = text("Changes", filters, "Filtros guardados", 0, 165, 494, 17, C.muted, 10)
-    local apply = button("ApplyFilters", filters, "Aplicar filtros", 336, 126, 158, 34, C.gold)
-    paint(apply, C.gold, C.onAccent, C.gold)
-    local tabMap = button("MapTab", root, "Mapa", 22, 364, 102, 32)
-    local tabCatalog = button("CatalogTab", root, "Solo filtro: OFF", 132, 364, 136, 32)
-    local visualButton = button("VisualMode", root, "Huevos", 276, 364, 108, 32)
-    local sortButton = button("Sort", root, "Rareza ↓", 392, 364, 124, 32)
+
+    -- Cabecera: titulo a la izquierda, acciones a la derecha en una sola fila.
+    local header = make("Frame", "Header", root, { Size = UDim2.new(1, 0, 0, 68), BackgroundTransparency = 1, BorderSizePixel = 0, Active = true })
+    text("Title", header, "Egg Finder", PAD, 14, 240, 28, C.white, 22, true)
+    text("Subtitle", header, "Huevos disponibles en el mapa", PAD, 41, 240, 16, C.muted, 11)
+    local minimize = button("Minimize", header, "", PAD + CONTENT - 32, 18, 32, 32)
+    line(minimize, "Minus", 16, 16, 12, 0, C.muted)
+    local auto = button("ToggleSearch", header, "AUTO OFF", PAD + CONTENT - 32 - 8 - 100, 18, 100, 32)
+    auto.Font = Enum.Font.GothamBold
+    make("UIPadding", "DotSpace", auto, { PaddingLeft = UDim.new(0, 16) })
+    local autoDot = make("Frame", "Dot", auto, { Position = UDim2.new(0, -2, 0.5, -4), Size = UDim2.fromOffset(8, 8), BackgroundColor3 = C.muted, BorderSizePixel = 0 })
+    corner(autoDot, 4)
+    local optionsButton = button("Options", header, "Opciones", PAD + CONTENT - 32 - 8 - 100 - 8 - 92, 18, 92, 32)
+    make("Frame", "HeaderDivider", root, { Position = UDim2.fromOffset(PAD, 68), Size = UDim2.fromOffset(CONTENT, 1), BackgroundColor3 = C.border, BackgroundTransparency = 0.3, BorderSizePixel = 0 })
+
+    -- Estado de la busqueda: titulo, explicacion de una linea y reloj del ciclo.
+    local statusCard = make("Frame", "Status", root, { Position = UDim2.fromOffset(PAD, 80), Size = UDim2.fromOffset(CONTENT, 60), BackgroundColor3 = C.card, BorderSizePixel = 0 })
+    corner(statusCard, 10); stroke(statusCard).Transparency = 0.45
+    local stateDot = make("Frame", "StateDot", statusCard, { Position = UDim2.fromOffset(14, 16), Size = UDim2.fromOffset(8, 8), BackgroundColor3 = C.muted, BorderSizePixel = 0 })
+    corner(stateDot, 4)
+    local stateTitle = text("SearchState", statusCard, "Conectando detector...", 30, 9, 334, 22, C.white, 15, true)
+    local stateDetail = text("SearchDetail", statusCard, "", 14, 33, 350, 18, C.muted, 11)
+    local clockCaption = text("ResetCaption", statusCard, "Renovación", CONTENT - 14 - 110, 10, 110, 14, C.muted, 10)
+    local clock = text("ResetClock", statusCard, "--:--", CONTENT - 14 - 110, 26, 110, 24, C.cyan, 18, true)
+    clockCaption.TextXAlignment = Enum.TextXAlignment.Right; clock.TextXAlignment = Enum.TextXAlignment.Right
+
+    -- Filtros: cada control tiene su etiqueta encima y su propio ancho de columna.
+    text("FiltersTitle", root, "Filtros", PAD, 156, 60, 26, C.white, 14, true)
+    local filterSummary = text("FiltersSummary", root, "", PAD + 64, 156, 340, 26, C.muted, 11)
+    local filterToggle = button("ToggleFilters", root, "Ocultar", PAD + CONTENT - 84, 155, 84, 28)
+    local filters = make("Frame", "Filters", root, { Position = UDim2.fromOffset(PAD, 192), Size = UDim2.fromOffset(CONTENT, 174), BackgroundTransparency = 1, BorderSizePixel = 0 })
+    text("RarityLabel", filters, "Rareza mínima", 0, 0, 160, 16, C.muted, 11)
+    text("IncomeLabel", filters, "Ingreso mínimo /s", 168, 0, 160, 16, C.muted, 11)
+    text("MutationLabel", filters, "Mutación", 336, 0, 160, 16, C.muted, 11)
+    local rarityButton = button("Rarity", filters, draft.rarity, 0, 20, 160, 38)
+    rarityButton.TextSize = 14; chevron(rarityButton)
+    local income = field("MinimumIncome", filters, search.FormatMinimum(draft.minIncome), "Ej. 7b o 500m", 168, 20, 160, 38)
+    income.Font = Enum.Font.GothamBold; income.TextColor3 = C.gold
+    local mutationButton = button("Mutation", filters, draft.mutation == "" and "Todas" or draft.mutation, 336, 20, 160, 38)
+    mutationButton.TextSize = 14; chevron(mutationButton)
+    text("ZonesLabel", filters, "Zonas", 0, 70, 244, 16, C.muted, 11)
+    text("NameLabel", filters, "Nombre contiene", 252, 70, 244, 16, C.muted, 11)
+    local chooseZones = button("ChooseZones", filters, "Todas las zonas", 0, 90, 244, 38)
+    chooseZones.TextSize = 14; chevron(chooseZones)
+    local nameBox = field("NameFilter", filters, draft.nameContains, "Cualquier nombre", 252, 90, 244, 38)
+    local changeLabel = text("Changes", filters, "Filtros guardados", 0, 140, 324, 34, C.muted, 11)
+    changeLabel.TextWrapped = true
+    local apply = button("ApplyFilters", filters, "Aplicar filtros", 336, 138, 160, 38)
+    primary(apply); apply.TextSize = 13
+
+    -- Barra de la lista: alcance segmentado, vista y orden.
+    local toolbar = make("Frame", "ListBar", root, { Position = UDim2.fromOffset(PAD, 382), Size = UDim2.fromOffset(CONTENT, 32), BackgroundTransparency = 1 })
+    local tabMap = button("MapTab", toolbar, "Todos", 0, 0, 118, 32)
+    local tabCatalog = button("CatalogTab", toolbar, "Cumplen", 126, 0, 118, 32)
+    local visualButton = button("VisualMode", toolbar, "Ver: Huevos", 252, 0, 118, 32)
+    local sortButton = button("Sort", toolbar, "Orden: Rareza", 378, 0, 118, 32)
     local scroll = make("ScrollingFrame", "EggCards", root, {
-        Position = UDim2.fromOffset(20, 408), Size = UDim2.fromOffset(498, 248), BackgroundTransparency = 1,
+        Position = UDim2.fromOffset(20, 424), Size = UDim2.fromOffset(500, 240), BackgroundTransparency = 1,
         BorderSizePixel = 0, ScrollBarThickness = 3, ScrollBarImageColor3 = C.muted,
         CanvasSize = UDim2.new(), AutomaticCanvasSize = Enum.AutomaticSize.None, ScrollingDirection = Enum.ScrollingDirection.Y,
     })
-    make("UIPadding", "Padding", scroll, { PaddingTop = UDim.new(0, 2), PaddingLeft = UDim.new(0, 2), PaddingRight = UDim.new(0, 8), PaddingBottom = UDim.new(0, 4) })
-    local foot = text("Hint", root, "Elige una o varias zonas; luego aplica los filtros.", 22, 668, 494, 16, C.muted, 10)
-    local chooseZones = button("ChooseZones", filters, "Elegir zonas", 0, 126, 148, 34)
-    chooseZones.TextSize = 11
-    chevron(chooseZones)
+    make("UIPadding", "Padding", scroll, { PaddingTop = UDim.new(0, 2), PaddingLeft = UDim.new(0, 2), PaddingRight = UDim.new(0, 10), PaddingBottom = UDim.new(0, 4) })
+    local foot = text("Hint", root, "Alt izquierdo muestra u oculta el panel · toca una tarjeta para ver el detalle", PAD, 674, CONTENT, 14, C.muted, 10)
+    foot.TextXAlignment = Enum.TextXAlignment.Center
     local function save()
         access()
         local ok = writeJson(FILE, { open = panel.open, visual = visual, filtersOpen = filtersOpen,
@@ -912,12 +971,36 @@ local function mountEggFilterPanel(context)
         if not ok then panel.error = "No se pudo guardar la posición / vista"; warn("[EggPanel] " .. panel.error) end
     end
     local function closePopup() if popup then popup:Destroy(); popup = nil end end
+    -- Hojas modales: el velo bloquea el panel y tocarlo cierra solo la hoja.
+    local function sheet(name, title, y, height)
+        closePopup()
+        local scrim = make("TextButton", name, root, { Size = UDim2.fromScale(1, 1), BackgroundColor3 = C.scrim,
+            BackgroundTransparency = 0.35, BorderSizePixel = 0, Text = "", AutoButtonColor = false, ZIndex = 50 })
+        corner(scrim, 14)
+        local card = make("Frame", "Sheet", scrim, { Position = UDim2.fromOffset(PAD, y), Size = UDim2.fromOffset(CONTENT, height),
+            BackgroundColor3 = C.bg, BorderSizePixel = 0, Active = true, ZIndex = 51 })
+        corner(card, 12); stroke(card)
+        local heading = text("Title", card, title, 18, 16, CONTENT - 86, 24, C.white, 17, true)
+        local dismiss = button("Dismiss", card, "", CONTENT - 50, 12, 32, 32); crossIcon(dismiss)
+        scrim.Activated:Connect(function() access(); closePopup() end)
+        dismiss.Activated:Connect(function() access(); closePopup() end)
+        popup = scrim
+        return card, heading
+    end
+    local function listFrame(parent, y, height)
+        local list = make("ScrollingFrame", "Options", parent, { Position = UDim2.fromOffset(14, y), Size = UDim2.fromOffset(CONTENT - 28, height),
+            CanvasSize = UDim2.new(), AutomaticCanvasSize = Enum.AutomaticSize.Y, BackgroundTransparency = 1,
+            ScrollBarThickness = 3, ScrollBarImageColor3 = C.muted, BorderSizePixel = 0 })
+        make("UIPadding", "Padding", list, { PaddingTop = UDim.new(0, 2), PaddingLeft = UDim.new(0, 2), PaddingRight = UDim.new(0, 10), PaddingBottom = UDim.new(0, 2) })
+        make("UIListLayout", "Layout", list, { Padding = UDim.new(0, 6), SortOrder = Enum.SortOrder.LayoutOrder })
+        return list
+    end
     local function layout()
         access()
-        filters.Visible = filtersOpen; filterToggle.Text = filtersOpen and "Filtros −" or "Filtros +"
-        local y = filtersOpen and 364 or 162
-        for _, b in ipairs({tabCatalog, tabMap, visualButton, sortButton}) do b.Position = UDim2.fromOffset(b.Position.X.Offset, y) end
-        scroll.Position = UDim2.fromOffset(20, y + 44); scroll.Size = UDim2.fromOffset(498, 612 - y)
+        filters.Visible = filtersOpen; filterToggle.Text = filtersOpen and "Ocultar" or "Mostrar"
+        local y = filtersOpen and 382 or 192
+        toolbar.Position = UDim2.fromOffset(PAD, y)
+        scroll.Position = UDim2.fromOffset(20, y + 42); scroll.Size = UDim2.fromOffset(500, 664 - (y + 42))
         closePopup(); signature = nil
     end
     local initializedPosition = false
@@ -946,12 +1029,14 @@ local function mountEggFilterPanel(context)
         end
         save()
     end
+    local function setMessage(value, color)
+        access(); changeLabel.Text = value; changeLabel.TextColor3 = color or C.muted
+    end
     local function markDirty()
         access()
         dirty = true; signature = nil
-        local count = #selectionList()
-        selectionLabel.Text = allZones and "Todas las zonas" or string.format("%d zonas seleccionadas", count)
-        changeLabel.Text = "Cambios sin aplicar"; changeLabel.TextColor3 = C.gold
+        chooseZones.Text = zonesText(selectionList(), allZones)
+        setMessage("Cambios sin aplicar. AUTO sigue usando los filtros guardados.", C.gold)
     end
     local function setDraft(config)
         local minimumText = search.FormatMinimum(config.minIncome)
@@ -960,28 +1045,31 @@ local function mountEggFilterPanel(context)
         allZones = #draft.zones == 0
         income.Text = minimumText; nameBox.Text = draft.nameContains
         rarityButton.Text = draft.rarity
-        mutationButton.Text = draft.mutation == "" and "Todas" or draft.mutation
-        local count = #draft.zones
-        selectionLabel.Text = allZones and "Todas las zonas" or string.format("%d zonas seleccionadas", count)
-        dirty = false; changeLabel.Text = "Filtros guardados"; changeLabel.TextColor3 = C.muted; signature = nil
+        local labelOk, label = pcall(function() return data.mutations and data.mutations.LabelOf(draft.mutation) end)
+        access()
+        mutationButton.Text = draft.mutation == "" and "Todas" or (labelOk and label and tostring(label) or draft.mutation)
+        chooseZones.Text = zonesText(draft.zones, allZones)
+        dirty = false; setMessage("Filtros guardados."); signature = nil
     end
     function panel.Apply()
         access()
         local minimum = search.ParseMinimum(income.Text)
         access()
         if not minimum then
-            changeLabel.Text = "Mínimo inválido: usa 500k, 25m o 7.5b"; changeLabel.TextColor3 = C.red; return false
+            setMessage("Ingreso mínimo inválido. Usa k, m, b, t o q: 500m, 7.5b.", C.red); return false
         end
         if not allZones and #selectionList() == 0 then
-            changeLabel.Text = "Selecciona al menos una zona o pulsa Todas las zonas"; changeLabel.TextColor3 = C.red
+            setMessage("Elige al menos una zona, o marca Todas.", C.red)
             return false
         end
         local patch = { rarity = draft.rarity, minIncome = minimum, mutation = draft.mutation,
             nameContains = nameBox.Text, zones = selectionList() }
         local ok, config = pcall(api.Configure, patch)
         access()
-        if not ok then changeLabel.Text = tostring(config); changeLabel.TextColor3 = C.red; return false end
-        setDraft(config); closePopup(); panel.SetOnlyMatches(true); return true
+        if not ok then setMessage(sentence(config), C.red); return false end
+        setDraft(config); closePopup(); panel.SetOnlyMatches(true)
+        setMessage("Filtros aplicados. La lista muestra solo los huevos que cumplen.", C.green)
+        return true
     end
     function panel.SelectZone(id)
         local options = search.ZoneOptions()
@@ -1007,20 +1095,39 @@ local function mountEggFilterPanel(context)
     function panel.SetOnlyMatches(value)
         access(); onlyMatches = value == true; signature = nil; save()
     end
-    local function dropdown(anchor, options, select)
-        if popup then closePopup(); return end
-        popup = make("Frame", "Dropdown", root, { Position = UDim2.fromOffset(22, 232), Size = UDim2.fromOffset(494, 310), BackgroundColor3 = C.bg, BorderSizePixel = 0, ZIndex = 60 })
-        corner(popup, 12); stroke(popup, C.border)
-        text("Prompt", popup, anchor == rarityButton and "Elige una rareza mínima" or "Elige una mutación", 16, 12, 350, 24, C.white, 16, true).ZIndex = 61
-        local dismiss = button("Dismiss", popup, "Cerrar", 398, 10, 80, 30); dismiss.ZIndex = 62
-        dismiss.Activated:Connect(function() access(); closePopup() end)
-        local list = make("ScrollingFrame", "Options", popup, { Position = UDim2.fromOffset(16, 52), Size = UDim2.fromOffset(462, 242), CanvasSize = UDim2.new(), AutomaticCanvasSize = Enum.AutomaticSize.Y, BackgroundTransparency = 1, ScrollBarThickness = 3, ScrollBarImageColor3 = C.muted, BorderSizePixel = 0, ZIndex = 61 })
-        make("UIListLayout", "Layout", list, { Padding = UDim.new(0, 6) })
+    local function luminance(color)
+        local function linear(component)
+            return component <= 0.04045 and component / 12.92 or ((component + 0.055) / 1.055) ^ 2.4
+        end
+        return 0.2126 * linear(color.R) + 0.7152 * linear(color.G) + 0.0722 * linear(color.B)
+    end
+    local function rarityColor(rarity, fallback)
+        local color = type(rarity) == "table" and rarity.Color
+        if typeof(color) ~= "Color3" then return fallback or C.gold end
+        -- Preservar el tono oficial; Secret y colores oscuros necesitan mas contraste.
+        local background = math.max(luminance(C.card), luminance(C.selected), luminance(C.success))
+        color = color:Lerp(C.white, 0.25)
+        for _ = 1, 10 do
+            if (luminance(color) + 0.05) / (background + 0.05) >= 4.5 then break end
+            color = color:Lerp(C.white, 0.15)
+        end
+        return color
+    end
+    local function dropdown(kind, options, current, select)
+        local card = sheet("Dropdown", kind == "rarity" and "Rareza mínima" or "Mutación", 120, 452)
+        text("Hint", card, kind == "rarity" and "Incluye la rareza elegida y todas las superiores."
+            or "Muestra solo huevos que tengan esta mutación.", 18, 44, CONTENT - 36, 16, C.muted, 11)
+        local list = listFrame(card, 72, 364)
         for index, item in ipairs(options) do
-            local b = button("Option_" .. index, list, item.label, 0, 0, 454, 36)
-            b.ZIndex = 62; b.LayoutOrder = index
-            local current = anchor == rarityButton and draft.rarity or draft.mutation
-            if item.id == current then paint(b, C.selected, C.green, C.green) end
+            local selected = item.id == current
+            local b = button("Option_" .. index, list, "", 0, 0, 0, 40)
+            b.Size = UDim2.new(1, -2, 0, 40); b.LayoutOrder = index
+            local label = text("Label", b, item.label, 14, 0, 0, 40, item.color or C.white, 14, selected)
+            label.Size = UDim2.new(1, -56, 1, 0)
+            if selected then
+                paint(b, C.selected, C.white, C.green)
+                local _, mark = selectionIcon(b, true, 0, 0); mark.Position = UDim2.new(1, -38, 0.5, -12)
+            end
             b.Activated:Connect(function() access(); select(item.id); closePopup(); markDirty() end)
         end
     end
@@ -1031,26 +1138,24 @@ local function mountEggFilterPanel(context)
         local empty = scroll:FindFirstChild("Empty"); if empty then empty:Destroy() end
     end
     local function zonePicker()
-        if popup then closePopup(); return end
         local options = search.ZoneOptions()
         access()
-        if #options == 0 then
-            changeLabel.Text = "Esperando las zonas del juego..."; changeLabel.TextColor3 = C.muted
-            return
-        end
-        popup = make("Frame", "ZonePicker", root, { Position = UDim2.fromOffset(22, 150), Size = UDim2.fromOffset(494, 506), BackgroundColor3 = C.bg, BorderSizePixel = 0, ZIndex = 60 })
-        corner(popup, 12); stroke(popup, C.border)
-        text("Title", popup, "Elegir zonas", 16, 12, 364, 25, C.white, 18, true).ZIndex = 61
-        text("Hint", popup, string.format("%d zonas · aplica junto con la rareza y el mínimo.", #options), 16, 45, 462, 18, C.muted, 11).ZIndex = 61
-        local done = button("Done", popup, "Cerrar", 398, 10, 80, 34); done.ZIndex = 62
+        if #options == 0 then setMessage("Esperando la lista de zonas del juego..."); return end
+        local card = sheet("ZonePicker", "Zonas", 64, 580)
+        local counter = text("Hint", card, "", 18, 44, CONTENT - 36, 16, C.muted, 11)
+        local selectAll = button("SelectAll", card, "Todas", 18, 72, 110, 32)
+        local clearZones = button("ClearSelection", card, "Ninguna", 136, 72, 110, 32)
+        local list = listFrame(card, 116, 396)
+        text("Footer", card, "Se guardan al pulsar Aplicar filtros.", 18, 528, 300, 36, C.muted, 11)
+        local done = button("Done", card, "Listo", CONTENT - 18 - 120, 528, 120, 36); primary(done)
         done.Activated:Connect(function() access(); closePopup() end)
-        local selectAll = button("SelectAll", popup, "Todas", 16, 74, 100, 32); selectAll.ZIndex = 62
-        local clearZones = button("ClearSelection", popup, "Limpiar selección", 126, 74, 150, 32); clearZones.ZIndex = 62
-        local list = make("ScrollingFrame", "Zones", popup, { Position = UDim2.fromOffset(16, 118), Size = UDim2.fromOffset(462, 370), CanvasSize = UDim2.new(), AutomaticCanvasSize = Enum.AutomaticSize.Y, BackgroundTransparency = 1, ScrollBarThickness = 4, ScrollBarImageColor3 = C.muted, BorderSizePixel = 0, ZIndex = 61 })
-        make("UIListLayout", "Layout", list, { Padding = UDim.new(0, 5), SortOrder = Enum.SortOrder.LayoutOrder })
         local checks = {}
         local function refreshChecks()
             access()
+            local count = #selectionList()
+            counter.Text = allZones and "Todas las zonas: no se excluye ninguna."
+                or string.format("%d de %d zonas seleccionadas", count, #options)
+            counter.TextColor3 = (not allZones and count == 0) and C.red or C.muted
             for id, entry in pairs(checks) do
                 local selected = allZones or selection[id] == true
                 entry.check(selected)
@@ -1058,10 +1163,11 @@ local function mountEggFilterPanel(context)
             end
         end
         for index, option in ipairs(options) do
-            local b = button("Zone_" .. option.id, list, "", 0, 0, 450, 44)
-            b.ZIndex = 62; b.LayoutOrder = index
-            text("Name", b, option.label, 12, 9, 382, 26, C.white, 14, true).ZIndex = 63
-            checks[option.id] = {button = b, check = selectionIcon(b, false, 414, 10, 63, true)}
+            local b = button("Zone_" .. option.id, list, "", 0, 0, 0, 44)
+            b.Size = UDim2.new(1, -2, 0, 44); b.LayoutOrder = index
+            text("Name", b, option.label, 14, 0, 0, 44, C.white, 14, true).Size = UDim2.new(1, -60, 1, 0)
+            local update, mark = selectionIcon(b, false, 0, 0, nil, true); mark.Position = UDim2.new(1, -38, 0.5, -12)
+            checks[option.id] = {button = b, check = update}
             b.Activated:Connect(function()
                 access(); panel.SelectZone(option.id); refreshChecks()
             end)
@@ -1071,79 +1177,89 @@ local function mountEggFilterPanel(context)
         refreshChecks()
     end
     panel.OpenZones = function() access(); zonePicker() end
-    local function luminance(color)
-        local function linear(component)
-            return component <= 0.04045 and component / 12.92 or ((component + 0.055) / 1.055) ^ 2.4
-        end
-        return 0.2126 * linear(color.R) + 0.7152 * linear(color.G) + 0.0722 * linear(color.B)
-    end
-    local function rarityColor(rarity)
-        local color = type(rarity) == "table" and rarity.Color
-        if typeof(color) ~= "Color3" then return C.gold end
-        -- Preservar el tono oficial; Secret y colores oscuros necesitan mas contraste.
-        local background = math.max(luminance(C.card), luminance(C.selected), luminance(C.success))
-        color = color:Lerp(C.white, 0.25)
-        for _ = 1, 10 do
-            if (luminance(color) + 0.05) / (background + 0.05) >= 4.5 then break end
-            color = color:Lerp(C.white, 0.15)
-        end
-        return color
-    end
+    -- Motivo corto para la insignia; el detalle conserva la frase completa.
+    local SHORT_REASONS = {
+        ["Cumple todos los filtros"] = "Cumple", ["Rareza inferior al mínimo"] = "Rareza baja",
+        ["Zona excluida"] = "Otra zona", ["Nombre distinto"] = "Otro nombre",
+        ["Falta la mutación elegida"] = "Sin mutación", ["Ingreso inferior al mínimo"] = "Ingreso bajo",
+    }
     local function detail(row)
-        access(); closePopup()
-        popup = make("Frame", "EggDetail", root, {Position = UDim2.fromOffset(14, 192), Size = UDim2.fromOffset(512, 310),
-            BackgroundColor3 = C.input, BorderSizePixel = 0, ZIndex = 60})
-        corner(popup, 12); stroke(popup, C.border)
-        text("Title", popup, row.name, 16, 12, 384, 30, C.white, 18, true).ZIndex = 61
-        local dismiss = button("Dismiss", popup, "Cerrar", 416, 10, 80, 30); dismiss.ZIndex = 62
-        dismiss.Activated:Connect(function() access(); closePopup() end)
+        access()
+        local card = sheet("EggDetail", row.name, 120, 400)
+        local tags = text("Tags", card, "", 18, 44, CONTENT - 36, 18, C.muted, 12)
+        tags.RichText = true
+        tags.Text = string.format('<font color="%s"><b>%s</b></font>  ·  %s', hex(rarityColor(row.catalog and row.catalog.Rarity)),
+            escape(row.rarity), escape(zoneName(row.area)))
+        local verdict = make("Frame", "Verdict", card, { Position = UDim2.fromOffset(18, 74), Size = UDim2.fromOffset(CONTENT - 36, 40),
+            BackgroundColor3 = row.match and C.success or C.card, BorderSizePixel = 0 })
+        corner(verdict); stroke(verdict, row.match and C.green or C.border)
+        text("Text", verdict, row.match and "Cumple todos los filtros" or "No cumple: " .. string.lower(row.reason),
+            14, 0, CONTENT - 64, 40, row.match and C.green or C.white, 13, true)
         local value = row.income and string.format("%.17g", row.income) .. "/s" or "No disponible"
-        local content = row.reason .. "\n\nIngreso exacto: " .. value
-            .. "\nMínimo guardado: " .. string.format("%.17g", search.config.minIncome) .. "/s"
-            .. "\n" .. row.rarity .. " · " .. row.mutations .. "\nZona: " .. tostring(row.area or "No disponible")
-        local body = text("Explanation", popup, content, 14, 55, 478, 230, C.white, 15)
-        body.TextWrapped = true; body.TextTruncate = Enum.TextTruncate.None; body.TextYAlignment = Enum.TextYAlignment.Top; body.ZIndex = 61
+        local facts = {
+            {"Ingreso", row.income and number(row.income) .. "/s" or "No disponible"},
+            {"Ingreso exacto", value},
+            {"Mínimo guardado", search.FormatMinimum(search.config.minIncome) .. "/s"},
+            {"Tamaño y peso", string.format("x%.2f  ·  %s", row.scale or 1, row.weight)},
+            {"Mutaciones", row.mutations},
+            {"Zona", zoneName(row.area)},
+        }
+        for index, fact in ipairs(facts) do
+            local y = 126 + (index - 1) * 42
+            text("Label" .. index, card, fact[1], 18, y, 150, 42, C.muted, 12)
+            text("Value" .. index, card, fact[2], 172, y, CONTENT - 190, 42, C.white, 13, true)
+            if index < #facts then
+                make("Frame", "Divider" .. index, card, { Position = UDim2.fromOffset(18, y + 41), Size = UDim2.fromOffset(CONTENT - 36, 1),
+                    BackgroundColor3 = C.border, BackgroundTransparency = 0.5, BorderSizePixel = 0 })
+            end
+        end
     end
     local function createCard(row)
         local entry = {row = row}
-        local card = make("TextButton", "Card_" .. row.uid, scroll, {Size = UDim2.new(1, -12, 0, ROW_HEIGHT),
+        local card = make("TextButton", "Card_" .. row.uid, scroll, {Size = UDim2.new(1, -2, 0, ROW_HEIGHT),
             BackgroundColor3 = C.card, BorderSizePixel = 0, Text = "", AutoButtonColor = true})
-        entry.card = card; corner(card, 12); entry.border = stroke(card); interaction(card)
-        entry.box = make("Frame", "Visual", card, {Position = UDim2.fromOffset(10, 12), Size = UDim2.fromOffset(88, 88), BackgroundTransparency = 1, BorderSizePixel = 0})
+        entry.card = card; corner(card, 10); entry.border = stroke(card); interaction(card)
+        entry.box = make("Frame", "Visual", card, {Position = UDim2.fromOffset(12, 12), Size = UDim2.fromOffset(76, 76), BackgroundTransparency = 1, BorderSizePixel = 0})
         entry.image = make("ImageLabel", "EggImage", entry.box, {Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, ScaleType = Enum.ScaleType.Fit})
-        entry.name = text("Name", card, "", 110, 10, 326, 22, C.white, 15, true)
-        entry.name.Size = UDim2.new(1, -156, 0, 22)
-        entry.income = text("Income", card, "", 110, 36, 270, 24, C.white, 20, true)
-        entry.weight = text("SizeWeight", card, "", 110, 64, 270, 18, C.muted, 11)
-        entry.rarity = text("Rarity", card, "", 110, 88, 88, 16, C.gold, 10, true)
-        entry.mutations = text("MutationsArea", card, "", 202, 88, 274, 16, C.muted, 10)
-        entry.mutations.Size = UDim2.new(1, -216, 0, 16)
-        entry.match = text("Match", card, "", 0, 40, 76, 20, C.muted, 10, true)
-        entry.match.Position = UDim2.new(1, -86, 0, 40); entry.match.TextXAlignment = Enum.TextXAlignment.Right
-        local more = button("Detail", card, "Detalle", 0, 64, 76, 20)
-        more.Position = UDim2.new(1, -86, 0, 64); more.TextSize = 10
-        more.Activated:Connect(function() access(); detail(entry.row) end)
+        entry.name = text("Name", card, "", 100, 10, 0, 20, C.white, 15, true)
+        entry.name.Size = UDim2.new(1, -212, 0, 20)
+        entry.income = text("Income", card, "", 100, 32, 0, 24, C.white, 20, true)
+        entry.income.Size = UDim2.new(1, -212, 0, 24)
+        entry.weight = text("SizeWeight", card, "", 100, 58, 0, 16, C.muted, 11)
+        entry.weight.Size = UDim2.new(1, -136, 0, 16)
+        entry.tags = text("Tags", card, "", 100, 76, 0, 16, C.muted, 11)
+        entry.tags.Size = UDim2.new(1, -136, 0, 16); entry.tags.RichText = true
+        entry.badge = make("Frame", "Badge", card, {Position = UDim2.new(1, -104, 0, 10), Size = UDim2.fromOffset(92, 22), BorderSizePixel = 0})
+        corner(entry.badge, 11); entry.badgeBorder = stroke(entry.badge)
+        entry.match = text("Match", entry.badge, "", 0, 0, 92, 22, C.muted, 10, true)
+        entry.match.TextXAlignment = Enum.TextXAlignment.Center
+        local open = make("Frame", "Open", card, {Position = UDim2.new(1, -28, 0, 60), Size = UDim2.fromOffset(16, 16), BackgroundTransparency = 1})
+        line(open, "Upper", 8, 5, 7, 45, C.muted); line(open, "Lower", 8, 10, 7, -45, C.muted)
         card.Activated:Connect(function() access(); detail(entry.row) end)
         panel.stats.created += 1
         return entry
     end
     local function updateCard(entry, row, index)
         access(); entry.row = row
-        entry.card.LayoutOrder = index; entry.card.Position = UDim2.fromOffset(2, (index - 1) * (ROW_HEIGHT + ROW_GAP) + 2)
+        entry.card.LayoutOrder = index; entry.card.Position = UDim2.fromOffset(0, (index - 1) * (ROW_HEIGHT + ROW_GAP))
         local key = row.key .. tostring(row.match) .. row.reason .. row.mutations
             .. tostring(row.weight) .. tostring(row.eggIcon) .. visual
         if entry.key == key and (visual ~= "models" or entry.viewport or not data.assetModels) then return end
         entry.key = key; panel.stats.updated += 1
         entry.card.Name = "Card_" .. row.uid
         entry.card.BackgroundColor3 = row.match and C.success or C.card
-        entry.border.Color = row.match and C.green or C.border; entry.border.Thickness = row.match and 2 or 1
+        entry.border.Color = row.match and C.green or C.border; entry.border.Thickness = row.match and 1.5 or 1
         entry.name.Text = row.name; entry.name.TextColor3 = C.white
-        entry.rarity.Text = row.rarity; entry.rarity.TextColor3 = rarityColor(row.catalog and row.catalog.Rarity)
         entry.income.Text = (row.income and number(row.income) or "?") .. "/s"
         entry.income.TextColor3 = row.match and C.green or C.white
         entry.weight.Text = string.format("x%.2f  ·  %s", row.scale or 1, row.weight)
-        entry.mutations.Text = row.mutations .. (row.area and " · " .. tostring(row.area) or "")
-        entry.match.Text = row.match and "CUMPLE" or "FUERA"; entry.match.TextColor3 = row.match and C.green or C.muted
+        entry.tags.Text = string.format('<font color="%s"><b>%s</b></font>  ·  %s  ·  %s',
+            hex(rarityColor(row.catalog and row.catalog.Rarity)), escape(row.rarity), escape(row.mutations), escape(zoneName(row.area)))
+        entry.match.Text = row.match and "Cumple" or (SHORT_REASONS[row.reason] or "Sin datos")
+        entry.match.TextColor3 = row.match and C.onSuccess or C.muted
+        entry.badge.BackgroundColor3 = row.match and C.green or C.input
+        entry.badge.BackgroundTransparency = row.match and 0 or 0.2
+        entry.badgeBorder.Color = row.match and C.green or C.border
         local catalog = row.catalog or {}
         entry.image.Image = (visual == "pets" and catalog.Icon or row.eggIcon or (catalog.Egg and catalog.Egg.Icon)) or ""
         entry.image.Visible = true
@@ -1183,8 +1299,10 @@ local function mountEggFilterPanel(context)
         local snapshot = search.MapSnapshot()
         local modules = search.modules
         local rows, active, fingerprints = {}, {}, {tostring(sortBest), tostring(onlyMatches), search.RecordKey(search.config)}
+        local total, matches = 0, 0
         for _, item in ipairs(snapshot.rows or {}) do
             active[item.uid] = true
+            total += 1; if item.match then matches += 1 end
             if not onlyMatches or item.match then
                 local row = metadata[item.uid]
                 if not row or row.key ~= item.key or row.labelModule ~= data.mutations then
@@ -1223,7 +1341,8 @@ local function mountEggFilterPanel(context)
             end)
             orderedRows, rowsKey = rows, key
         end
-        access(); panel.cards = #orderedRows
+        access(); panel.cards = #orderedRows; panel.matches = matches
+        tabMap.Text = string.format("Todos  %d", total); tabCatalog.Text = string.format("Cumplen  %d", matches)
         scroll.CanvasSize = UDim2.fromOffset(0, math.max(0, #orderedRows * (ROW_HEIGHT + ROW_GAP) + 4))
         local first = math.max(1, math.floor(scroll.CanvasPosition.Y / math.max(0.1, scale.Scale) / (ROW_HEIGHT + ROW_GAP)) - 1)
         local last = math.min(#orderedRows, first + math.ceil(scroll.AbsoluteSize.Y / math.max(0.1, scale.Scale) / (ROW_HEIGHT + ROW_GAP)) + 3)
@@ -1241,9 +1360,13 @@ local function mountEggFilterPanel(context)
         panel.stats.rendered = rendered
         local empty = scroll:FindFirstChild("Empty")
         if #orderedRows == 0 then
-            if not empty then empty = text("Empty", scroll, "", 0, 0, 494, 130, C.muted, 16); empty.TextWrapped = true; empty.TextXAlignment = Enum.TextXAlignment.Center end
-            empty.Text = not snapshot.info.ready and (snapshot.info.reason or "Esperando datos del mapa")
-                or onlyMatches and "Ningún huevo disponible cumple zona, rareza y mínimo." or "No hay spawns disponibles en el mapa."
+            if not empty then
+                empty = paragraph("Empty", scroll, "", 24, 40, 440, 90, C.muted, 13)
+                empty.TextXAlignment = Enum.TextXAlignment.Center
+            end
+            empty.Text = not snapshot.info.ready and sentence(snapshot.info.reason or "esperando datos del mapa") .. "."
+                or onlyMatches and "Ningún huevo del mapa cumple todos los filtros.\nPrueba con un ingreso menor, más zonas o pulsa Todos para ver el mapa completo."
+                or "No hay huevos disponibles en el mapa ahora."
         elseif empty then empty:Destroy() end
         panel.stats.lastMs = (os.clock() - started) * 1000
     end
@@ -1262,70 +1385,73 @@ local function mountEggFilterPanel(context)
     function panel.LoadPreset(name)
         local config = api.LoadPreset(name)
         access(); setDraft(config); markDirty(); closePopup()
+        setMessage("Preset «" .. tostring(name) .. "» cargado. Pulsa Aplicar filtros para usarlo.", C.gold)
         return config
     end
     function panel.SavePreset(name)
         access()
         local minimum = search.ParseMinimum(income.Text)
-        assert(minimum, "Mínimo inválido: usa 500k, 25m o 7.5b")
-        assert(allZones or #selectionList() > 0, "Selecciona al menos una zona")
+        assert(minimum, "Ingreso mínimo inválido; usa 500k, 25m o 7.5b")
+        assert(allZones or #selectionList() > 0, "Elige al menos una zona")
         return api.SavePreset(name, {rarity = draft.rarity, minIncome = minimum, mutation = draft.mutation,
             nameContains = nameBox.Text, zones = selectionList()})
     end
-    function panel.OpenOptions()
-        access(); closePopup()
-        popup = make("Frame", "FinderOptions", root, {Position = UDim2.fromOffset(14, 124), Size = UDim2.fromOffset(512, 524),
-            BackgroundColor3 = C.input, BorderSizePixel = 0, ZIndex = 60})
-        corner(popup, 12); stroke(popup, C.border)
-        text("Title", popup, "Presets y alertas", 16, 8, 384, 30, C.white, 18, true).ZIndex = 61
-        local dismiss = button("Dismiss", popup, "Cerrar", 416, 8, 80, 30); dismiss.ZIndex = 62
-        dismiss.Activated:Connect(function() access(); closePopup() end)
-        local message = text("Message", popup, "Cargar un preset deja cambios pendientes de aplicar.", 12, 45, 486, 34, C.muted, 12)
-        message.TextWrapped = true; message.ZIndex = 61
-        local name = make("TextBox", "PresetName", popup, {Position = UDim2.fromOffset(12, 86), Size = UDim2.fromOffset(300, 32),
-            Text = "", PlaceholderText = "Nombre del preset", ClearTextOnFocus = false, Font = Enum.Font.GothamMedium,
-            TextSize = 14, TextColor3 = C.white, BackgroundColor3 = C.card, BorderSizePixel = 0, ZIndex = 62})
-        corner(name)
-        local savePreset = button("SavePreset", popup, "Guardar filtros", 324, 86, 174, 32, C.gold); savePreset.ZIndex = 62
-        paint(savePreset, C.gold, C.onAccent, C.gold)
-        local list = make("ScrollingFrame", "Presets", popup, {Position = UDim2.fromOffset(12, 130), Size = UDim2.fromOffset(486, 240),
-            AutomaticCanvasSize = Enum.AutomaticSize.Y, CanvasSize = UDim2.new(), BackgroundTransparency = 1,
-            ScrollBarThickness = 4, BorderSizePixel = 0, ZIndex = 61})
-        make("UIListLayout", "Layout", list, {Padding = UDim.new(0, 6)})
+    local function caption(parent, value, y) text("Section", parent, value, 18, y, CONTENT - 36, 16, C.muted, 11, true) end
+    function panel.OpenOptions(notice)
+        access()
+        local card = sheet("FinderOptions", "Opciones", 60, 590)
+        caption(card, "PRESETS", 54)
+        local name = field("PresetName", card, "", "Nombre del preset", 18, 76, 296, 36)
+        local savePreset = button("SavePreset", card, "Guardar actuales", 322, 76, 156, 36); primary(savePreset)
+        local message = paragraph("Message", card, notice or "Guarda los filtros del formulario. Al cargar uno, pulsa Aplicar filtros para usarlo.",
+            18, 120, CONTENT - 36, 30, C.muted, 11)
+        local list = listFrame(card, 156, 214)
         local function result(callback)
             local ok, err = pcall(callback); access()
-            if not ok and popup then message.Text = tostring(err); message.TextColor3 = C.red end
+            if not ok and popup then message.Text = sentence(err); message.TextColor3 = C.red end
             return ok
         end
-        for index, preset in ipairs(api.Presets()) do
-            local row = make("Frame", "Preset_" .. index, list, {Size = UDim2.new(1, -6, 0, 46), BackgroundColor3 = C.card, BorderSizePixel = 0, ZIndex = 62})
-            text("Name", row, preset.name, 8, 5, 280, 18, C.white, 14).ZIndex = 63
+        local presets = api.Presets()
+        for index, preset in ipairs(presets) do
+            local row = make("Frame", "Preset_" .. index, list, {Size = UDim2.new(1, -2, 0, 52), BackgroundColor3 = C.card, BorderSizePixel = 0, LayoutOrder = index})
+            corner(row); stroke(row).Transparency = 0.45
+            text("Name", row, preset.name, 14, 8, 0, 18, C.white, 14, true).Size = UDim2.new(1, -196, 0, 18)
             local minimum = tonumber(preset.config.minIncome)
-            local summary = minimum and minimum > 0 and minimum < math.huge and search.FormatMinimum(minimum) or "inválido"
-            text("Summary", row, tostring(preset.config.rarity or "Sin rareza") .. "+ · ≥ " .. summary .. "/s", 8, 24, 280, 16, C.muted, 11).ZIndex = 63
-            local load = button("Load", row, "Cargar", 290, 8, 82, 30); load.ZIndex = 63
-            local delete = button("Delete", row, "Borrar", 380, 8, 86, 30); delete.ZIndex = 63
+            local summary = minimum and minimum > 0 and minimum < math.huge and search.FormatMinimum(minimum) .. "/s" or "ingreso inválido"
+            local zones = type(preset.config.zones) == "table" and preset.config.zones or {}
+            text("Summary", row, string.format("%s+  ·  desde %s  ·  %s", tostring(preset.config.rarity or "Sin rareza"), summary,
+                zonesText(zones, #zones == 0)), 14, 28, 0, 16, C.muted, 11).Size = UDim2.new(1, -196, 0, 16)
+            local load = button("Load", row, "Cargar", 0, 10, 82, 32); load.Position = UDim2.new(1, -176, 0, 10)
+            local delete = button("Delete", row, "Borrar", 0, 10, 82, 32); delete.Position = UDim2.new(1, -88, 0, 10)
+            delete.TextColor3 = C.red
             load.Activated:Connect(function() access(); result(function() panel.LoadPreset(preset.name) end) end)
-            delete.Activated:Connect(function() access(); if result(function() api.DeletePreset(preset.name) end) then panel.OpenOptions() end end)
+            delete.Activated:Connect(function() access(); if result(function() api.DeletePreset(preset.name) end) then panel.OpenOptions("Preset borrado.") end end)
         end
-        if #api.Presets() == 0 then text("Empty", list, "Todavía no hay presets. Guarda los filtros de arriba.", 4, 10, 470, 40, C.muted, 13).ZIndex = 62 end
-        savePreset.Activated:Connect(function() access(); if result(function() panel.SavePreset(name.Text) end) then panel.OpenOptions() end end)
+        if #presets == 0 then paragraph("Empty", list, "Todavía no hay presets. Escribe un nombre y pulsa Guardar actuales.", 4, 12, 440, 40, C.muted, 12) end
+        savePreset.Activated:Connect(function() access(); if result(function() panel.SavePreset(name.Text) end) then panel.OpenOptions("Preset guardado.") end end)
+        caption(card, "ALERTAS", 384)
         local settings = api.Alerts()
-        local notification = button("Notification", popup, "Notificación: " .. (settings.notification and "ON" or "OFF"), 12, 390, 234, 34); notification.ZIndex = 62
-        local sound = button("Sound", popup, "Sonido: " .. (settings.sound and "ON" or "OFF"), 258, 390, 240, 34); sound.ZIndex = 62
+        local function toggle(nameValue, label, enabled, x)
+            local b = button(nameValue, card, label .. (enabled and ": activada" or ": desactivada"), x, 406, 226, 38)
+            if enabled then paint(b, C.selected, C.green, C.green) else paint(b, C.card, C.muted, C.border) end
+            return b
+        end
+        local notification = toggle("Notification", "Notificación", settings.notification, 18)
+        local sound = toggle("Sound", "Sonido", settings.sound, 252)
         notification.Activated:Connect(function() access(); if result(function() api.ConfigureAlerts({notification = not settings.notification}) end) then panel.OpenOptions() end end)
         sound.Activated:Connect(function() access(); if result(function() api.ConfigureAlerts({sound = not settings.sound}) end) then panel.OpenOptions() end end)
-        local test = button("TestAlert", popup, "Probar alerta", 12, 436, 234, 44); test.ZIndex = 62
+        local test = button("TestAlert", card, "Probar alerta", 18, 452, 226, 38)
         test.Activated:Connect(function() access(); result(api.TestAlert) end)
+        paragraph("AlertHint", card, "Al encontrar un objetivo se avisa y AUTO se detiene.", 252, 452, 226, 38, C.muted, 11).TextYAlignment = Enum.TextYAlignment.Center
         if type(api.OpenServerAccount) == "function" then
-            local account = button("ServerAccount", popup, "Cuenta / Best Ping", 258, 436, 240, 44); account.ZIndex = 62
+            caption(card, "SERVIDORES", 506)
+            local account = button("ServerAccount", card, "Cuenta y Best Ping", 18, 528, CONTENT - 36, 40)
             account.Activated:Connect(function() access(); closePopup(); api.OpenServerAccount() end)
         end
-        text("AlertHint", popup, "Las alertas se emiten al encontrar un objetivo; AUTO se detiene.", 12, 482, 486, 30, C.muted, 11).ZIndex = 61
     end
-    connect(optionsButton.Activated, panel.OpenOptions)
+    connect(optionsButton.Activated, function() panel.OpenOptions() end)
     function panel.GetStatus()
-        access(); return { open = panel.open, view = "map", onlyMatches = onlyMatches, cards = panel.cards, dirty = dirty, error = panel.error,
+        access(); return { open = panel.open, view = "map", onlyMatches = onlyMatches, cards = panel.cards, matches = panel.matches, dirty = dirty, error = panel.error,
             selected = selectionList(), allZones = allZones, visual = visual, sortBest = sortBest, position = {x = root.AbsolutePosition.X, y = root.AbsolutePosition.Y},
             size = {x = root.AbsoluteSize.X, y = root.AbsoluteSize.Y}, scale = scale.Scale,
             stats = table.clone(panel.stats), resources = {mutations = data.mutations ~= nil, models = data.assetModels ~= nil} }
@@ -1349,35 +1475,36 @@ local function mountEggFilterPanel(context)
     end)
     connect(filterToggle.Activated, function() filtersOpen = not filtersOpen; layout(); save() end)
     connect(apply.Activated, panel.Apply)
-    connect(clear.Activated, function() selection = {}; allZones = true; markDirty(); closePopup() end)
     connect(income:GetPropertyChangedSignal("Text"), function()
         local minimum = search.ParseMinimum(income.Text)
         access()
         if minimum ~= draft.minIncome then markDirty() end
     end)
-    for _, field in ipairs({income, nameBox}) do
-        connect(field.Focused, function() field.Border.Color = C.gold; field.Border.Thickness = 1.5 end)
-        connect(field.FocusLost, function() field.Border.Color = C.border; field.Border.Thickness = 1 end)
+    for _, input in ipairs({income, nameBox}) do
+        connect(input.Focused, function() input.Border.Color = C.gold; input.Border.Transparency = 0; input.Border.Thickness = 1.5 end)
+        connect(input.FocusLost, function() input.Border.Color = C.border; input.Border.Thickness = 1 end)
     end
     connect(nameBox:GetPropertyChangedSignal("Text"), function()
         if nameBox.Text ~= draft.nameContains then markDirty() end
     end)
     connect(chooseZones.Activated, function() panel.OpenZones() end)
-    connect(tabCatalog.Activated, function() onlyMatches = not onlyMatches; signature = nil; save() end)
-    connect(tabMap.Activated, function() onlyMatches = false; signature = nil; save() end)
-    connect(sortButton.Activated, function() sortBest = not sortBest; sortButton.Text = sortBest and "Rareza ↓" or "Nombre A–Z"; signature = nil; save() end)
+    connect(tabCatalog.Activated, function() panel.SetOnlyMatches(true) end)
+    connect(tabMap.Activated, function() panel.SetOnlyMatches(false) end)
+    connect(sortButton.Activated, function() panel.SetSortBest(not sortBest) end)
     connect(visualButton.Activated, function() panel.SetVisual(visual == "eggs" and "pets" or visual == "pets" and "models" or "eggs") end)
     connect(rarityButton.Activated, function()
-        if not search.modules then return end
+        if not search.modules then setMessage("Cargando las rarezas del juego..."); return end
         local options = search.RarityOptions()
-        dropdown(rarityButton, options, function(id) draft.rarity = id; rarityButton.Text = id end)
+        local rarities = search.modules.rarities and search.modules.rarities.Rarities or {}
+        for _, option in ipairs(options) do option.color = rarityColor(rarities[option.id], C.white) end
+        dropdown("rarity", options, draft.rarity, function(id) draft.rarity = id; rarityButton.Text = id end)
     end)
     connect(mutationButton.Activated, function()
-        if not data then return end
+        if not data.mutations then setMessage("Cargando las mutaciones del juego..."); return end
         local options = {}; for id in pairs(data.mutations.IdSet) do table.insert(options, { id = id, label = data.mutations.LabelOf(id) }) end
         table.sort(options, function(a, b) return a.label < b.label end)
         table.insert(options, 1, { id = "", label = "Todas las mutaciones" })
-        dropdown(mutationButton, options, function(id)
+        dropdown("mutation", options, draft.mutation, function(id)
             draft.mutation = id
             local label = id == "" and "Todas" or data.mutations.LabelOf(id)
             access(); mutationButton.Text = label
@@ -1420,32 +1547,38 @@ local function mountEggFilterPanel(context)
             local status = api.GetStatus()
             access()
             if not dirty and not sameConfig(draft, status.config) then setDraft(status.config) end
-            auto.Text = status.active and "AUTO: ON" or "AUTO: OFF"
+            local config = status.config
+            auto.Text = status.active and "AUTO ON" or "AUTO OFF"
             paint(auto, status.active and C.green or C.card, status.active and C.onSuccess or C.muted, status.active and C.green or C.border)
-            visualButton.Text = visual == "eggs" and "Huevos" or visual == "pets" and "Criaturas" or "Modelos 3D"
-            sortButton.Text = sortBest and "Rareza ↓" or "Nombre A–Z"
-            tabCatalog.Text = onlyMatches and "Solo filtro: ON" or "Solo filtro: OFF"
+            autoDot.BackgroundColor3 = status.active and C.onSuccess or C.muted
+            visualButton.Text = visual == "eggs" and "Ver: Huevos" or visual == "pets" and "Ver: Criaturas" or "Ver: Modelos 3D"
+            sortButton.Text = sortBest and "Orden: Rareza" or "Orden: Nombre"
             paint(tabCatalog, onlyMatches and C.selected or C.card, onlyMatches and C.green or C.muted, onlyMatches and C.green or C.border)
             paint(tabMap, not onlyMatches and C.selected or C.card, not onlyMatches and C.green or C.muted, not onlyMatches and C.green or C.border)
-            foot.Text = dirty and "Cambios sin aplicar · AUTO usa los filtros guardados."
-                or "Alt izquierdo: abrir/cerrar · CUMPLE exige zona, rareza e ingreso."
+            local summary = string.format("%s+  ·  desde %s/s", config.rarity, search.FormatMinimum(config.minIncome))
+            filterSummary.Text = string.format("%s  ·  %s", summary, zonesText(config.zones, #config.zones == 0))
             local cycle = status.cycle
             local info = status.lastScan and status.lastScan.info or {}
-            tabMap.Text = string.format("Mapa · %d", info.count or 0)
-            local scope = #status.config.zones > 0 and "tus zonas" or "el mapa"
-            local titles = { wait = "Esperando " .. status.config.rarity .. "+ en " .. scope, hop = "Buscando otro servidor", loading = "Esperando renovación / datos", match = "Objetivo encontrado", stopped = "Búsqueda detenida" }
-            stateTitle.Text = titles[status.mode] or "Escaneando mapa"
+            local scope = #config.zones > 0 and "tus zonas" or "el mapa"
+            local titles = { wait = "Esperando " .. config.rarity .. "+", hop = "Buscando otro servidor", loading = "Leyendo el mapa",
+                match = "Objetivo encontrado", stopped = "Búsqueda detenida" }
+            stateTitle.Text = titles[status.mode] or "Revisando el mapa"
             stateTitle.TextColor3 = status.mode == "match" and C.green or C.white
             stateDot.BackgroundColor3 = status.mode == "match" and C.green or status.mode == "hop" and C.gold or status.active and C.cyan or C.muted
-            stateDetail.Text = string.format("%s+ · ≥ %s/s · mapa %d · en %s %d", status.config.rarity, number(status.config.minIncome), info.count or 0, scope, info.rarityCount or 0)
-            if status.mode == "hop" and info.continuingCycle then
-                stateDetail.Text = status.config.rarity .. "+ observado en " .. scope .. " · no está aquí; sigo buscando"
-            end
-            if status.mode == "loading" and info.reason then stateDetail.Text = info.reason end
+            local details = {
+                wait = string.format("Ninguno en %s. Se revisa al renovarse.", scope),
+                hop = info.continuingCycle and "Ya apareció en este ciclo; aquí no está. Sigo buscando."
+                    or string.format("%d %s+ en %s, ninguno cumple los filtros.", info.rarityCount or 0, config.rarity, scope),
+                loading = sentence(info.reason or "esperando datos del mapa") .. ".",
+                match = "AUTO se detuvo. Revisa la lista de los que cumplen.",
+                stopped = "Pulsa AUTO para buscar " .. summary .. ".",
+            }
+            stateDetail.Text = details[status.mode] or string.format("%d huevos en el mapa  ·  %d %s+ en %s", info.count or 0, info.rarityCount or 0, config.rarity, scope)
             if cycle then
-                local seconds = math.ceil(cycle.secondsUntilReset)
-                clock.Text = cycle.night and "RENOVANDO" or string.format("RESET %d:%02d", math.floor(seconds / 60), seconds % 60)
-                if not cycle.running then clock.Text = "CICLO PAUSADO" end
+                local seconds = math.max(0, math.ceil(cycle.secondsUntilReset))
+                clockCaption.Text = "Renovación en"; clock.Text = string.format("%d:%02d", math.floor(seconds / 60), seconds % 60)
+                if cycle.night then clockCaption.Text = "Huevos"; clock.Text = "Renovando" end
+                if not cycle.running then clockCaption.Text = "Ciclo"; clock.Text = "En pausa" end
             end
             if panel.open then fit(); buildCards() end
             end)
@@ -2243,17 +2376,19 @@ do
     local API_429_COOLDOWN_SECONDS = 30   -- castigo tras un HTTP 429
     local AUTO_POLL_SECONDS = 0.5
 
+    -- Misma paleta grafito/champan del Egg Finder; el rojo queda solo en la accion.
     local COLORS = {
-        border = Color3.fromRGB(28, 14, 20),
-        redTop = Color3.fromRGB(247, 120, 118),
-        redMid = Color3.fromRGB(231, 62, 66),
-        redBottom = Color3.fromRGB(184, 18, 24),
-        text = Color3.fromRGB(255, 255, 255),
-        textShadow = Color3.fromRGB(58, 12, 24),
-        textStroke = Color3.fromRGB(34, 10, 22),
-        muted = Color3.fromRGB(214, 196, 200),
-        green = Color3.fromRGB(88, 226, 150),
-        amber = Color3.fromRGB(255, 196, 92),
+        surface = Color3.fromRGB(20, 24, 30),
+        raised = Color3.fromRGB(30, 36, 44),
+        border = Color3.fromRGB(56, 65, 77),
+        action = Color3.fromRGB(192, 57, 66),
+        actionBorder = Color3.fromRGB(232, 120, 126),
+        text = Color3.fromRGB(239, 243, 247),
+        muted = Color3.fromRGB(170, 183, 197),
+        gold = Color3.fromRGB(224, 197, 149),
+        green = Color3.fromRGB(147, 215, 191),
+        onGreen = Color3.fromRGB(15, 35, 29),
+        amber = Color3.fromRGB(242, 190, 122),
     }
 
     -- ---------------------------------------------------------------- utilidades
@@ -2614,8 +2749,8 @@ do
     local uiState = readJson(UI_FILE, {})
     local collapsed = (uiState.collapsed == true)
     local autoEnabled = (uiState.auto == true)
-    local EXPANDED_SIZE = Vector2.new(340, 114)
-    local COLLAPSED_SIZE = Vector2.new(210, 60)
+    local EXPANDED_SIZE = Vector2.new(320, 116)
+    local COLLAPSED_SIZE = Vector2.new(232, 66)
     local savedPosition = UDim2.new(0.5, 0, 0, 26)
     if type(uiState.pos) == "table" then
         local pos = uiState.pos
@@ -2625,6 +2760,8 @@ do
         end
     end
 
+    -- Tarjeta grafito: AUTO, accion principal y plegado comparten una fila;
+    -- estado y firma tienen filas propias para que ningun texto se encime.
     local holder = Instance.new("Frame")
     holder.Name = "Holder"
     holder.AnchorPoint = Vector2.new(0.5, 0)
@@ -2633,138 +2770,94 @@ do
         collapsed and COLLAPSED_SIZE.X or EXPANDED_SIZE.X,
         collapsed and COLLAPSED_SIZE.Y or EXPANDED_SIZE.Y
     )
-    holder.BackgroundColor3 = COLORS.border
+    holder.BackgroundColor3 = COLORS.surface
     holder.BorderSizePixel = 0
     holder.Active = true
     holder.Parent = screenGui
 
-    local holderCorner = Instance.new("UICorner")
-    holderCorner.CornerRadius = UDim.new(0, 15)
-    holderCorner.Parent = holder
+    local function round(object, radius)
+        local corner = Instance.new("UICorner")
+        corner.CornerRadius = UDim.new(0, radius)
+        corner.Parent = object
+    end
+    local function outline(object, color, transparency)
+        local stroke = Instance.new("UIStroke")
+        stroke.Name = "Border"
+        stroke.Color = color
+        stroke.Transparency = transparency or 0
+        stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+        stroke.Parent = object
+        return stroke
+    end
+    local function label(name, parent, size, color, bold)
+        local item = Instance.new("TextLabel")
+        item.Name = name
+        item.BackgroundTransparency = 1
+        item.Font = bold and Enum.Font.GothamBold or Enum.Font.GothamMedium
+        item.Text = ""
+        item.TextSize = size
+        item.TextColor3 = color
+        item.TextStrokeTransparency = 1
+        item.TextTruncate = Enum.TextTruncate.AtEnd
+        item.Parent = parent
+        return item
+    end
+    -- Chevron de dos segmentos: no depende de glifos de la fuente.
+    local function chevronSegments(parent)
+        local segments = {}
+        for index = 1, 2 do
+            local segment = Instance.new("Frame")
+            segment.Name = "Chevron" .. index
+            segment.AnchorPoint = Vector2.new(0.5, 0.5)
+            segment.Size = UDim2.fromOffset(7, 1.5)
+            segment.BackgroundColor3 = COLORS.muted
+            segment.BorderSizePixel = 0
+            segment.Position = UDim2.new(0.5, index == 1 and -2.5 or 2.5, 0.5, 0)
+            segment.Parent = parent
+            segments[index] = segment
+        end
+        return segments
+    end
+    round(holder, 14)
+    outline(holder, COLORS.border)
 
     local button = Instance.new("TextButton")
     button.Name = "ServerHop"
-    button.AutoButtonColor = false
+    button.AutoButtonColor = true
     button.Text = ""
-    button.Size = UDim2.new(1, -6, 0, collapsed and 36 or 80)
-    button.Position = UDim2.fromOffset(3, 3)
-    button.BackgroundColor3 = COLORS.redMid
+    button.BackgroundColor3 = COLORS.action
+    button.BorderSizePixel = 0
     button.Parent = holder
+    round(button, 10)
+    outline(button, COLORS.actionBorder, 0.55)
 
-    local buttonCorner = Instance.new("UICorner")
-    buttonCorner.CornerRadius = UDim.new(0, 12)
-    buttonCorner.Parent = button
+    local mainLabel = label("Label", button, 18, COLORS.text, true)
+    mainLabel.Text = "Server Hop"
+    mainLabel.Position = UDim2.fromOffset(8, 0)
+    mainLabel.Size = UDim2.new(1, -16, 1, 0)
 
-    local gradient = Instance.new("UIGradient")
-    gradient.Rotation = 90
-    gradient.Color = ColorSequence.new({
-        ColorSequenceKeypoint.new(0, COLORS.redTop),
-        ColorSequenceKeypoint.new(0.45, COLORS.redMid),
-        ColorSequenceKeypoint.new(1, COLORS.redBottom),
-    })
-    gradient.Parent = button
-
-    local topShine = Instance.new("Frame")
-    topShine.Name = "Shine"
-    topShine.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
-    topShine.BackgroundTransparency = 0.82
-    topShine.BorderSizePixel = 0
-    topShine.Size = UDim2.new(1, -15, 0, 16)
-    topShine.Position = UDim2.fromOffset(8, 5)
-    topShine.ZIndex = 2
-    topShine.Parent = button
-
-    local shineCorner = Instance.new("UICorner")
-    shineCorner.CornerRadius = UDim.new(1, 0)
-    shineCorner.Parent = topShine
-
-    local TITLE_FONT = Enum.Font.GothamBlack
-    do
-        local ok, font = pcall(function()
-            return Enum.Font.FredokaOne
-        end)
-        if ok and font then
-            TITLE_FONT = font
-        end
-    end
-
-    local function makeText(name, color, zIndex)
-        local label = Instance.new("TextLabel")
-        label.Name = name
-        label.BackgroundTransparency = 1
-        label.Size = UDim2.fromScale(1, 1)
-        label.Font = TITLE_FONT
-        label.Text = "Server Hop"
-        label.TextSize = 34
-        label.TextColor3 = color
-        label.TextStrokeTransparency = 1
-        label.TextXAlignment = Enum.TextXAlignment.Center
-        label.TextYAlignment = Enum.TextYAlignment.Center
-        label.ZIndex = zIndex
-        label.Parent = button
-        return label
-    end
-
-    -- El trazo nativo del texto es fino (TextStrokeSize no existe en esta version
-    -- de Roblox), asi que el contorno grueso de la captura se hace con copias
-    -- desplazadas alrededor, siempre por debajo del texto blanco.
-    local OUTLINE_OFFSETS = {
-        Vector2.new(-2, 0), Vector2.new(2, 0), Vector2.new(0, -2), Vector2.new(0, 2),
-        Vector2.new(-1, -1), Vector2.new(1, -1), Vector2.new(-1, 1), Vector2.new(1, 1),
-    }
-
-    local outlineLabels = {}
-    for index, offset in ipairs(OUTLINE_OFFSETS) do
-        local outline = makeText("Outline" .. tostring(index), COLORS.textStroke, 3)
-        outline.Position = UDim2.fromOffset(offset.X, offset.Y)
-        table.insert(outlineLabels, outline)
-    end
-
-    local mainLabel = makeText("Label", COLORS.text, 4)
-    mainLabel.TextStrokeTransparency = 0
-    mainLabel.TextStrokeColor3 = COLORS.textStroke
-
-    local statusLabel = Instance.new("TextLabel")
-    statusLabel.Name = "Status"
-    statusLabel.BackgroundTransparency = 1
-    statusLabel.Size = UDim2.new(1, -10, 0, 16)
-    statusLabel.Position = UDim2.fromOffset(5, 78)
-    statusLabel.Font = Enum.Font.GothamMedium
-    statusLabel.Text = ""
-    statusLabel.TextSize = 12
-    statusLabel.TextColor3 = COLORS.muted
-    statusLabel.TextXAlignment = Enum.TextXAlignment.Center
-    statusLabel.Parent = holder
+    local statusLabel = label("Status", holder, 11, COLORS.muted)
+    statusLabel.Position = UDim2.fromOffset(14, 62)
+    statusLabel.Size = UDim2.new(1, -28, 0, 30)
+    statusLabel.TextWrapped = true
 
     -- La firma tiene su propia fila en ambas versiones; no tapa AUTO ni estado.
-    local creditLabel = Instance.new("TextLabel")
-    creditLabel.Name = "ByMistakeCredit"
+    local creditLabel = label("ByMistakeCredit", holder, 10, COLORS.gold)
     creditLabel.AnchorPoint = Vector2.new(0.5, 1)
-    creditLabel.Position = UDim2.new(0.5, 0, 1, -4)
-    creditLabel.Size = UDim2.new(1, -16, 0, 14)
-    creditLabel.BackgroundTransparency = 1
-    creditLabel.Font = Enum.Font.GothamMedium
+    creditLabel.Position = UDim2.new(0.5, 0, 1, -6)
+    creditLabel.Size = UDim2.new(1, -24, 0, 12)
     creditLabel.Text = "By Mistake"
-    creditLabel.TextSize = 11
-    creditLabel.TextColor3 = COLORS.muted
-    creditLabel.TextStrokeTransparency = 1
+    creditLabel.TextTransparency = 0.25
     creditLabel.Active = false
     creditLabel.Selectable = false
-    creditLabel.ZIndex = 5
-    creditLabel.Parent = holder
 
     local function setLabel(text)
         if not session.alive then return end
-        if not session.alive then return end
         uiAccess()
         mainLabel.Text = text
-        for _, outline in ipairs(outlineLabels) do
-            outline.Text = text
-        end
     end
 
     local function setStatus(text, color)
-        if not session.alive then return end
         if not session.alive then return end
         uiAccess()
         statusLabel.Text = text
@@ -2778,18 +2871,14 @@ do
 
     local function setBusy(value)
         if not session.alive then return end
-        if not session.alive then return end
         uiAccess()
         busy = value
-        local target = value and 0.55 or 0
         TweenService:Create(button, TweenInfo.new(0.15), {
-            BackgroundTransparency = target,
+            BackgroundTransparency = value and 0.5 or 0,
         }):Play()
     end
 
     -- ------------------------------------------------- estado de la ventana
-    local ARROW_DOWN = "\226\150\188"   -- triangulo abajo
-    local ARROW_UP = "\226\150\178"     -- triangulo arriba
     local DRAG_THRESHOLD = 6
 
     local dragging = false
@@ -2817,96 +2906,75 @@ do
         return dragging or (os.clock() - lastDragAt) < 0.25
     end
 
-    -- Chip de plegar/desplegar, en la esquina superior derecha del boton.
+    -- Plegar/desplegar, a la derecha del boton principal.
     local toggle = Instance.new("TextButton")
     toggle.Name = "Toggle"
-    toggle.AutoButtonColor = false
+    toggle.AutoButtonColor = true
     toggle.AnchorPoint = Vector2.new(1, 0)
-    toggle.Position = UDim2.new(1, -7, 0, 7)
-    toggle.Size = UDim2.fromOffset(24, 22)
-    toggle.BackgroundColor3 = COLORS.border
-    toggle.BackgroundTransparency = 0.12
+    toggle.BackgroundColor3 = COLORS.raised
+    toggle.BorderSizePixel = 0
     toggle.Text = ""
-    toggle.ZIndex = 6
-    toggle.Parent = button
-
-    local toggleCorner = Instance.new("UICorner")
-    toggleCorner.CornerRadius = UDim.new(0, 7)
-    toggleCorner.Parent = toggle
-
-    local toggleLabel = Instance.new("TextLabel")
-    toggleLabel.Name = "Arrow"
-    toggleLabel.BackgroundTransparency = 1
-    toggleLabel.Size = UDim2.fromScale(1, 1)
-    toggleLabel.Font = Enum.Font.GothamBold
-    toggleLabel.Text = ARROW_DOWN
-    toggleLabel.TextSize = 13
-    toggleLabel.TextColor3 = COLORS.text
-    toggleLabel.ZIndex = 7
-    toggleLabel.Parent = toggle
+    toggle.Parent = holder
+    round(toggle, 10)
+    outline(toggle, COLORS.border, 0.3)
+    local toggleChevron = chevronSegments(toggle)
 
     -- Chip AUTO: enciende/apaga el encadenado automatico. Se guarda en
     -- server_hop_button_ui.json para que siga encendido entre saltos.
     local autoChip = Instance.new("TextButton")
     autoChip.Name = "AutoChip"
     autoChip.AutoButtonColor = false
-    autoChip.Position = UDim2.new(0, 7, 0, 7)
-    autoChip.Size = UDim2.fromOffset(46, 22)
-    autoChip.BackgroundColor3 = COLORS.border
-    autoChip.BackgroundTransparency = 0.35
+    autoChip.BackgroundColor3 = COLORS.raised
+    autoChip.BorderSizePixel = 0
     autoChip.Text = ""
-    autoChip.ZIndex = 6
-    autoChip.Parent = button
+    autoChip.Parent = holder
+    round(autoChip, 10)
+    local autoBorder = outline(autoChip, COLORS.border, 0.3)
 
-    local autoCorner = Instance.new("UICorner")
-    autoCorner.CornerRadius = UDim.new(0, 7)
-    autoCorner.Parent = autoChip
-
-    local autoLabel = Instance.new("TextLabel")
-    autoLabel.Name = "AutoLabel"
-    autoLabel.BackgroundTransparency = 1
+    local autoLabel = label("AutoLabel", autoChip, 11, COLORS.muted, true)
     autoLabel.Size = UDim2.fromScale(1, 1)
-    autoLabel.Font = Enum.Font.GothamBold
-    autoLabel.Text = "AUTO"
-    autoLabel.TextSize = 11
-    autoLabel.TextColor3 = COLORS.muted
-    autoLabel.ZIndex = 7
-    autoLabel.Parent = autoChip
+    autoLabel.Text = "AUTO\nOFF"
+    autoLabel.TextTruncate = Enum.TextTruncate.None
 
     local function updateAutoChip()
         uiAccess()
-        if autoEnabled then
-            autoChip.BackgroundColor3 = COLORS.green
-            autoChip.BackgroundTransparency = 0.1
-            autoLabel.TextColor3 = Color3.fromRGB(12, 40, 24)
-        else
-            autoChip.BackgroundColor3 = COLORS.border
-            autoChip.BackgroundTransparency = 0.35
-            autoLabel.TextColor3 = COLORS.muted
-        end
+        autoLabel.Text = autoEnabled and "AUTO\nON" or "AUTO\nOFF"
+        autoChip.BackgroundColor3 = autoEnabled and COLORS.green or COLORS.raised
+        autoLabel.TextColor3 = autoEnabled and COLORS.onGreen or COLORS.muted
+        autoBorder.Color = autoEnabled and COLORS.green or COLORS.border
     end
 
     local function applyCollapsed(value, instant)
         collapsed = value
         local size = value and COLLAPSED_SIZE or EXPANDED_SIZE
-        local buttonHeight = value and 36 or 80
-        local textSize = value and 17 or 34
-        local tween = instant
-            and TweenInfo.new(0)
-            or TweenInfo.new(0.22, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
-
-        TweenService:Create(holder, tween, { Size = UDim2.fromOffset(size.X, size.Y) }):Play()
-        TweenService:Create(button, tween, { Size = UDim2.new(1, -6, 0, buttonHeight) }):Play()
-        mainLabel.TextSize = textSize
-        for _, outline in ipairs(outlineLabels) do
-            outline.TextSize = textSize
+        local pad = value and 8 or 10
+        local row = value and 34 or 44
+        local chip = value and 52 or 60
+        local side = value and 28 or 32
+        local tween = TweenInfo.new(0.22, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+        local function place(object, properties)
+            if instant then
+                for key, target in pairs(properties) do object[key] = target end
+            else
+                TweenService:Create(object, tween, properties):Play()
+            end
         end
+
+        place(holder, { Size = UDim2.fromOffset(size.X, size.Y) })
+        place(autoChip, { Position = UDim2.fromOffset(pad, pad), Size = UDim2.fromOffset(chip, row) })
+        place(button, { Position = UDim2.fromOffset(pad + chip + 6, pad),
+            Size = UDim2.new(1, -(2 * pad + chip + side + 12), 0, row) })
+        place(toggle, { Position = UDim2.new(1, -pad, 0, pad), Size = UDim2.fromOffset(side, row) })
+        mainLabel.TextSize = value and 14 or 18
+        autoLabel.TextSize = value and 10 or 11
         statusLabel.Visible = not value
-        toggleLabel.Text = value and ARROW_UP or ARROW_DOWN
+        -- Desplegado muestra "plegar" (chevron arriba); plegado, "desplegar".
+        toggleChevron[1].Rotation = value and 45 or -45
+        toggleChevron[2].Rotation = value and -45 or 45
     end
 
     -- Los eventos del marco no reciben necesariamente los de sus controles.
-    -- Registrar toda la superficie roja, incluidos texto, AUTO y plegado.
+    -- Registrar toda la tarjeta, incluidos texto, AUTO y plegado.
     local function beginDrag(input)
         if pendingDrag then return end
         if input.UserInputType == Enum.UserInputType.MouseButton1
@@ -3030,8 +3098,8 @@ do
         match.jobId, match.placeId, match.at = game.JobId, game.PlaceId, os.time()
         writeJson("chilli_egg_search_match.json", match)
         setBusy(false)
-        setLabel("MATCH")
-        setStatus(string.format("%s · %s/s · %s", match.name,
+        setLabel("Encontrado")
+        setStatus(string.format("%s  ·  %s/s  ·  %s", match.name,
             eggSearch.FormatMinimum(match.income), match.area or "mapa"), COLORS.green)
         matchAlert("Egg " .. match.rarity .. " encontrado", string.format(
             "%s · %s/s · %s. Objetivo encontrado; Chilli puede continuar.",
@@ -3135,14 +3203,19 @@ do
             item.TextColor3 = color and surface or foreground; item.Parent = parentObject; rounded(item)
             return item
         end
-        local entry = action(screenGui, "ServerAccount", "CUENTA / BEST PING", 0)
-        entry.AnchorPoint = Vector2.new(0, 1)
-        entry.Position = UDim2.new(0, 18, 1, -18); entry.Size = UDim2.fromOffset(196, 44); entry.ZIndex = 90
+        local function outlined(object)
+            local stroke = Instance.new("UIStroke"); stroke.Color = COLORS.border
+            stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border; stroke.Parent = object
+        end
+        local entry = action(screenGui, "ServerAccount", "Cuenta y Best Ping", 0)
+        entry.AnchorPoint = Vector2.new(0, 1); entry.BackgroundColor3 = surface; entry.TextSize = 12
+        entry.Position = UDim2.new(0, 18, 1, -18); entry.Size = UDim2.fromOffset(184, 36); entry.ZIndex = 90
+        outlined(entry)
         local panel = Instance.new("Frame")
         panel.Name = "ServerAccountPanel"; panel.AnchorPoint = Vector2.new(0.5, 0.5)
         panel.Position = UDim2.fromScale(0.5, 0.5); panel.Size = UDim2.fromOffset(440, 462)
         panel.BackgroundColor3 = surface; panel.BorderSizePixel = 0; panel.Visible = false
-        panel.ZIndex = 30; panel.Parent = screenGui; rounded(panel)
+        panel.ZIndex = 30; panel.Parent = screenGui; rounded(panel); outlined(panel)
         local scale = Instance.new("UIScale"); scale.Parent = panel
         text(panel, "Title", "Tu cuenta para Best Ping", 20, 30, 22)
         text(panel, "Privacy", "Este dispositivo consulta Roblox. El autor del script no recibe tu cookie.", 58, 40, 13, secondary)
@@ -3172,9 +3245,9 @@ do
         local function updateEntry()
             uiAccess()
             local state = deviceCookie.Status()
-            entry.Text = connecting and "CUENTA · COMPROBANDO"
-                or state.configured and (state.remembered and "CUENTA · GUARDADA" or "CUENTA · SOLO SESION")
-                or "CUENTA / BEST PING"
+            entry.Text = connecting and "Cuenta: comprobando"
+                or state.configured and (state.remembered and "Cuenta: guardada" or "Cuenta: solo esta sesión")
+                or "Cuenta y Best Ping"
         end
         local function fit()
             uiAccess()
@@ -3500,8 +3573,8 @@ do
                     local candidate = pool[index]
                     setLabel("Saltando...")
                     setStatus(serverOrder == "BestLatency"
-                        and string.format("Best Ping · %d/7 · entrando...", candidate.playing)
-                        or string.format("entrando (api %s ms)...", tostring(candidate.ping)), COLORS.muted)
+                        and string.format("Entrando a un servidor de %d/7 (Best Ping)", candidate.playing)
+                        or string.format("Entrando a un servidor de %s ms", tostring(candidate.ping)), COLORS.muted)
                     print(string.format(
                         "[ServerHopButton] Teleport intento %d -> %s",
                         index,
@@ -3527,22 +3600,22 @@ do
                     if result == "failed" then
                         -- Throttling is temporary; don't exclude that server for an hour.
                         if not string.find(string.lower(reason or ""), "flood", 1, true) then markVisited(candidate.id) end
-                        setStatus("rechazado; probando otro candidato...", COLORS.amber)
+                        setStatus("Servidor rechazado; probando otro", COLORS.amber)
                         print("[ServerHopButton] Teleport rechazado: " .. tostring(reason))
                         waitForHop(1.5, automatic, generation)
                     else
                         session.autoHopBlocked = true
                         setBusy(false); setLabel("Server Hop")
-                        setStatus(result == "storage" and reason or "sin confirmar; pulsa Server Hop para reintentar", COLORS.amber)
+                        setStatus(result == "storage" and reason or "Salto sin confirmar. Pulsa Server Hop para reintentar.", COLORS.amber)
                         notify("Server Hop", result == "storage" and reason or "AUTO pausó los saltos: el teleport sigue sin confirmar.", 8)
                         return false
                     end
                 end
 
-                setStatus("Roblox no confirmo los candidatos; reintentando...", COLORS.amber)
+                setStatus("Roblox no confirmó los servidores; reintentando", COLORS.amber)
             else
                 setStatus(string.format(
-                    "sin candidatos (%s); reintentando en %d s...",
+                    "Sin servidores disponibles (%s). Reintento en %d s",
                     tostring(pickError),
                     RETRY_DELAY_SECONDS
                 ), COLORS.amber)
@@ -3577,10 +3650,10 @@ do
             local pending = readJson(STATE_FILE, nil)
             if pending and pending.pending and pending.unconfirmed then
                 session.autoHopBlocked = true
-                setBusy(false); setStatus("salto sin confirmar; reintenta con Server Hop", COLORS.amber)
+                setBusy(false); setStatus("Salto sin confirmar. Pulsa Server Hop para reintentar.", COLORS.amber)
                 return
             end
-            setStatus("error: " .. tostring(err) .. " · reintentando...", COLORS.amber)
+            setStatus("Error: " .. tostring(err) .. ". Reintentando", COLORS.amber)
             waitForHop(RETRY_DELAY_SECONDS, automatic, generation)
         end
     end
@@ -3597,14 +3670,14 @@ do
 
         if game.PlaceId ~= PLACE_ID then
             setBusy(false)
-            setStatus("no estas en Steal An Egg", COLORS.amber)
+            setStatus("Solo funciona dentro de Steal An Egg", COLORS.amber)
             notify("Server Hop", "Este boton solo funciona dentro de Steal An Egg.", 6)
             return
         end
 
         if autoTestRunning() then
             setBusy(false)
-            setStatus("auto-test en curso; espera", COLORS.amber)
+            setStatus("Auto-test en curso; espera a que termine", COLORS.amber)
             notify("Server Hop", "Hay un auto-test activo. Espera a que termine.", 6)
             return
         end
@@ -3625,13 +3698,13 @@ do
             and (os.time() - (tonumber(existing.requestedAt) or 0)) < PENDING_FRESH_SECONDS
         if inFlight then
             setBusy(false)
-            setStatus("ya hay un salto en curso", COLORS.muted)
+            setStatus("Ya hay un salto en curso", COLORS.muted)
             return
         end
 
         markVisited(game.JobId)
         setLabel("Buscando...")
-        setStatus("buscando servidor...", COLORS.muted)
+        setStatus("Buscando un servidor", COLORS.muted)
         runHopLoop(automatic, generation)
     end
 
@@ -3675,18 +3748,19 @@ do
                         session.autoHopBlocked, PENDING_FRESH_SECONDS) then
                         if mode == "loading" then
                             setLabel("Escaneando")
-                            setStatus(info.reason or "esperando datos del mapa...", COLORS.amber)
+                            local reason = info.reason or "esperando datos del mapa"
+                            setStatus(string.upper(string.sub(reason, 1, 1)) .. string.sub(reason, 2), COLORS.muted)
                         elseif mode == "wait" then
                             local remaining = cycle and math.ceil(cycle.secondsUntilReset)
-                            local scope = #eggSearch.config.zones > 0 and " en tus zonas" or ""
-                            setLabel(remaining and string.format("EGG · %d:%02d",
-                                math.floor(remaining / 60), remaining % 60) or "Egg Search")
-                            setStatus(cycle and not cycle.running
-                                and "sin " .. eggSearch.config.rarity .. "+" .. scope .. " · ciclo pausado" or "sin " .. eggSearch.config.rarity .. "+" .. scope .. " · esperando renovacion", COLORS.muted)
+                            local scope = #eggSearch.config.zones > 0 and " en tus zonas" or " en el mapa"
+                            setLabel(remaining and string.format("Reset %d:%02d",
+                                math.floor(remaining / 60), remaining % 60) or "Esperando")
+                            setStatus("Sin " .. eggSearch.config.rarity .. "+" .. scope .. (cycle and not cycle.running
+                                and ". Ciclo en pausa" or ". Esperando la renovación"), COLORS.muted)
                         else
                             setStatus(info.continuingCycle
-                                and "no está aquí · búsqueda del ciclo vigente; buscando servidor"
-                                or string.format("%d %s+; ninguno cumple · buscando servidor",
+                                and "Ya apareció en este ciclo, pero aquí no está. Buscando otro servidor"
+                                or string.format("%d %s+ aquí, ninguno cumple los filtros. Buscando otro servidor",
                                     info.rarityCount, eggSearch.config.rarity), COLORS.green)
                             -- El vigilante sigue escaneando durante reintentos o renovaciones.
                             setBusy(true)
@@ -3717,7 +3791,7 @@ do
         saveUi()
         updateAutoChip()
         if autoEnabled then
-            setStatus(eggSearch.Summary() .. " · revisando mapa...", COLORS.green)
+            setStatus("Buscando " .. eggSearch.Summary() .. ". Revisando el mapa", COLORS.green)
             startAutoHopWatcher()
         else
             if session.attempt and session.attempt.state == "pending" then
@@ -3725,7 +3799,7 @@ do
             end
             setBusy(false)
             setLabel("Server Hop")
-            setStatus("busqueda apagada · salto manual disponible", COLORS.muted)
+            setStatus("AUTO apagado. Pulsa Server Hop para cambiar de servidor", COLORS.muted)
         end
     end
 
@@ -3749,7 +3823,7 @@ do
             if not ok and session.alive then
                 setBusy(false)
                 setLabel("Server Hop")
-                setStatus("error: " .. tostring(err), COLORS.amber)
+                setStatus("Error: " .. tostring(err), COLORS.amber)
                 notify("Server Hop", "Error iniciando el salto: " .. tostring(err), 8)
             end
         end)
@@ -3764,10 +3838,9 @@ do
             if type(last) == "table" and type(last.lastPing) == "number" then
                 local ok = last.lastPlayers <= IDEAL_PLAYERS and last.lastPing <= IDEAL_PING
                 setStatus(string.format(
-                    "ultimo: %d/7 · %d ms %s",
+                    "Último servidor: %d/7 jugadores  ·  %d ms",
                     last.lastPlayers,
-                    last.lastPing,
-                    ok and "✓" or "✗"
+                    last.lastPing
                 ), ok and COLORS.green or COLORS.amber)
             end
             return
@@ -3776,7 +3849,7 @@ do
         local disposition = support.TeleportDisposition(state, game.JobId, connectionId)
         if disposition == "blocked" then
             session.autoHopBlocked = true
-            setStatus("salto anterior sin confirmar; pulsa Server Hop para reintentar", COLORS.amber)
+            setStatus("El salto anterior no se confirmó. Pulsa Server Hop para reintentar.", COLORS.amber)
             return
         end
         if disposition == "reconnected" then
@@ -3791,16 +3864,16 @@ do
             if type(current) ~= "table" or current.pending ~= true or current.target ~= state.target
                 or current.requestedAt ~= state.requestedAt or current.originConnection ~= state.originConnection then return end
             if not writeJson(STATE_FILE, {pending = false, reconnected = true, at = os.time()}) then
-                setStatus("no se pudo cerrar el salto de la conexión anterior", COLORS.amber); return
+                setStatus("No se pudo cerrar el salto de la conexión anterior", COLORS.amber); return
             end
             session.autoHopBlocked = false
             setBusy(false); setLabel("Server Hop")
-            setStatus("reconectado · revisando ciclo y snapshot actuales", COLORS.green)
+            setStatus("Reconectado. Revisando el mapa actual", COLORS.green)
             return
         end
         if os.time() - (tonumber(state.requestedAt) or 0) > 240 then
             writeJson(STATE_FILE, { pending = false })
-            setStatus("salto caducado", COLORS.muted)
+            setStatus("El salto anterior caducó", COLORS.muted)
             return
         end
 
@@ -3814,10 +3887,10 @@ do
                 auto = true,
                 lastTarget = state.target,
                 at = os.time(),
-            }) then setStatus("no se pudo confirmar la llegada", COLORS.amber); return end
+            }) then setStatus("No se pudo confirmar la llegada", COLORS.amber); return end
             setBusy(false)
             setLabel("Server Hop")
-            setStatus("AUTO ON · revisando huevos del mapa", COLORS.green)
+            setStatus("AUTO activo. Revisando el mapa", COLORS.green)
             return
         end
 
@@ -3827,13 +3900,13 @@ do
         local capturedAt = state.requestedAt
 
         setLabel("Midiendo...")
-        setStatus("estabilizando la conexion...", COLORS.muted)
+        setStatus("Estabilizando la conexión", COLORS.muted)
 
         task.wait(ARRIVE_STABILIZE_SECONDS)
         if not session.alive then return end
 
         local players = #Players:GetPlayers()
-        setStatus("midiendo ping real...", COLORS.muted)
+        setStatus("Midiendo el ping real", COLORS.muted)
 
         local ping = measurePing()
         if not session.alive then return end
@@ -3873,10 +3946,10 @@ do
         setBusy(false)
         setLabel("Server Hop")
         setStatus(string.format(
-            "%d/7 · %s ms %s",
+            "%s: %d/7 jugadores  ·  %s ms",
+            good and "Servidor bueno" or "Servidor justo",
             players,
-            type(ping) == "number" and tostring(ping) or "N/D",
-            good and "✓" or "✗"
+            type(ping) == "number" and tostring(ping) or "N/D"
         ), good and COLORS.green or COLORS.amber)
 
         notify(
@@ -3898,14 +3971,14 @@ do
             if not ok then
                 setBusy(false)
                 setLabel("Server Hop")
-                setStatus("error al medir: " .. tostring(err), COLORS.amber)
+                setStatus("Error al medir: " .. tostring(err), COLORS.amber)
                 notify("Server Hop", "Error midiendo al llegar: " .. tostring(err), 8)
             end
         else
             if autoEnabled then
-                setStatus("AUTO ON · revisando huevos del mapa", COLORS.green)
+                setStatus("AUTO activo. Revisando el mapa", COLORS.green)
             else
-                setStatus("1 clic = salto · AUTO = buscar Divine", COLORS.muted)
+                setStatus("Server Hop cambia de servidor. AUTO busca tu huevo", COLORS.muted)
             end
         end
     end)
