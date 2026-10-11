@@ -1,5 +1,25 @@
 # Arquitectura
 
+## Eficiencia sin cambios de decision (2026-10-11)
+
+map_egg_search: Scan construye la tabla de rangos una vez por snapshot y la usa
+en las razones de las filas (`explain` interno; `Explain` publico igual).
+SameRecord compara primitivos en linea y solo recursa en tablas; NaN sigue
+siendo distinto y las claves ausentes o tablas anidadas cambiadas tambien.
+Evaluate valida la rareza minima recorriendo el catalogo sin construir una
+lista. Al abrirse la barrera, `stats.settleSeconds` (primera lectura valida a
+ultimo cambio) y `stats.readySeconds` registran la espera real; el log
+`[EggSearch] mode=...` los muestra como `estable=X/Y s`. Solo diagnostico.
+
+hopper_runtime: `support.RecentVisited` memoriza la vista PruneVisited de solo
+lectura y la recalcula al reescribirse el historial (Invalidate), al vencer una
+entrada conservada o al empezar una futura. pickCandidates, savePool, loadPool,
+prefetch y la restauracion la usan sin modificarla; markVisited conserva su
+copia propia, acepta varios IDs en una escritura y la llegada AUTO usa una sola.
+Store.Write copia como .bak los bytes previos ya validados en vez de
+decodificar y recodificar; un principal danado deja intacto el .bak existente.
+El prefetch solo lee el pool en el modo que lo usa.
+
 ## Hopper sin cargador de Chilli (2026-10-11)
 
 `hopper_runtime.luau` solo contiene el soporte testable y `montarHopper`; el

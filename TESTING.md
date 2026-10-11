@@ -1,5 +1,23 @@
 # Pruebas y validacion
 
+## 2026-10-11 - Eficiencia del finder y del hopper
+
+Build, compilacion de siete entradas, 182 regresiones Luau (seis nuevas) y diez
+Python correctos. luau-analyze sobre los modulos editados da los mismos avisos
+que main. Nuevas: razones de filas iguales a Explain y tras cambiar Rank,
+rareza minima sin distinguir mayusculas, semantica de SameRecord (NaN, claves,
+anidadas, userdata), diagnostico de estabilidad sin acortar la espera, memo de
+visitados igual a PruneVisited con relectura solo en limites y .bak con bytes
+previos sin recodificar. Dos mutaciones temporales (memo sin entradas futuras,
+.bak recodificado) hacen fallar sus pruebas.
+
+Benchmark local con CLI Luau 0.741 -O2, snapshot de 100 records/65 Slot,
+150 especies y 15 rarezas; tiempos del CLI, no del cliente: AUTO 0.50 a
+0.28 ms, panel 1.96 a 0.83 ms, Scan(true) 0.67 a 0.39 ms, Store.Write de 500
+visitados 0.41 a 0.25 ms y consulta de visitados 0.37 ms a memo. Pendiente en
+Potassium: montaje, AUTO con hop real, log `estable=`, panel abierto con AUTO y
+GetStatus().stats.
+
 ## 2026-10-11 - UI sobria del boton y del panel
 
 Build, compilacion de siete entradas, 176 regresiones Luau y diez Python

@@ -1,5 +1,14 @@
 # Contexto del proyecto
 
+## Eficiencia del finder y del hopper (2026-10-11)
+
+El usuario pide revisar el hopper y el Egg Finder para hacerlos mas
+eficientes; aclara que el hopper funciona bien y encuentra buenos servidores.
+Se optimiza sin cambiar decisiones: deteccion, filtros, barrera de carga,
+seleccion de servidores, reserva, reintentos y teleports quedan iguales. La
+barrera de 10 s + 3 s domina el tiempo por servidor; solo se agrega una
+medicion para calibrarla con datos reales antes de decidir si se acorta.
+
 ## Sin firma flotante (2026-10-11)
 
 Tras publicar la UI sobria, el usuario ve la etiqueta By Mistake de la esquina

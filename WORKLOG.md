@@ -1,5 +1,15 @@
 # Estado del trabajo
 
+## 2026-10-11 - Eficiencia del finder y del hopper
+
+Rama codex/eficiencia-finder-hopper sobre main 2b17783, sin publicar. Scan
+reutiliza rangos por snapshot y compara records sin recursion por primitivo;
+memo exacto de visitados, una escritura de visitados al llegar con AUTO,
+.bak sin recodificar y diagnostico settleSeconds/readySeconds. Detector,
+barrera, seleccion de servidores y teleports sin cambios. Build/182 Luau/diez
+Python correctos. Pendiente prueba en Potassium, PR y decision del usuario
+sobre la barrera con los tiempos medidos.
+
 ## 2026-10-11 - Firma flotante retirada
 
 UI sobria publicada en stable (run 51, d6a0aae); el usuario la recibe con el

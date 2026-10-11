@@ -14,6 +14,14 @@ local function createFinderSupport()
             local ok, value = pcall(function() return io.decode(io.read(path)) end)
             return ok and type(value) == "table" and value or nil
         end
+        -- Bytes of a file that decodes to a table, reused as the backup as-is.
+        local function readValidRaw(path)
+            local ok, raw = pcall(function()
+                local raw = io.read(path)
+                return type(io.decode(raw)) == "table" and raw or nil
+            end)
+            return ok and raw or nil
+        end
         function store.Read(path, fallback)
             if cache[path] == nil then cache[path] = read(path) or read(path .. ".bak") or false end
             return support.Copy(cache[path] ~= false and cache[path] or fallback)
@@ -21,8 +29,9 @@ local function createFinderSupport()
         function store.Write(path, value)
             local ok = pcall(function()
                 local raw = io.encode(value)
-                local previous = read(path) or read(path .. ".bak")
-                if previous then io.write(path .. ".bak", io.encode(previous)) end
+                -- A damaged main file keeps the existing valid backup untouched.
+                local previous = readValidRaw(path)
+                if previous then io.write(path .. ".bak", previous) end
                 io.write(path .. ".tmp", raw)
                 assert(io.read(path .. ".tmp") == raw, "No se verifico el archivo temporal")
                 io.write(path, raw)
@@ -43,6 +52,27 @@ local function createFinderSupport()
         table.sort(entries, function(a,b) if a.at ~= b.at then return a.at > b.at end; return a.id < b.id end)
         local result = {}; for i = 1, math.min(#entries, limit or 500) do result[entries[i].id] = entries[i].at end
         return result
+    end
+    -- Shared read-only PruneVisited view. It only changes when the file is
+    -- rewritten (Invalidate), a kept entry ages out or a future entry starts.
+    function support.RecentVisited(read, maxAge, limit)
+        local memo = {}
+        local value, builtAt, refreshAt
+        function memo.Get(now)
+            if value == nil or now < builtAt or now >= refreshAt then
+                local raw = read()
+                value, builtAt, refreshAt = support.PruneVisited(raw, now, maxAge, limit), now, math.huge
+                for id, at in pairs(raw) do
+                    if type(id) == "string" and type(at) == "number" then
+                        if at > now then refreshAt = math.min(refreshAt, at)
+                        elseif now - at < maxAge then refreshAt = math.min(refreshAt, at + maxAge) end
+                    end
+                end
+            end
+            return value
+        end
+        function memo.Invalidate() value = nil end
+        return memo
     end
     function support.Arrived(state, job)
         return type(state) == "table" and state.pending == true
@@ -800,6 +830,8 @@ do
         encode = function(value) return HttpService:JSONEncode(value) end,
         decode = function(raw) return HttpService:JSONDecode(raw) end})
     local function readJson(path, fallback) return store.Read(path, fallback) end
+    -- Read-only pruned view; writers of VISITED_FILE must call Invalidate.
+    local recentVisited = support.RecentVisited(function() return readJson(VISITED_FILE, {}) end, VISITED_MAX_AGE)
     local connectionConfig = readJson(CONNECTION_FILE, {})
     local serverOrder = connectionConfig.mode == "BestLatency" and "BestLatency" or "LegacyPing"
     local nativeStatus = nil
@@ -1766,7 +1798,7 @@ do
 
     -- ---------------------------------------------------------------- el salto
     local function pickCandidates(continuing, wanted)
-        local visited = support.PruneVisited(readJson(VISITED_FILE, {}), os.time(), VISITED_MAX_AGE)
+        local visited = recentVisited.Get(os.time())
         local now = os.time()
         if serverOrder == "BestLatency" then
             if connectionConfig.transport == "DeviceCookie" then
@@ -1840,7 +1872,7 @@ do
         end
         local balanced = serverOrder == "BestLatency" and connectionConfig.transport == "DeviceCookie"
         local group = balanced and support.BalancedReserve(pool, os.time(), game.JobId,
-            support.PruneVisited(readJson(VISITED_FILE, {}), os.time(), VISITED_MAX_AGE), BALANCED_RESERVE_SIZE)
+            recentVisited.Get(os.time()), BALANCED_RESERVE_SIZE)
             or support.OccupancyGroup(pool, serverOrder, true)
         if #group == 0 then return end
         local trimmed = {}
@@ -1861,7 +1893,7 @@ do
     saveNativePool = savePool
     if connectionConfig.transport == "DeviceCookie" then
         local restored = deviceNative.Reserve(game.JobId,
-            support.PruneVisited(readJson(VISITED_FILE, {}), os.time(), VISITED_MAX_AGE))
+            recentVisited.Get(os.time()))
         if restored then savePool(restored) end
     end
 
@@ -1878,7 +1910,7 @@ do
             if data.owner ~= Players.LocalPlayer.UserId then return nil end
             if connectionConfig.transport == "DeviceCookie" and (deviceFatal or not deviceCookie.Status().configured) then return nil end
             return support.PreloadedNativePool(data, os.time(), game.JobId,
-                support.PruneVisited(readJson(VISITED_FILE, {}), os.time(), VISITED_MAX_AGE),
+                recentVisited.Get(os.time()),
                 connectionConfig.transport or "LocalBridge", connectionConfig.transport == "DeviceCookie")
         end
         local occupancy = tonumber(data.occupancy)
@@ -1912,10 +1944,13 @@ do
         return support.RankServers(pool, "LegacyPing")
     end
 
-    local function markVisited(jobId)
-        local visited = support.PruneVisited(readJson(VISITED_FILE, {}), os.time(), VISITED_MAX_AGE)
-        visited[jobId] = os.time()
+    -- Several IDs share one verified write of the history file.
+    local function markVisited(...)
+        local now = os.time()
+        local visited = support.PruneVisited(readJson(VISITED_FILE, {}), now, VISITED_MAX_AGE)
+        for _, jobId in ipairs({...}) do visited[jobId] = now end
         writeJson(VISITED_FILE, visited)
+        recentVisited.Invalidate()
     end
     reserveStatus = function()
         local pool = loadPool()
@@ -2140,8 +2175,11 @@ do
                     local revision = cycle and cycle.fieldRevision
                     local period = cycle and cycle.periodIndex
                     if mode ~= lastMode or revision ~= lastRevision or period ~= lastPeriod then
-                        print(string.format("[EggSearch] mode=%s | spawns=%d | rareza=%d | ciclo=%s | job=%s",
-                            mode, info.count or 0, info.rarityCount or 0, tostring(period), game.JobId))
+                        local stats = eggSearch.stats
+                        print(string.format("[EggSearch] mode=%s | spawns=%d | rareza=%d | ciclo=%s | estable=%s/%s s | job=%s",
+                            mode, info.count or 0, info.rarityCount or 0, tostring(period),
+                            stats.settleSeconds and string.format("%.1f", stats.settleSeconds) or "-",
+                            stats.readySeconds and string.format("%.1f", stats.readySeconds) or "-", game.JobId))
                         lastMode, lastRevision, lastPeriod = mode, revision, period
                     end
                     local state = readJson(STATE_FILE, nil)
@@ -2281,8 +2319,7 @@ do
         -- Llegada de una busqueda AUTO: se cierra el estado de teleport y se
         -- vuelve a decidir con el snapshot de este servidor.
         if state.auto == true and autoEnabled then
-            markVisited(game.JobId)
-            if state.target and state.target ~= game.JobId then markVisited(state.target) end
+            markVisited(game.JobId, state.target ~= game.JobId and state.target or nil)
             if not writeJson(STATE_FILE, {
                 pending = false,
                 auto = true,
@@ -2335,6 +2372,7 @@ do
             visited[game.JobId] = now
         end
         writeJson(VISITED_FILE, support.PruneVisited(visited, now, VISITED_MAX_AGE))
+        recentVisited.Invalidate()
 
         writeJson(STATE_FILE, {
             pending = false,
@@ -2391,12 +2429,14 @@ do
         while session.alive and game.JobId == sessionStartJobId do
             if game.PlaceId == PLACE_ID and not busy then
                 local ok, err = pcall(function()
-                    local reserve = loadPool()
                     local balanced = serverOrder == "BestLatency" and connectionConfig.transport == "DeviceCookie"
                     if balanced then
-                        local visited = support.PruneVisited(readJson(VISITED_FILE, {}), os.time(), VISITED_MAX_AGE)
+                        local visited = recentVisited.Get(os.time())
                         if not deviceNative.NeedsRefill(game.JobId, visited) then return end
-                    elseif serverOrder == "BestLatency" and reserve and #reserve >= POOL_SIZE then return end
+                    elseif serverOrder == "BestLatency" then
+                        local reserve = loadPool()
+                        if reserve and #reserve >= POOL_SIZE then return end
+                    end
                     local pool = pickCandidates(function()
                         return session.alive and not busy and game.JobId == sessionStartJobId
                     end, balanced and BALANCED_RESERVE_SIZE or POOL_SIZE)
