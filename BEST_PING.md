@@ -22,7 +22,7 @@ El executor debe ofrecer `request`, `http_request`, `syn.request` o `http.reques
 
 Al conectar, el formulario muestra el contador y distingue el intervalo propio de 15s, HTTP 429 con espera de 60s y una consulta pendiente del executor. La comprobacion inicial tiene prioridad sobre consultas de fondo y reintenta una vez ante 429; conserva el valor oculto para reintentar mientras la ventana siga abierta. Una espera legitima de 60s no expira a los 35s. Si el executor no termina una peticion en 30s, se conserva el bloqueo para evitar peticiones duplicadas y se indica reiniciar Roblox si sigue pendiente. Reejecutar el script no libera por la fuerza una peticion nativa anterior. `GetStatus().serverConnection.request` expone solo kind/seconds/lastHttpStatus, sin secretos.
 
-Para continuar entre hops, **el cargador comun debe estar en autoexec** del dispositivo:
+Para continuar entre hops, **el cargador comun debe estar en autoexec** del dispositivo (Chilli, si lo usas, va en otra linea propia; este script ya no lo carga):
 
 ```lua
 loadstring(game:HttpGet("https://raw.githubusercontent.com/diegotoruno/SAE-SCRIPT/main/chilli_hopper.luau"))()

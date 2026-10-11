@@ -2,7 +2,7 @@
 
 [![CI/CD](https://github.com/diegotoruno/SAE-SCRIPT/actions/workflows/ci.yml/badge.svg)](https://github.com/diegotoruno/SAE-SCRIPT/actions/workflows/ci.yml)
 
-Panel de filtros y detector de huevos del mapa para Steal An Egg, integrado con un cargador de Chilli Hub y Server Hop.
+Panel de filtros, detector de huevos del mapa y Server Hop para Steal An Egg. Es independiente de Chilli Hub: este script ya no lo carga.
 
 Para continuar el desarrollo, abre `SAE-SCRIPT.code-workspace` en Visual Studio Code. Empieza por [DEVELOPMENT.md](DEVELOPMENT.md) y [CONTEXT.md](CONTEXT.md); [ARCHITECTURE.md](ARCHITECTURE.md), [DECISIONS.md](DECISIONS.md), [TESTING.md](TESTING.md) y [WORKLOG.md](WORKLOG.md) conservan el resto del contexto. [AGENTS.md](AGENTS.md) orienta a los asistentes que trabajen en este proyecto.
 
@@ -14,6 +14,14 @@ loadstring(game:HttpGet("https://raw.githubusercontent.com/diegotoruno/SAE-SCRIP
 
 Para continuar entre servidores, coloca esa linea en el autoexec de tu executor. No hace falta copiar el archivo completo ni instalar otros archivos de este repositorio.
 
+**Chilli Hub se carga aparte.** Anade en el autoexec su propia linea (la original de su proyecto), separada de la anterior:
+
+```lua
+loadstring(game:HttpGet("https://raw.githubusercontent.com/tienkhanh1/spicy/main/Chilli.lua"))()
+```
+
+Cada script se ejecuta, se actualiza y falla por su cuenta: el hopper no descarga, espera ni reintenta Chilli, y Chilli no depende del boton. Los cargadores de Chilli integrados en versiones anteriores ya no existen; si tu autoexec solo tenia la linea del hopper, Chilli dejara de iniciarse hasta que anadas la suya.
+
 El punto de entrada de `main` carga el script validado de la rama `stable`. Los cambios de desarrollo solo se publican en `stable` despues de pasar CI. Cada publicacion tiene un archivo `version.json`, checksum y una [release](https://github.com/diegotoruno/SAE-SCRIPT/releases) para recuperar versiones anteriores. Una sesion ya abierta sigue usando la version que cargo; los cambios se reciben al ejecutar el cargador de nuevo o al entrar en otro servidor.
 
 ## Desarrollo y CI/CD
@@ -24,7 +32,7 @@ El codigo mantenido esta en tres archivos:
 
 - `map_egg_search.luau`: filtros, lecturas del mapa y decisiones del detector.
 - `egg_filter_panel.luau`: panel, imagenes, modelos y controles.
-- `hopper_runtime.luau`: arranque de Chilli y coordinacion del Server Hop.
+- `hopper_runtime.luau`: Server Hop, cuenta/Best Ping y API publica. No carga Chilli.
 
 `build.py` integra los tres en `dist/chilli_hopper.luau`. No edites el `chilli_hopper.luau` de la raiz ni la rama `stable`: son puntos de distribucion.
 
@@ -54,7 +62,7 @@ La rareza seleccionada es un minimo inclusivo segun el Rank del juego: Eternal a
 
 - Sin huevos de la rareza minima o superiores en las zonas elegidas ni una observacion vigente de esas zonas en el ciclo, espera la siguiente renovacion en el servidor actual. Un huevo de una zona excluida no inicia hop.
 - Con huevos de la rareza minima o superiores en las zonas elegidas que no cumplan ingreso, nombre o mutacion, hace hop y vuelve a escanear al llegar; una observacion vigente de la misma rareza y zonas permite continuar aunque falten en el destino. Cambiar zonas o rareza cierra esa memoria.
-- Con cualquier huevo que cumpla, se queda en el servidor y apaga AUTO. Chilli continua con su configuracion.
+- Con cualquier huevo que cumpla, se queda en el servidor y apaga AUTO. Chilli, si lo tienes cargado aparte, continua con su configuracion.
 - Si se renuevan los huevos durante la busqueda, espera los nuevos datos y repite la decision.
 
 El ingreso previsto incluye escala y mutaciones; excluye bonos personales y boosts temporales. Los filtros y el estado de AUTO se guardan en el workspace del executor.
@@ -98,4 +106,4 @@ finder.Start()
 
 ## Chilli Hub
 
-El script carga [Chilli Hub](https://github.com/tienkhanh1/spicy) desde su URL original. El panel de filtros, el detector y el Server Hop son añadidos y no modifican el codigo interno de Chilli. Los recursos visuales y los datos de huevos se obtienen de los modulos del juego en el cliente.
+El script ya no carga [Chilli Hub](https://github.com/tienkhanh1/spicy); se instala por separado desde su URL original en el autoexec. El panel de filtros, el detector y el Server Hop no modifican el codigo interno de Chilli y funcionan sin el. Los recursos visuales y los datos de huevos se obtienen de los modulos del juego en el cliente.

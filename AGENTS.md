@@ -10,8 +10,8 @@ Lee `CONTEXT.md`, `ARCHITECTURE.md`, `DECISIONS.md` y `TESTING.md` antes de camb
 - Editar `map_egg_search.luau`, `egg_filter_panel.luau` o `hopper_runtime.luau`. El archivo integrado sale de `build.py`; la raiz `chilli_hopper.luau` es el puente hacia `stable`.
 - Ejecutar build y `ci_tools.py` para cambios de Luau. Agregar regresiones cuando cambie una decision del detector. Usar Potassium para UI, persistencia y teleports reales que CI no puede simular.
 - Antes de acceder a CoreGui desde un callback, restablecer la identidad con los helpers de acceso existentes. Llamar funciones del juego puede cambiar la identidad del hilo.
-- Limpiar la sesion anterior al reejecutar: GUI, conexiones y bucles. Conservar configuracion de usuario y no duplicar Chilli en el mismo servidor.
+- Limpiar la sesion anterior al reejecutar: GUI, conexiones y bucles. Conservar configuracion de usuario.
 - Preferir ramas `codex/descripcion` y pull requests hacia `main`. Actualizar documentacion cuando cambien flujo, API, configuracion o distribucion.
 - Mantener archivos del executor, credenciales, referencias de terceros y copias de seguridad fuera de Git. No editar directamente `stable`; la publica CI.
 
-El codigo externo de Chilli se carga desde su URL original. No se dispone de sus fuentes internas protegidas; no atribuirle comportamientos que no se hayan observado.
+Chilli ya no se carga desde este repositorio: el usuario lo instala aparte en su autoexec. No reintroducir un cargador de Chilli ni dependencias de su UI en el hopper. No se dispone de sus fuentes internas protegidas; no atribuirle comportamientos que no se hayan observado.

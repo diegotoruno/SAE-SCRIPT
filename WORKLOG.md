@@ -1,5 +1,16 @@
 # Estado del trabajo
 
+## 2026-10-11 - Chilli separado del hopper
+
+Rama pendiente codex/separar-chilli. Eliminados de hopper_runtime.luau el
+cargador `cargarChilli` (~425 lineas), la funcion `chilliReady` sin uso y la
+espera de la UI de Chilli antes del primer refresco del pool; el arranque queda
+en `pcall(montarHopper)`. Build (bundle 215707 bytes), compilacion, 176
+regresiones Luau y diez Python correctos. Sin cambios en detector, filtros, AUTO ni Best Ping. No probado en
+Potassium/Delta: montaje real del boton sin Chilli y con Chilli cargado aparte.
+Los usuarios deben anadir la linea de Chilli a su autoexec; publicar cambia el
+comportamiento de todos al recargar.
+
 ## 2026-10-09 - By Mistake en interfaz y ambas versiones del boton
 
 Candidata verification/by-mistake,codex/marca-by-mistake sobre maind2d9c3e.

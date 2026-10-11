@@ -1,5 +1,19 @@
 # Contexto del proyecto
 
+## Chilli separado del hopper (2026-10-11)
+
+El usuario observa que la carga de Chilli incluida en el hopper a veces no
+obtiene la version mas reciente y pide separar por completo la logica del
+boton de la carga de Chilli. Decide sacar el cargador del repositorio:
+`cargarChilli` (prefetch, arranque temprano, reintentos, filtro
+`chilli_client.json`, aplazamiento por auto-test, `chilli_timing.txt` y
+guardas `__CHILLI_LOADED/LOADING_JOB_ID`) se elimina de `hopper_runtime.luau`.
+El hopper tampoco espera la UI de Chilli antes de precargar el pool. Chilli se
+carga desde el autoexec con su linea original, que siempre pide su version
+actual. Se conservan nombres historicos como `ChilliEggSearch`, archivos
+`chilli_egg_*` y `__CHILLI_HOPPER_SESSION`: son API y persistencia del finder.
+Detector, filtros, AUTO, Best Ping y cuenta no cambian.
+
 ## Firma visual By Mistake (2026-10-09)
 
 El usuario pide una marca visual y tambien en el boton rojo expandido/plegado.
