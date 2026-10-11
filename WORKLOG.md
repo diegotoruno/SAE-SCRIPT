@@ -2,13 +2,15 @@
 
 ## 2026-10-11 - Eficiencia del finder y del hopper
 
-Rama codex/eficiencia-finder-hopper sobre main 2b17783, sin publicar. Scan
+Rama codex/eficiencia-finder-hopper sobre main 2b17783; el usuario pidio
+abrir el PR y fusionarlo sin prueba previa en Potassium. Scan
 reutiliza rangos por snapshot y compara records sin recursion por primitivo;
 memo exacto de visitados, una escritura de visitados al llegar con AUTO,
 .bak sin recodificar y diagnostico settleSeconds/readySeconds. Detector,
 barrera, seleccion de servidores y teleports sin cambios. Build/182 Luau/diez
-Python correctos. Pendiente prueba en Potassium, PR y decision del usuario
-sobre la barrera con los tiempos medidos.
+Python correctos. Pendiente prueba en Potassium desde stable (montaje, AUTO
+con salto real, log estable=X/Y) y decision del usuario sobre la barrera con
+los tiempos medidos.
 
 ## 2026-10-11 - Firma flotante retirada
 
