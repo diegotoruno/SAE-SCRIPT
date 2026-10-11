@@ -1,5 +1,13 @@
 # Decisiones de producto e implementacion
 
+## Barrera de carga sin cambios hasta medir (2026-10-11)
+
+La espera minima de 10 s ocupa la mayor parte del tiempo por servidor, pero
+evita saltar antes de que replique un huevo valido. No se acorta sin evidencia:
+cada servidor registra settleSeconds/readySeconds para decidir con datos. Las
+optimizaciones de esta fecha no cambian ninguna decision del detector ni del
+hopper.
+
 ## Firma solo en el boton (2026-10-11)
 
 La etiqueta By Mistake fija en pantalla duplicaba la firma del boton y se

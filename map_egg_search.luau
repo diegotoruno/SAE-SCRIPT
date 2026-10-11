@@ -51,6 +51,11 @@ local function createMapEggSearch(readJson, writeJson)
         end
         snapshotLoad.ready = now - snapshotLoad.firstAt >= LOAD_SECONDS
             and now - snapshotLoad.stableAt >= QUIET_SECONDS
+        if snapshotLoad.ready then
+            -- Diagnostic only: real settle times help calibrate LOAD_SECONDS.
+            search.stats.settleSeconds = snapshotLoad.stableAt - snapshotLoad.firstAt
+            search.stats.readySeconds = now - snapshotLoad.firstAt
+        end
         return snapshotLoad.ready
     end
     local remembered = readJson(CYCLE_FILE, {})
@@ -192,8 +197,9 @@ local function createMapEggSearch(readJson, writeJson)
         return options
     end
     local function canonicalRarity(value, options)
+        local wanted = string.lower(value)
         for _, option in ipairs(options) do
-            if string.lower(option.id) == string.lower(value) then return option.id end
+            if string.lower(option.id) == wanted then return option.id end
         end
         error("Rareza no disponible en el catalogo del juego: " .. value)
     end
@@ -295,10 +301,10 @@ local function createMapEggSearch(readJson, writeJson)
         return string.format("%s+ >= %s/s", search.config.rarity, search.FormatMinimum(search.config.minIncome))
     end
 
-    function search.Explain(egg, catalog, income, filters)
-        filters = filters or search.config
+    -- Scan passes the rank table built once per snapshot instead of one per row.
+    local function explain(egg, catalog, income, filters, ranks)
         if not catalog then return "Datos de especie no disponibles" end
-        local rarityOk = search.RarityMatches(catalog.Rarity, filters.rarity)
+        local rarityOk = matchesRarity(catalog.Rarity, filters.rarity, ranks)
         if rarityOk == nil then return "Datos de rareza no disponibles" end
         if not rarityOk then return "Rareza inferior al mínimo" end
         if #(filters.zones or {}) > 0 then
@@ -318,6 +324,10 @@ local function createMapEggSearch(readJson, writeJson)
         if income < filters.minIncome then return "Ingreso inferior al mínimo" end
         return "Cumple todos los filtros"
     end
+    function search.Explain(egg, catalog, income, filters)
+        local rarities = search.modules and search.modules.rarities.Rarities
+        return explain(egg, catalog, income, filters or search.config, rarityRanks({}, rarities))
+    end
 
     -- Stable signature includes every replicated input, including base mutation,
     -- bounds and area. It also detects changes not covered by FieldRefreshed.
@@ -336,7 +346,12 @@ local function createMapEggSearch(readJson, writeJson)
     function search.SameRecord(a, b)
         if type(a) ~= type(b) then return false end
         if type(a) ~= "table" then return a == b end
-        for key, value in pairs(a) do if not search.SameRecord(value, b[key]) then return false end end
+        for key, value in pairs(a) do
+            -- Only nested tables recurse; primitives compare inline (NaN still differs).
+            if type(value) == "table" then
+                if not search.SameRecord(value, b[key]) then return false end
+            elseif value ~= b[key] then return false end
+        end
         for key in pairs(b) do if a[key] == nil then return false end end
         return true
     end
@@ -346,12 +361,13 @@ local function createMapEggSearch(readJson, writeJson)
         filters = normalize(filters or search.config)
         rarities = rarities or (search.modules and search.modules.rarities.Rarities)
         local ranks = rarityRanks(directory, rarities)
-        local available = {}
+        -- Same validation as canonicalRarity, without listing the whole catalog.
+        local wanted, canonical = string.lower(filters.rarity), nil
         for _, catalog in pairs(directory) do
             local id = rarityId(catalog.Rarity)
-            if type(id) == "string" then table.insert(available, {id = id}) end
+            if type(id) == "string" and string.lower(id) == wanted then canonical = id; break end
         end
-        filters.rarity = canonicalRarity(filters.rarity, available)
+        filters.rarity = canonical or error("Rareza no disponible en el catalogo del juego: " .. filters.rarity)
         local found = {}
         local info = { count = 0, rarityCount = 0, eligible = 0, errors = 0 }
         local zoneSet = {}
@@ -626,7 +642,7 @@ local function createMapEggSearch(readJson, writeJson)
             for _, row in ipairs(mapRows) do
                 row.income = cachedByEgg[row.egg].income
                 row.match = matching[row.uid] == true
-                row.reason = search.Explain(row.egg, row.catalog, row.income)
+                row.reason = explain(row.egg, row.catalog, row.income, search.config, ranks)
             end
             if not details.ready then details.reason = "datos de especie, zona o ingreso no disponibles; esperando recuperación" end
             local afterCycle = search.CycleStatus()

@@ -1847,4 +1847,94 @@ test("old presets migrate species while new presets validate zone IDs", function
     assert(not pcall(finder.Validate, {zones = {"Removed zone"}}))
 end)
 
+test("map row reasons match public Explain and follow rank changes", function()
+    local finder, state, _, entries, definitions = minimumFixture()
+    finder.Configure({minIncome = 10e9, zones = {"Enchanted Forest"}})
+    state.records = {egg("common-high", 99e9, "common"), egg("eternal-below", 9999999999, "eternal"),
+        egg("eternal-exact", 10e9, "eternal"), egg("eternal-forest", 99e9, "eternal"), egg("divine-high", 50e9)}
+    for _, record in ipairs(state.records) do record.AreaId = "Enchanted Forest" end
+    state.records[4].AreaId = "Forest"
+    finder.Scan(false, true); loadClock += 10
+    local expected = {["common-high"] = "Rareza inferior al mínimo", ["eternal-below"] = "Ingreso inferior al mínimo",
+        ["eternal-exact"] = "Cumple todos los filtros", ["eternal-forest"] = "Zona excluida", ["divine-high"] = "Cumple todos los filtros"}
+    local _, info, _, rows = finder.Scan(false, true)
+    assert(info.ready and #rows == 5)
+    for _, row in ipairs(rows) do
+        assert(row.reason == expected[row.uid], row.uid .. ": " .. row.reason)
+        assert(row.reason == finder.Explain(row.egg, row.catalog, row.income))
+    end
+    definitions.Eternal.Rank = 12
+    _, _, _, rows = finder.Scan(false, true)
+    for _, row in ipairs(rows) do
+        assert(row.reason == finder.Explain(row.egg, row.catalog, row.income))
+        if row.uid == "divine-high" then assert(row.reason == "Rareza inferior al mínimo") end
+    end
+    assert(entries.divine.Rarity.Rank == 10)
+end)
+
+test("evaluate validates the minimum rarity case-insensitively", function()
+    local rate = function(record) return record.rate end
+    assert(search.Evaluate({egg("a", 7e9)}, catalog, rate, {rarity = "dIVINE"}).uid == "a")
+    assert(not pcall(search.Evaluate, {egg("a", 7e9)}, catalog, rate, {rarity = "Removed"}))
+end)
+
+test("record comparison keeps deep semantics with inline primitives", function()
+    local mark = newproxy()
+    local base = {Uid = "a", Scale = 1.5, Mutations = {"Golden", "Shiny"}, Bounds = mark, Flag = false}
+    assert(search.SameRecord(base, search.CopyRecord(base)))
+    local changed = search.CopyRecord(base); changed.Mutations[2] = "Rainbow"
+    assert(not search.SameRecord(base, changed))
+    changed = search.CopyRecord(base); changed.Extra = 1
+    assert(not search.SameRecord(base, changed) and not search.SameRecord(changed, base))
+    changed = search.CopyRecord(base); changed.Flag = nil
+    assert(not search.SameRecord(base, changed))
+    changed = search.CopyRecord(base); changed.Bounds = newproxy()
+    assert(not search.SameRecord(base, changed))
+    changed = search.CopyRecord(base); changed.Scale = "1.5"
+    assert(not search.SameRecord(base, changed))
+    local nan = {Scale = 0/0}
+    assert(not search.SameRecord(nan, search.CopyRecord(nan)))
+end)
+
+test("settle diagnostics report stabilization without shortening the wait", function()
+    local finder, state, scan = loadingFixture()
+    loadClock = 0
+    assert(scan() == "loading" and finder.stats.settleSeconds == nil)
+    loadClock = 4; state.records = {egg("late", 8e9)}
+    assert(scan() == "loading")
+    loadClock = 9.99; assert(scan() == "loading" and finder.stats.readySeconds == nil)
+    loadClock = 10
+    assert(scan() == "match")
+    assert(finder.stats.settleSeconds == 4 and finder.stats.readySeconds == 10)
+end)
+
+test("visited memo equals PruneVisited and only rereads at boundaries", function()
+    local file = {old = 100, mid = 150, new = 190, future = 205, bad = "x", [7] = 195}
+    local reads = 0
+    local memo = support.RecentVisited(function() reads += 1; return support.Copy(file) end, 60, 2)
+    local function same(now)
+        local expected, got = support.PruneVisited(file, now, 60, 2), memo.Get(now)
+        for id, at in pairs(expected) do assert(got[id] == at, tostring(now) .. " missing " .. id) end
+        for id in pairs(got) do assert(expected[id] ~= nil, tostring(now) .. " extra " .. id) end
+    end
+    for now = 190, 280 do same(now) end
+    assert(reads == 5, "reads " .. reads)
+    file.extra = 279; memo.Invalidate(); same(280)
+    assert(memo.Get(280).extra == 279 and reads == 6)
+    same(200); assert(reads == 7)
+end)
+
+test("store backs up previous bytes without encoding them again", function()
+    local disk, encodes = {}, 0
+    local store = support.Store({read = function(path) assert(disk[path]); return disk[path] end,
+        write = function(path, raw) disk[path] = raw end,
+        encode = function(value) encodes += 1; return "v" .. tostring(value.value) end,
+        decode = function(raw) assert(string.sub(raw, 1, 1) == "v"); return {value = tonumber(string.sub(raw, 2))} end})
+    assert(store.Write("config", {value = 1}) and encodes == 1 and disk["config.bak"] == nil)
+    assert(store.Write("config", {value = 2}) and encodes == 2 and disk["config.bak"] == "v1")
+    disk.config = "broken"
+    assert(store.Write("config", {value = 3}) and encodes == 3 and disk["config.bak"] == "v1")
+    assert(disk.config == "v3" and store.Read("config").value == 3)
+end)
+
 print(string.format("%d regression tests passed", passed))
