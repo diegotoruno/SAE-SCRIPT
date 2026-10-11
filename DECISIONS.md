@@ -1,5 +1,15 @@
 # Decisiones de producto e implementacion
 
+## Chilli fuera del bundle (2026-10-11)
+
+El cargador integrado a veces no usaba la version mas reciente de Chilli y
+acoplaba su arranque, reintentos y guardas al boton. El usuario elige eliminarlo
+del repositorio en lugar de mantener un cargador propio en otro archivo: se
+pierden prefetch, reintentos, el filtro `chilli_client.json` y el aplazamiento
+por auto-test, y se gana que Chilli se descargue siempre con su linea original.
+Reemplaza la integracion "Mantener su cargador" y la distribucion de una sola
+linea de autoexec: ahora son dos lineas independientes.
+
 ## Solo zonas elegidas activan hop (2026-10-09)
 
 El usuario reporta hop por Lava Dragon de Volcano con las ultimas tres zonas

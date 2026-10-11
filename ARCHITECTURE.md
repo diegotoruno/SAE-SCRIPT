@@ -1,5 +1,16 @@
 # Arquitectura
 
+## Hopper sin cargador de Chilli (2026-10-11)
+
+`hopper_runtime.luau` solo contiene el soporte testable y `montarHopper`; el
+arranque es `pcall(montarHopper)`. No hay `cargarChilli`, ni lectura de
+`chilli_client.json`/`steal_an_egg_scout_state.json` para diferir Chilli, ni
+`__CHILLI_UI_JOB`/`__CHILLI_LOADED_JOB_ID`. El primer refresco del pool ya no
+espera una ScreenGui "Chilli" en gethui. Chilli es una dependencia externa del
+usuario y se instala con su propia linea de autoexec. Los nombres con prefijo
+Chilli que permanecen (`ChilliEggSearch`, `__CHILLI_HOPPER_SESSION`,
+`__CHILLI_CONNECTION_ID`, `chilli_egg_*.json`) pertenecen al finder.
+
 ## Firma y ciclo de vida (2026-10-09)
 
 egg_filter_panel crea ByMistakeWatermark como hijo de ServerHopButton:112x28,
