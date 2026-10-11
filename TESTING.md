@@ -10,6 +10,8 @@ pantalla. Pendiente en Potassium: montaje expandido/plegado, tween del plegado,
 arrastre desde AUTO/plegado/estado, hojas con velo (tocar fuera cierra),
 pestanas Todos/Cumplen con conteo, insignias de motivo, colores de rareza en
 texto enriquecido, detalle, presets/alertas y LeftAlt. Validar clics a mano.
+El usuario probo el preview publicado en la rama y aprobo abrir el PR, sin
+detallar que puntos reviso.
 
 ## 2026-10-09 - By Mistake
 
