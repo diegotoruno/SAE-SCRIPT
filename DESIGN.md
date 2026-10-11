@@ -82,9 +82,8 @@ ni contornos duplicados del texto.
 
 ## Interaccion
 
-La firma `By Mistake` aparece en una pastilla grafito/champan de 112x28 px,
-anclada a 18 px del borde derecho y 150 px del inferior, sobre los timers del
-juego. Es pasiva y permanece al minimizar Egg Finder.
+La firma `By Mistake` vive solo al pie de la tarjeta del boton Server Hop.
+No hay etiqueta flotante en la pantalla (retirada el 2026-10-11).
 
 AUTO apagado es neutro; AUTO encendido usa verde suave y texto oscuro.
 Las acciones principales usan champan con texto oscuro. No confundir apagado

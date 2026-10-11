@@ -73,7 +73,7 @@ Estilo grafito con acento champan, tipografia Gotham y tarjetas con ingreso dest
 
 **Egg Finder** (arriba a la derecha) abre el panel. **Alt izquierdo** alterna abrir/cerrar el panel, tambien cuando estas editando un filtro. La lista principal muestra exclusivamente huevos actuales del mapa, con imagen o modelo, ingreso, rareza, escala, peso, mutaciones y zona.
 
-La marca **By Mistake** permanece en la esquina inferior derecha de la pantalla, tambien al minimizar el panel. La tarjeta del boton Server Hop la muestra tanto expandida como plegada, en una fila separada de AUTO y del estado.
+La marca **By Mistake** aparece al pie de la tarjeta del boton Server Hop, tanto expandida como plegada, en una fila separada de AUTO y del estado. No hay otra etiqueta flotante en la pantalla.
 
 **Zonas** muestra las 13 zonas actuales con checks, en orden de progreso del juego. Pulsa **Ninguna**, marca **Enchanted Forest** y luego **Aplicar filtros** para buscar solo en esa zona; Forest queda excluido. Puedes marcar varias zonas o usar **Todas**. No puedes aplicar un borrador sin ninguna zona marcada. Rareza minima, ingreso exacto, mutacion y nombre siguen siendo obligatorios. La seleccion se conserva al recargar y en presets. El filtro anterior de especies se retira.
 

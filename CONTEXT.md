@@ -1,5 +1,12 @@
 # Contexto del proyecto
 
+## Sin firma flotante (2026-10-11)
+
+Tras publicar la UI sobria, el usuario ve la etiqueta By Mistake de la esquina
+inferior derecha como un texto flotante y elige quitarla. La firma queda solo
+al pie de la tarjeta del boton Server Hop, expandida y plegada. Reemplaza la
+etiqueta de pantalla pedida el 2026-10-09.
+
 ## UI sencilla y elegante (2026-10-11)
 
 El usuario pide mejorar toda la UI del boton y del panel del Egg Finder con un
