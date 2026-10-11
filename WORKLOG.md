@@ -1,5 +1,11 @@
 # Estado del trabajo
 
+## 2026-10-11 - Firma flotante retirada
+
+UI sobria publicada en stable (run 51, d6a0aae); el usuario la recibe con el
+link comun tras la cache de 5 min de GitHub raw. Rama codex/quitar-firma-flotante
+elimina ByMistakeWatermark del panel; la firma del boton se conserva.
+
 ## 2026-10-11 - UI sencilla y elegante
 
 Rama codex/ui-elegante (PR hacia main; separar-chilli ya integrado en #18).

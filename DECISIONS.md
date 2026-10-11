@@ -1,5 +1,12 @@
 # Decisiones de producto e implementacion
 
+## Firma solo en el boton (2026-10-11)
+
+La etiqueta By Mistake fija en pantalla duplicaba la firma del boton y se
+percibia como un texto flotante sobre el juego. El usuario elige quitarla en
+lugar de atarla al panel o hacerla mas discreta. Reemplaza "Firma visual By
+Mistake" del 2026-10-09 en lo que respecta a la pantalla.
+
 ## Boton grafito con un solo rojo (2026-10-11)
 
 Para un estilo sencillo y elegante el boton deja el rojo brillante con
