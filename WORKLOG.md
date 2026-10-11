@@ -1,5 +1,13 @@
 # Estado del trabajo
 
+## 2026-10-11 - UI sencilla y elegante
+
+Rama codex/ui-elegante, creada sobre codex/separar-chilli. Reescritos el
+layout visual del boton Server Hop (hopper_runtime.luau) y del panel
+(egg_filter_panel.luau) y los mensajes de estado. Build, compilacion y
+regresiones correctos. No probado en Roblox: falta revision visual en
+Potassium/Delta antes de publicar.
+
 ## 2026-10-11 - Chilli separado del hopper
 
 Rama pendiente codex/separar-chilli. Eliminados de hopper_runtime.luau el

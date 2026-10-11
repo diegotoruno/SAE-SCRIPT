@@ -1,5 +1,17 @@
 # Contexto del proyecto
 
+## UI sencilla y elegante (2026-10-11)
+
+El usuario pide mejorar toda la UI del boton y del panel del Egg Finder con un
+estilo sencillo pero elegante, sin textos sobrepuestos y con mensajes y
+filtros claros. El boton pasa a una tarjeta grafito con AUTO, Server Hop rojo
+plano y plegado en una fila, estado en su propia zona de dos lineas y firma al
+pie: el estado anterior pisaba el borde inferior del boton y no se recortaba.
+El panel ordena filtros en columnas con etiqueta propia, resume los filtros
+guardados, muestra Todos/Cumplen con conteo, motivo corto en cada tarjeta y
+hojas modales con velo. Los mensajes del boton y del panel se reescriben en
+frases completas. Detector, filtros, AUTO, ciclo, teleports y API no cambian.
+
 ## Chilli separado del hopper (2026-10-11)
 
 El usuario observa que la carga de Chilli incluida en el hopper a veces no
@@ -156,7 +168,7 @@ El minimo acepta `k`, `m`, `b`, `t` y `q`, sin distinguir mayusculas, con decima
 
 Lista vacia de zonas en configuracion acepta todas. `Solo filtro` limita los spawns visibles a coincidencias. La tarjeta muestra ingreso, escala, peso, mutaciones y zona, con imagen oficial del huevo, imagen de la criatura o modelo 3D replicado. El orden principal es mejor rareza primero (Rank descendente del juego), con ingreso descendente dentro de cada rareza; se conserva la alternativa de ordenar por nombre. Aplica a huevos, criaturas y modelos 3D. La preferencia existente `sortBest` ahora representa este orden por rareza.
 
-Los cambios pendientes se aplican antes de encender AUTO. Un minimo invalido impide guardar e iniciar. El panel se arrastra, minimiza y reabre con `EGG FILTERS`; **Alt izquierdo** alterna abrir/cerrar el panel completo, incluyendo cuando hay un campo de texto enfocado. Alt derecho no lo alterna. Los controles de filtros se pueden plegar. Posicion, visual, orden y apertura se conservan en `chilli_egg_panel_ui.json`. Los modelos se crean solo para tarjetas visibles y usan imagen cuando falta el modelo.
+Los cambios pendientes se aplican antes de encender AUTO. Un minimo invalido impide guardar e iniciar. El panel se arrastra, minimiza y reabre con `Egg Finder`; **Alt izquierdo** alterna abrir/cerrar el panel completo, incluyendo cuando hay un campo de texto enfocado. Alt derecho no lo alterna. Los controles de filtros se pueden plegar. Posicion, visual, orden y apertura se conservan en `chilli_egg_panel_ui.json`. Los modelos se crean solo para tarjetas visibles y usan imagen cuando falta el modelo.
 
 ## Integracion y distribucion
 

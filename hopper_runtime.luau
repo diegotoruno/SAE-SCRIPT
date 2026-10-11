@@ -777,17 +777,19 @@ do
     local API_429_COOLDOWN_SECONDS = 30   -- castigo tras un HTTP 429
     local AUTO_POLL_SECONDS = 0.5
 
+    -- Misma paleta grafito/champan del Egg Finder; el rojo queda solo en la accion.
     local COLORS = {
-        border = Color3.fromRGB(28, 14, 20),
-        redTop = Color3.fromRGB(247, 120, 118),
-        redMid = Color3.fromRGB(231, 62, 66),
-        redBottom = Color3.fromRGB(184, 18, 24),
-        text = Color3.fromRGB(255, 255, 255),
-        textShadow = Color3.fromRGB(58, 12, 24),
-        textStroke = Color3.fromRGB(34, 10, 22),
-        muted = Color3.fromRGB(214, 196, 200),
-        green = Color3.fromRGB(88, 226, 150),
-        amber = Color3.fromRGB(255, 196, 92),
+        surface = Color3.fromRGB(20, 24, 30),
+        raised = Color3.fromRGB(30, 36, 44),
+        border = Color3.fromRGB(56, 65, 77),
+        action = Color3.fromRGB(192, 57, 66),
+        actionBorder = Color3.fromRGB(232, 120, 126),
+        text = Color3.fromRGB(239, 243, 247),
+        muted = Color3.fromRGB(170, 183, 197),
+        gold = Color3.fromRGB(224, 197, 149),
+        green = Color3.fromRGB(147, 215, 191),
+        onGreen = Color3.fromRGB(15, 35, 29),
+        amber = Color3.fromRGB(242, 190, 122),
     }
 
     -- ---------------------------------------------------------------- utilidades
@@ -1148,8 +1150,8 @@ do
     local uiState = readJson(UI_FILE, {})
     local collapsed = (uiState.collapsed == true)
     local autoEnabled = (uiState.auto == true)
-    local EXPANDED_SIZE = Vector2.new(340, 114)
-    local COLLAPSED_SIZE = Vector2.new(210, 60)
+    local EXPANDED_SIZE = Vector2.new(320, 116)
+    local COLLAPSED_SIZE = Vector2.new(232, 66)
     local savedPosition = UDim2.new(0.5, 0, 0, 26)
     if type(uiState.pos) == "table" then
         local pos = uiState.pos
@@ -1159,6 +1161,8 @@ do
         end
     end
 
+    -- Tarjeta grafito: AUTO, accion principal y plegado comparten una fila;
+    -- estado y firma tienen filas propias para que ningun texto se encime.
     local holder = Instance.new("Frame")
     holder.Name = "Holder"
     holder.AnchorPoint = Vector2.new(0.5, 0)
@@ -1167,138 +1171,94 @@ do
         collapsed and COLLAPSED_SIZE.X or EXPANDED_SIZE.X,
         collapsed and COLLAPSED_SIZE.Y or EXPANDED_SIZE.Y
     )
-    holder.BackgroundColor3 = COLORS.border
+    holder.BackgroundColor3 = COLORS.surface
     holder.BorderSizePixel = 0
     holder.Active = true
     holder.Parent = screenGui
 
-    local holderCorner = Instance.new("UICorner")
-    holderCorner.CornerRadius = UDim.new(0, 15)
-    holderCorner.Parent = holder
+    local function round(object, radius)
+        local corner = Instance.new("UICorner")
+        corner.CornerRadius = UDim.new(0, radius)
+        corner.Parent = object
+    end
+    local function outline(object, color, transparency)
+        local stroke = Instance.new("UIStroke")
+        stroke.Name = "Border"
+        stroke.Color = color
+        stroke.Transparency = transparency or 0
+        stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+        stroke.Parent = object
+        return stroke
+    end
+    local function label(name, parent, size, color, bold)
+        local item = Instance.new("TextLabel")
+        item.Name = name
+        item.BackgroundTransparency = 1
+        item.Font = bold and Enum.Font.GothamBold or Enum.Font.GothamMedium
+        item.Text = ""
+        item.TextSize = size
+        item.TextColor3 = color
+        item.TextStrokeTransparency = 1
+        item.TextTruncate = Enum.TextTruncate.AtEnd
+        item.Parent = parent
+        return item
+    end
+    -- Chevron de dos segmentos: no depende de glifos de la fuente.
+    local function chevronSegments(parent)
+        local segments = {}
+        for index = 1, 2 do
+            local segment = Instance.new("Frame")
+            segment.Name = "Chevron" .. index
+            segment.AnchorPoint = Vector2.new(0.5, 0.5)
+            segment.Size = UDim2.fromOffset(7, 1.5)
+            segment.BackgroundColor3 = COLORS.muted
+            segment.BorderSizePixel = 0
+            segment.Position = UDim2.new(0.5, index == 1 and -2.5 or 2.5, 0.5, 0)
+            segment.Parent = parent
+            segments[index] = segment
+        end
+        return segments
+    end
+    round(holder, 14)
+    outline(holder, COLORS.border)
 
     local button = Instance.new("TextButton")
     button.Name = "ServerHop"
-    button.AutoButtonColor = false
+    button.AutoButtonColor = true
     button.Text = ""
-    button.Size = UDim2.new(1, -6, 0, collapsed and 36 or 80)
-    button.Position = UDim2.fromOffset(3, 3)
-    button.BackgroundColor3 = COLORS.redMid
+    button.BackgroundColor3 = COLORS.action
+    button.BorderSizePixel = 0
     button.Parent = holder
+    round(button, 10)
+    outline(button, COLORS.actionBorder, 0.55)
 
-    local buttonCorner = Instance.new("UICorner")
-    buttonCorner.CornerRadius = UDim.new(0, 12)
-    buttonCorner.Parent = button
+    local mainLabel = label("Label", button, 18, COLORS.text, true)
+    mainLabel.Text = "Server Hop"
+    mainLabel.Position = UDim2.fromOffset(8, 0)
+    mainLabel.Size = UDim2.new(1, -16, 1, 0)
 
-    local gradient = Instance.new("UIGradient")
-    gradient.Rotation = 90
-    gradient.Color = ColorSequence.new({
-        ColorSequenceKeypoint.new(0, COLORS.redTop),
-        ColorSequenceKeypoint.new(0.45, COLORS.redMid),
-        ColorSequenceKeypoint.new(1, COLORS.redBottom),
-    })
-    gradient.Parent = button
-
-    local topShine = Instance.new("Frame")
-    topShine.Name = "Shine"
-    topShine.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
-    topShine.BackgroundTransparency = 0.82
-    topShine.BorderSizePixel = 0
-    topShine.Size = UDim2.new(1, -15, 0, 16)
-    topShine.Position = UDim2.fromOffset(8, 5)
-    topShine.ZIndex = 2
-    topShine.Parent = button
-
-    local shineCorner = Instance.new("UICorner")
-    shineCorner.CornerRadius = UDim.new(1, 0)
-    shineCorner.Parent = topShine
-
-    local TITLE_FONT = Enum.Font.GothamBlack
-    do
-        local ok, font = pcall(function()
-            return Enum.Font.FredokaOne
-        end)
-        if ok and font then
-            TITLE_FONT = font
-        end
-    end
-
-    local function makeText(name, color, zIndex)
-        local label = Instance.new("TextLabel")
-        label.Name = name
-        label.BackgroundTransparency = 1
-        label.Size = UDim2.fromScale(1, 1)
-        label.Font = TITLE_FONT
-        label.Text = "Server Hop"
-        label.TextSize = 34
-        label.TextColor3 = color
-        label.TextStrokeTransparency = 1
-        label.TextXAlignment = Enum.TextXAlignment.Center
-        label.TextYAlignment = Enum.TextYAlignment.Center
-        label.ZIndex = zIndex
-        label.Parent = button
-        return label
-    end
-
-    -- El trazo nativo del texto es fino (TextStrokeSize no existe en esta version
-    -- de Roblox), asi que el contorno grueso de la captura se hace con copias
-    -- desplazadas alrededor, siempre por debajo del texto blanco.
-    local OUTLINE_OFFSETS = {
-        Vector2.new(-2, 0), Vector2.new(2, 0), Vector2.new(0, -2), Vector2.new(0, 2),
-        Vector2.new(-1, -1), Vector2.new(1, -1), Vector2.new(-1, 1), Vector2.new(1, 1),
-    }
-
-    local outlineLabels = {}
-    for index, offset in ipairs(OUTLINE_OFFSETS) do
-        local outline = makeText("Outline" .. tostring(index), COLORS.textStroke, 3)
-        outline.Position = UDim2.fromOffset(offset.X, offset.Y)
-        table.insert(outlineLabels, outline)
-    end
-
-    local mainLabel = makeText("Label", COLORS.text, 4)
-    mainLabel.TextStrokeTransparency = 0
-    mainLabel.TextStrokeColor3 = COLORS.textStroke
-
-    local statusLabel = Instance.new("TextLabel")
-    statusLabel.Name = "Status"
-    statusLabel.BackgroundTransparency = 1
-    statusLabel.Size = UDim2.new(1, -10, 0, 16)
-    statusLabel.Position = UDim2.fromOffset(5, 78)
-    statusLabel.Font = Enum.Font.GothamMedium
-    statusLabel.Text = ""
-    statusLabel.TextSize = 12
-    statusLabel.TextColor3 = COLORS.muted
-    statusLabel.TextXAlignment = Enum.TextXAlignment.Center
-    statusLabel.Parent = holder
+    local statusLabel = label("Status", holder, 11, COLORS.muted)
+    statusLabel.Position = UDim2.fromOffset(14, 62)
+    statusLabel.Size = UDim2.new(1, -28, 0, 30)
+    statusLabel.TextWrapped = true
 
     -- La firma tiene su propia fila en ambas versiones; no tapa AUTO ni estado.
-    local creditLabel = Instance.new("TextLabel")
-    creditLabel.Name = "ByMistakeCredit"
+    local creditLabel = label("ByMistakeCredit", holder, 10, COLORS.gold)
     creditLabel.AnchorPoint = Vector2.new(0.5, 1)
-    creditLabel.Position = UDim2.new(0.5, 0, 1, -4)
-    creditLabel.Size = UDim2.new(1, -16, 0, 14)
-    creditLabel.BackgroundTransparency = 1
-    creditLabel.Font = Enum.Font.GothamMedium
+    creditLabel.Position = UDim2.new(0.5, 0, 1, -6)
+    creditLabel.Size = UDim2.new(1, -24, 0, 12)
     creditLabel.Text = "By Mistake"
-    creditLabel.TextSize = 11
-    creditLabel.TextColor3 = COLORS.muted
-    creditLabel.TextStrokeTransparency = 1
+    creditLabel.TextTransparency = 0.25
     creditLabel.Active = false
     creditLabel.Selectable = false
-    creditLabel.ZIndex = 5
-    creditLabel.Parent = holder
 
     local function setLabel(text)
         if not session.alive then return end
-        if not session.alive then return end
         uiAccess()
         mainLabel.Text = text
-        for _, outline in ipairs(outlineLabels) do
-            outline.Text = text
-        end
     end
 
     local function setStatus(text, color)
-        if not session.alive then return end
         if not session.alive then return end
         uiAccess()
         statusLabel.Text = text
@@ -1312,18 +1272,14 @@ do
 
     local function setBusy(value)
         if not session.alive then return end
-        if not session.alive then return end
         uiAccess()
         busy = value
-        local target = value and 0.55 or 0
         TweenService:Create(button, TweenInfo.new(0.15), {
-            BackgroundTransparency = target,
+            BackgroundTransparency = value and 0.5 or 0,
         }):Play()
     end
 
     -- ------------------------------------------------- estado de la ventana
-    local ARROW_DOWN = "\226\150\188"   -- triangulo abajo
-    local ARROW_UP = "\226\150\178"     -- triangulo arriba
     local DRAG_THRESHOLD = 6
 
     local dragging = false
@@ -1351,96 +1307,75 @@ do
         return dragging or (os.clock() - lastDragAt) < 0.25
     end
 
-    -- Chip de plegar/desplegar, en la esquina superior derecha del boton.
+    -- Plegar/desplegar, a la derecha del boton principal.
     local toggle = Instance.new("TextButton")
     toggle.Name = "Toggle"
-    toggle.AutoButtonColor = false
+    toggle.AutoButtonColor = true
     toggle.AnchorPoint = Vector2.new(1, 0)
-    toggle.Position = UDim2.new(1, -7, 0, 7)
-    toggle.Size = UDim2.fromOffset(24, 22)
-    toggle.BackgroundColor3 = COLORS.border
-    toggle.BackgroundTransparency = 0.12
+    toggle.BackgroundColor3 = COLORS.raised
+    toggle.BorderSizePixel = 0
     toggle.Text = ""
-    toggle.ZIndex = 6
-    toggle.Parent = button
-
-    local toggleCorner = Instance.new("UICorner")
-    toggleCorner.CornerRadius = UDim.new(0, 7)
-    toggleCorner.Parent = toggle
-
-    local toggleLabel = Instance.new("TextLabel")
-    toggleLabel.Name = "Arrow"
-    toggleLabel.BackgroundTransparency = 1
-    toggleLabel.Size = UDim2.fromScale(1, 1)
-    toggleLabel.Font = Enum.Font.GothamBold
-    toggleLabel.Text = ARROW_DOWN
-    toggleLabel.TextSize = 13
-    toggleLabel.TextColor3 = COLORS.text
-    toggleLabel.ZIndex = 7
-    toggleLabel.Parent = toggle
+    toggle.Parent = holder
+    round(toggle, 10)
+    outline(toggle, COLORS.border, 0.3)
+    local toggleChevron = chevronSegments(toggle)
 
     -- Chip AUTO: enciende/apaga el encadenado automatico. Se guarda en
     -- server_hop_button_ui.json para que siga encendido entre saltos.
     local autoChip = Instance.new("TextButton")
     autoChip.Name = "AutoChip"
     autoChip.AutoButtonColor = false
-    autoChip.Position = UDim2.new(0, 7, 0, 7)
-    autoChip.Size = UDim2.fromOffset(46, 22)
-    autoChip.BackgroundColor3 = COLORS.border
-    autoChip.BackgroundTransparency = 0.35
+    autoChip.BackgroundColor3 = COLORS.raised
+    autoChip.BorderSizePixel = 0
     autoChip.Text = ""
-    autoChip.ZIndex = 6
-    autoChip.Parent = button
+    autoChip.Parent = holder
+    round(autoChip, 10)
+    local autoBorder = outline(autoChip, COLORS.border, 0.3)
 
-    local autoCorner = Instance.new("UICorner")
-    autoCorner.CornerRadius = UDim.new(0, 7)
-    autoCorner.Parent = autoChip
-
-    local autoLabel = Instance.new("TextLabel")
-    autoLabel.Name = "AutoLabel"
-    autoLabel.BackgroundTransparency = 1
+    local autoLabel = label("AutoLabel", autoChip, 11, COLORS.muted, true)
     autoLabel.Size = UDim2.fromScale(1, 1)
-    autoLabel.Font = Enum.Font.GothamBold
-    autoLabel.Text = "AUTO"
-    autoLabel.TextSize = 11
-    autoLabel.TextColor3 = COLORS.muted
-    autoLabel.ZIndex = 7
-    autoLabel.Parent = autoChip
+    autoLabel.Text = "AUTO\nOFF"
+    autoLabel.TextTruncate = Enum.TextTruncate.None
 
     local function updateAutoChip()
         uiAccess()
-        if autoEnabled then
-            autoChip.BackgroundColor3 = COLORS.green
-            autoChip.BackgroundTransparency = 0.1
-            autoLabel.TextColor3 = Color3.fromRGB(12, 40, 24)
-        else
-            autoChip.BackgroundColor3 = COLORS.border
-            autoChip.BackgroundTransparency = 0.35
-            autoLabel.TextColor3 = COLORS.muted
-        end
+        autoLabel.Text = autoEnabled and "AUTO\nON" or "AUTO\nOFF"
+        autoChip.BackgroundColor3 = autoEnabled and COLORS.green or COLORS.raised
+        autoLabel.TextColor3 = autoEnabled and COLORS.onGreen or COLORS.muted
+        autoBorder.Color = autoEnabled and COLORS.green or COLORS.border
     end
 
     local function applyCollapsed(value, instant)
         collapsed = value
         local size = value and COLLAPSED_SIZE or EXPANDED_SIZE
-        local buttonHeight = value and 36 or 80
-        local textSize = value and 17 or 34
-        local tween = instant
-            and TweenInfo.new(0)
-            or TweenInfo.new(0.22, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
-
-        TweenService:Create(holder, tween, { Size = UDim2.fromOffset(size.X, size.Y) }):Play()
-        TweenService:Create(button, tween, { Size = UDim2.new(1, -6, 0, buttonHeight) }):Play()
-        mainLabel.TextSize = textSize
-        for _, outline in ipairs(outlineLabels) do
-            outline.TextSize = textSize
+        local pad = value and 8 or 10
+        local row = value and 34 or 44
+        local chip = value and 52 or 60
+        local side = value and 28 or 32
+        local tween = TweenInfo.new(0.22, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+        local function place(object, properties)
+            if instant then
+                for key, target in pairs(properties) do object[key] = target end
+            else
+                TweenService:Create(object, tween, properties):Play()
+            end
         end
+
+        place(holder, { Size = UDim2.fromOffset(size.X, size.Y) })
+        place(autoChip, { Position = UDim2.fromOffset(pad, pad), Size = UDim2.fromOffset(chip, row) })
+        place(button, { Position = UDim2.fromOffset(pad + chip + 6, pad),
+            Size = UDim2.new(1, -(2 * pad + chip + side + 12), 0, row) })
+        place(toggle, { Position = UDim2.new(1, -pad, 0, pad), Size = UDim2.fromOffset(side, row) })
+        mainLabel.TextSize = value and 14 or 18
+        autoLabel.TextSize = value and 10 or 11
         statusLabel.Visible = not value
-        toggleLabel.Text = value and ARROW_UP or ARROW_DOWN
+        -- Desplegado muestra "plegar" (chevron arriba); plegado, "desplegar".
+        toggleChevron[1].Rotation = value and 45 or -45
+        toggleChevron[2].Rotation = value and -45 or 45
     end
 
     -- Los eventos del marco no reciben necesariamente los de sus controles.
-    -- Registrar toda la superficie roja, incluidos texto, AUTO y plegado.
+    -- Registrar toda la tarjeta, incluidos texto, AUTO y plegado.
     local function beginDrag(input)
         if pendingDrag then return end
         if input.UserInputType == Enum.UserInputType.MouseButton1
@@ -1564,8 +1499,8 @@ do
         match.jobId, match.placeId, match.at = game.JobId, game.PlaceId, os.time()
         writeJson("chilli_egg_search_match.json", match)
         setBusy(false)
-        setLabel("MATCH")
-        setStatus(string.format("%s · %s/s · %s", match.name,
+        setLabel("Encontrado")
+        setStatus(string.format("%s  ·  %s/s  ·  %s", match.name,
             eggSearch.FormatMinimum(match.income), match.area or "mapa"), COLORS.green)
         matchAlert("Egg " .. match.rarity .. " encontrado", string.format(
             "%s · %s/s · %s. Objetivo encontrado; Chilli puede continuar.",
@@ -1669,14 +1604,19 @@ do
             item.TextColor3 = color and surface or foreground; item.Parent = parentObject; rounded(item)
             return item
         end
-        local entry = action(screenGui, "ServerAccount", "CUENTA / BEST PING", 0)
-        entry.AnchorPoint = Vector2.new(0, 1)
-        entry.Position = UDim2.new(0, 18, 1, -18); entry.Size = UDim2.fromOffset(196, 44); entry.ZIndex = 90
+        local function outlined(object)
+            local stroke = Instance.new("UIStroke"); stroke.Color = COLORS.border
+            stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border; stroke.Parent = object
+        end
+        local entry = action(screenGui, "ServerAccount", "Cuenta y Best Ping", 0)
+        entry.AnchorPoint = Vector2.new(0, 1); entry.BackgroundColor3 = surface; entry.TextSize = 12
+        entry.Position = UDim2.new(0, 18, 1, -18); entry.Size = UDim2.fromOffset(184, 36); entry.ZIndex = 90
+        outlined(entry)
         local panel = Instance.new("Frame")
         panel.Name = "ServerAccountPanel"; panel.AnchorPoint = Vector2.new(0.5, 0.5)
         panel.Position = UDim2.fromScale(0.5, 0.5); panel.Size = UDim2.fromOffset(440, 462)
         panel.BackgroundColor3 = surface; panel.BorderSizePixel = 0; panel.Visible = false
-        panel.ZIndex = 30; panel.Parent = screenGui; rounded(panel)
+        panel.ZIndex = 30; panel.Parent = screenGui; rounded(panel); outlined(panel)
         local scale = Instance.new("UIScale"); scale.Parent = panel
         text(panel, "Title", "Tu cuenta para Best Ping", 20, 30, 22)
         text(panel, "Privacy", "Este dispositivo consulta Roblox. El autor del script no recibe tu cookie.", 58, 40, 13, secondary)
@@ -1706,9 +1646,9 @@ do
         local function updateEntry()
             uiAccess()
             local state = deviceCookie.Status()
-            entry.Text = connecting and "CUENTA · COMPROBANDO"
-                or state.configured and (state.remembered and "CUENTA · GUARDADA" or "CUENTA · SOLO SESION")
-                or "CUENTA / BEST PING"
+            entry.Text = connecting and "Cuenta: comprobando"
+                or state.configured and (state.remembered and "Cuenta: guardada" or "Cuenta: solo esta sesión")
+                or "Cuenta y Best Ping"
         end
         local function fit()
             uiAccess()
@@ -2034,8 +1974,8 @@ do
                     local candidate = pool[index]
                     setLabel("Saltando...")
                     setStatus(serverOrder == "BestLatency"
-                        and string.format("Best Ping · %d/7 · entrando...", candidate.playing)
-                        or string.format("entrando (api %s ms)...", tostring(candidate.ping)), COLORS.muted)
+                        and string.format("Entrando a un servidor de %d/7 (Best Ping)", candidate.playing)
+                        or string.format("Entrando a un servidor de %s ms", tostring(candidate.ping)), COLORS.muted)
                     print(string.format(
                         "[ServerHopButton] Teleport intento %d -> %s",
                         index,
@@ -2061,22 +2001,22 @@ do
                     if result == "failed" then
                         -- Throttling is temporary; don't exclude that server for an hour.
                         if not string.find(string.lower(reason or ""), "flood", 1, true) then markVisited(candidate.id) end
-                        setStatus("rechazado; probando otro candidato...", COLORS.amber)
+                        setStatus("Servidor rechazado; probando otro", COLORS.amber)
                         print("[ServerHopButton] Teleport rechazado: " .. tostring(reason))
                         waitForHop(1.5, automatic, generation)
                     else
                         session.autoHopBlocked = true
                         setBusy(false); setLabel("Server Hop")
-                        setStatus(result == "storage" and reason or "sin confirmar; pulsa Server Hop para reintentar", COLORS.amber)
+                        setStatus(result == "storage" and reason or "Salto sin confirmar. Pulsa Server Hop para reintentar.", COLORS.amber)
                         notify("Server Hop", result == "storage" and reason or "AUTO pausó los saltos: el teleport sigue sin confirmar.", 8)
                         return false
                     end
                 end
 
-                setStatus("Roblox no confirmo los candidatos; reintentando...", COLORS.amber)
+                setStatus("Roblox no confirmó los servidores; reintentando", COLORS.amber)
             else
                 setStatus(string.format(
-                    "sin candidatos (%s); reintentando en %d s...",
+                    "Sin servidores disponibles (%s). Reintento en %d s",
                     tostring(pickError),
                     RETRY_DELAY_SECONDS
                 ), COLORS.amber)
@@ -2111,10 +2051,10 @@ do
             local pending = readJson(STATE_FILE, nil)
             if pending and pending.pending and pending.unconfirmed then
                 session.autoHopBlocked = true
-                setBusy(false); setStatus("salto sin confirmar; reintenta con Server Hop", COLORS.amber)
+                setBusy(false); setStatus("Salto sin confirmar. Pulsa Server Hop para reintentar.", COLORS.amber)
                 return
             end
-            setStatus("error: " .. tostring(err) .. " · reintentando...", COLORS.amber)
+            setStatus("Error: " .. tostring(err) .. ". Reintentando", COLORS.amber)
             waitForHop(RETRY_DELAY_SECONDS, automatic, generation)
         end
     end
@@ -2131,14 +2071,14 @@ do
 
         if game.PlaceId ~= PLACE_ID then
             setBusy(false)
-            setStatus("no estas en Steal An Egg", COLORS.amber)
+            setStatus("Solo funciona dentro de Steal An Egg", COLORS.amber)
             notify("Server Hop", "Este boton solo funciona dentro de Steal An Egg.", 6)
             return
         end
 
         if autoTestRunning() then
             setBusy(false)
-            setStatus("auto-test en curso; espera", COLORS.amber)
+            setStatus("Auto-test en curso; espera a que termine", COLORS.amber)
             notify("Server Hop", "Hay un auto-test activo. Espera a que termine.", 6)
             return
         end
@@ -2159,13 +2099,13 @@ do
             and (os.time() - (tonumber(existing.requestedAt) or 0)) < PENDING_FRESH_SECONDS
         if inFlight then
             setBusy(false)
-            setStatus("ya hay un salto en curso", COLORS.muted)
+            setStatus("Ya hay un salto en curso", COLORS.muted)
             return
         end
 
         markVisited(game.JobId)
         setLabel("Buscando...")
-        setStatus("buscando servidor...", COLORS.muted)
+        setStatus("Buscando un servidor", COLORS.muted)
         runHopLoop(automatic, generation)
     end
 
@@ -2209,18 +2149,19 @@ do
                         session.autoHopBlocked, PENDING_FRESH_SECONDS) then
                         if mode == "loading" then
                             setLabel("Escaneando")
-                            setStatus(info.reason or "esperando datos del mapa...", COLORS.amber)
+                            local reason = info.reason or "esperando datos del mapa"
+                            setStatus(string.upper(string.sub(reason, 1, 1)) .. string.sub(reason, 2), COLORS.muted)
                         elseif mode == "wait" then
                             local remaining = cycle and math.ceil(cycle.secondsUntilReset)
-                            local scope = #eggSearch.config.zones > 0 and " en tus zonas" or ""
-                            setLabel(remaining and string.format("EGG · %d:%02d",
-                                math.floor(remaining / 60), remaining % 60) or "Egg Search")
-                            setStatus(cycle and not cycle.running
-                                and "sin " .. eggSearch.config.rarity .. "+" .. scope .. " · ciclo pausado" or "sin " .. eggSearch.config.rarity .. "+" .. scope .. " · esperando renovacion", COLORS.muted)
+                            local scope = #eggSearch.config.zones > 0 and " en tus zonas" or " en el mapa"
+                            setLabel(remaining and string.format("Reset %d:%02d",
+                                math.floor(remaining / 60), remaining % 60) or "Esperando")
+                            setStatus("Sin " .. eggSearch.config.rarity .. "+" .. scope .. (cycle and not cycle.running
+                                and ". Ciclo en pausa" or ". Esperando la renovación"), COLORS.muted)
                         else
                             setStatus(info.continuingCycle
-                                and "no está aquí · búsqueda del ciclo vigente; buscando servidor"
-                                or string.format("%d %s+; ninguno cumple · buscando servidor",
+                                and "Ya apareció en este ciclo, pero aquí no está. Buscando otro servidor"
+                                or string.format("%d %s+ aquí, ninguno cumple los filtros. Buscando otro servidor",
                                     info.rarityCount, eggSearch.config.rarity), COLORS.green)
                             -- El vigilante sigue escaneando durante reintentos o renovaciones.
                             setBusy(true)
@@ -2251,7 +2192,7 @@ do
         saveUi()
         updateAutoChip()
         if autoEnabled then
-            setStatus(eggSearch.Summary() .. " · revisando mapa...", COLORS.green)
+            setStatus("Buscando " .. eggSearch.Summary() .. ". Revisando el mapa", COLORS.green)
             startAutoHopWatcher()
         else
             if session.attempt and session.attempt.state == "pending" then
@@ -2259,7 +2200,7 @@ do
             end
             setBusy(false)
             setLabel("Server Hop")
-            setStatus("busqueda apagada · salto manual disponible", COLORS.muted)
+            setStatus("AUTO apagado. Pulsa Server Hop para cambiar de servidor", COLORS.muted)
         end
     end
 
@@ -2283,7 +2224,7 @@ do
             if not ok and session.alive then
                 setBusy(false)
                 setLabel("Server Hop")
-                setStatus("error: " .. tostring(err), COLORS.amber)
+                setStatus("Error: " .. tostring(err), COLORS.amber)
                 notify("Server Hop", "Error iniciando el salto: " .. tostring(err), 8)
             end
         end)
@@ -2298,10 +2239,9 @@ do
             if type(last) == "table" and type(last.lastPing) == "number" then
                 local ok = last.lastPlayers <= IDEAL_PLAYERS and last.lastPing <= IDEAL_PING
                 setStatus(string.format(
-                    "ultimo: %d/7 · %d ms %s",
+                    "Último servidor: %d/7 jugadores  ·  %d ms",
                     last.lastPlayers,
-                    last.lastPing,
-                    ok and "✓" or "✗"
+                    last.lastPing
                 ), ok and COLORS.green or COLORS.amber)
             end
             return
@@ -2310,7 +2250,7 @@ do
         local disposition = support.TeleportDisposition(state, game.JobId, connectionId)
         if disposition == "blocked" then
             session.autoHopBlocked = true
-            setStatus("salto anterior sin confirmar; pulsa Server Hop para reintentar", COLORS.amber)
+            setStatus("El salto anterior no se confirmó. Pulsa Server Hop para reintentar.", COLORS.amber)
             return
         end
         if disposition == "reconnected" then
@@ -2325,16 +2265,16 @@ do
             if type(current) ~= "table" or current.pending ~= true or current.target ~= state.target
                 or current.requestedAt ~= state.requestedAt or current.originConnection ~= state.originConnection then return end
             if not writeJson(STATE_FILE, {pending = false, reconnected = true, at = os.time()}) then
-                setStatus("no se pudo cerrar el salto de la conexión anterior", COLORS.amber); return
+                setStatus("No se pudo cerrar el salto de la conexión anterior", COLORS.amber); return
             end
             session.autoHopBlocked = false
             setBusy(false); setLabel("Server Hop")
-            setStatus("reconectado · revisando ciclo y snapshot actuales", COLORS.green)
+            setStatus("Reconectado. Revisando el mapa actual", COLORS.green)
             return
         end
         if os.time() - (tonumber(state.requestedAt) or 0) > 240 then
             writeJson(STATE_FILE, { pending = false })
-            setStatus("salto caducado", COLORS.muted)
+            setStatus("El salto anterior caducó", COLORS.muted)
             return
         end
 
@@ -2348,10 +2288,10 @@ do
                 auto = true,
                 lastTarget = state.target,
                 at = os.time(),
-            }) then setStatus("no se pudo confirmar la llegada", COLORS.amber); return end
+            }) then setStatus("No se pudo confirmar la llegada", COLORS.amber); return end
             setBusy(false)
             setLabel("Server Hop")
-            setStatus("AUTO ON · revisando huevos del mapa", COLORS.green)
+            setStatus("AUTO activo. Revisando el mapa", COLORS.green)
             return
         end
 
@@ -2361,13 +2301,13 @@ do
         local capturedAt = state.requestedAt
 
         setLabel("Midiendo...")
-        setStatus("estabilizando la conexion...", COLORS.muted)
+        setStatus("Estabilizando la conexión", COLORS.muted)
 
         task.wait(ARRIVE_STABILIZE_SECONDS)
         if not session.alive then return end
 
         local players = #Players:GetPlayers()
-        setStatus("midiendo ping real...", COLORS.muted)
+        setStatus("Midiendo el ping real", COLORS.muted)
 
         local ping = measurePing()
         if not session.alive then return end
@@ -2407,10 +2347,10 @@ do
         setBusy(false)
         setLabel("Server Hop")
         setStatus(string.format(
-            "%d/7 · %s ms %s",
+            "%s: %d/7 jugadores  ·  %s ms",
+            good and "Servidor bueno" or "Servidor justo",
             players,
-            type(ping) == "number" and tostring(ping) or "N/D",
-            good and "✓" or "✗"
+            type(ping) == "number" and tostring(ping) or "N/D"
         ), good and COLORS.green or COLORS.amber)
 
         notify(
@@ -2432,14 +2372,14 @@ do
             if not ok then
                 setBusy(false)
                 setLabel("Server Hop")
-                setStatus("error al medir: " .. tostring(err), COLORS.amber)
+                setStatus("Error al medir: " .. tostring(err), COLORS.amber)
                 notify("Server Hop", "Error midiendo al llegar: " .. tostring(err), 8)
             end
         else
             if autoEnabled then
-                setStatus("AUTO ON · revisando huevos del mapa", COLORS.green)
+                setStatus("AUTO activo. Revisando el mapa", COLORS.green)
             else
-                setStatus("1 clic = salto · AUTO = buscar Divine", COLORS.muted)
+                setStatus("Server Hop cambia de servidor. AUTO busca tu huevo", COLORS.muted)
             end
         end
     end)

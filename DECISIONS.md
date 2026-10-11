@@ -1,5 +1,13 @@
 # Decisiones de producto e implementacion
 
+## Boton grafito con un solo rojo (2026-10-11)
+
+Para un estilo sencillo y elegante el boton deja el rojo brillante con
+degradado, brillo y contorno multiple, y adopta la paleta del panel. El rojo se
+conserva solo en la accion Server Hop para que siga reconocible. Reemplaza el
+layout 340x114/210x60 con texto principal a todo el ancho del boton: AUTO,
+accion y plegado ahora son hermanos en una fila y no se solapan.
+
 ## Chilli fuera del bundle (2026-10-11)
 
 El cargador integrado a veces no usaba la version mas reciente de Chilli y

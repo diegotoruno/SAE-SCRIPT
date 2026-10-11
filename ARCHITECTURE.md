@@ -11,12 +11,28 @@ usuario y se instala con su propia linea de autoexec. Los nombres con prefijo
 Chilli que permanecen (`ChilliEggSearch`, `__CHILLI_HOPPER_SESSION`,
 `__CHILLI_CONNECTION_ID`, `chilli_egg_*.json`) pertenecen al finder.
 
+## UI sobria del boton y del panel (2026-10-11)
+
+hopper_runtime: Holder es una tarjeta grafito con AutoChip, ServerHop y Toggle
+como hermanos en una fila; applyCollapsed coloca los tres y cambia el tamano
+(instantaneo al montar, tween 0.22 s despues). ServerHop contiene solo Label;
+se retiraron gradiente, Shine y las ocho copias Outline. Status es hijo de
+Holder con dos lineas y recorte. Las superficies de arrastre no cambian.
+
+egg_filter_panel: las hojas (Dropdown, ZonePicker, EggDetail, FinderOptions)
+son un TextButton de velo hijo de EggFilterPanel con ese nombre y una Frame
+Sheet activa dentro; `popup` apunta al velo y closePopup lo destruye. La barra
+ListBar agrupa MapTab/CatalogTab/VisualMode/Sort; layout mueve la barra y la
+lista. buildCards cuenta todos y coincidencias del snapshot para las pestanas.
+`GetStatus().matches` expone ese conteo. API, persistencia y detector iguales.
+
 ## Firma y ciclo de vida (2026-10-09)
 
 egg_filter_panel crea ByMistakeWatermark como hijo de ServerHopButton:112x28,
 18px del borde derecho/150px del inferior,GothamMedium12,fuera del panel plegable.
 Destroy del panel tambien elimina la firma. hopper_runtime crea ByMistakeCredit
-en Holder,alineada abajo en su propia fila; expandido340x114/plegado210x60.
+en Holder,alineada abajo en su propia fila; expandido320x116/plegado232x66
+(ver UI sobria 2026-10-11).
 La firma forma parte de las superficies de arrastre existentes y no tiene
 acciones propias. Destroy/reejecucion retiran ambos objetos con su sesion.
 
