@@ -1,5 +1,18 @@
 # Pruebas y validacion
 
+## 2026-10-11 - UI sobria del boton y del panel
+
+Build, compilacion de siete entradas, 176 regresiones Luau y diez Python
+correctos. luau-analyze sobre los modulos editados solo reporta globals de
+Roblox. Sin regresiones nuevas: no cambia ninguna decision del detector.
+Geometria revisada por calculo (anchos de columnas, filas y textos), no en
+pantalla. Pendiente en Potassium: montaje expandido/plegado, tween del plegado,
+arrastre desde AUTO/plegado/estado, hojas con velo (tocar fuera cierra),
+pestanas Todos/Cumplen con conteo, insignias de motivo, colores de rareza en
+texto enriquecido, detalle, presets/alertas y LeftAlt. Validar clics a mano.
+El usuario probo el preview publicado en la rama y aprobo abrir el PR, sin
+detallar que puntos reviso.
+
 ## 2026-10-09 - By Mistake
 
 Build/compilacion siete entradas/176 regresiones Luau y diez Python correctos.
