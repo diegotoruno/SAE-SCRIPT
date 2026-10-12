@@ -774,6 +774,9 @@ local function mountEggFilterPanel(context)
     local saved = readJson(FILE, {})
     local panel: { [string]: any } = { alive = true, open = saved.open ~= false, view = "map", cards = 0, matches = 0 }
     local onlyMatches = saved.onlyMatches == true
+    -- Tamano elegido con el asa; la pantalla puede reducirlo al mostrarlo.
+    local scaling = context.scaling
+    local userScale = scaling.Panel(tonumber(saved.scale))
     local connections = {}
     -- Paleta compartida: acento para acciones, colores semanticos para estados.
     local C = {
@@ -1051,7 +1054,7 @@ local function mountEggFilterPanel(context)
         access()
         local ok = writeJson(FILE, { open = panel.open, visual = visual, filtersOpen = filtersOpen,
             view = "map", onlyMatches = onlyMatches, sortBest = sortBest,
-            x = root.Position.X.Offset, y = root.Position.Y.Offset })
+            x = root.Position.X.Offset, y = root.Position.Y.Offset, scale = userScale })
         if not ok then panel.error = "No se pudo guardar la posición / vista"; warn("[EggPanel] " .. panel.error) end
     end
     local function closePopup() if popup then popup:Destroy(); popup = nil end end
@@ -1088,12 +1091,18 @@ local function mountEggFilterPanel(context)
         closePopup(); signature = nil
     end
     local initializedPosition = false
+    local function fitLimit()
+        local camera = workspace.CurrentCamera
+        if not camera then return nil end
+        local viewport = camera.ViewportSize
+        return math.min((viewport.X - 28) / PANEL_WIDTH, (viewport.Y - 28) / PANEL_HEIGHT)
+    end
     local function fit()
         access()
         local camera = workspace.CurrentCamera
         if not camera then return end
         local viewport = camera.ViewportSize
-        scale.Scale = math.max(0.1, math.min(1, (viewport.X - 28) / PANEL_WIDTH, (viewport.Y - 28) / PANEL_HEIGHT))
+        scale.Scale = scaling.Panel(userScale, fitLimit())
         local width, height = PANEL_WIDTH * scale.Scale, PANEL_HEIGHT * scale.Scale
         if not initializedPosition then
             root.Position = UDim2.fromOffset(tonumber(saved.x) or viewport.X - width - 20, tonumber(saved.y) or math.max(14, (viewport.Y - height) / 2))
@@ -1537,7 +1546,7 @@ local function mountEggFilterPanel(context)
     function panel.GetStatus()
         access(); return { open = panel.open, view = "map", onlyMatches = onlyMatches, cards = panel.cards, matches = panel.matches, dirty = dirty, error = panel.error,
             selected = selectionList(), allZones = allZones, visual = visual, sortBest = sortBest, position = {x = root.AbsolutePosition.X, y = root.AbsolutePosition.Y},
-            size = {x = root.AbsoluteSize.X, y = root.AbsoluteSize.Y}, scale = scale.Scale,
+            size = {x = root.AbsoluteSize.X, y = root.AbsoluteSize.Y}, scale = scale.Scale, userScale = userScale,
             stats = table.clone(panel.stats), resources = {mutations = data.mutations ~= nil, models = data.assetModels ~= nil} }
     end
     function panel.Destroy()
@@ -1609,6 +1618,53 @@ local function mountEggFilterPanel(context)
     connect(UIS.InputEnded, function(input)
         if dragging and (input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch) then dragging = false; save() end
     end)
+    -- Asa de tamano: tres trazos diagonales dentro de la esquina redondeada.
+    -- Escala todo el panel con la esquina superior izquierda fija; las hojas
+    -- modales (ZIndex 50) la cubren mientras estan abiertas.
+    local grip = make("TextButton", "ResizeGrip", root, { AnchorPoint = Vector2.new(1, 1), Position = UDim2.fromScale(1, 1),
+        Size = UDim2.fromOffset(24, 24), BackgroundTransparency = 1, Text = "", AutoButtonColor = false, ZIndex = 5 })
+    local gripTraces = {}
+    for index, trace in ipairs({ {11, 5}, {16, 11}, {21, 17} }) do -- distancia a la esquina, largo
+        local mark = line(grip, "Trace" .. index, 0, 0, trace[2], -45, C.muted, 5)
+        mark.Position = UDim2.new(1, -trace[1] / 2, 1, -trace[1] / 2); mark.BackgroundTransparency = 0.4
+        gripTraces[index] = mark
+    end
+    local gripHover, resizeInput, resizeStart, resizeScale = false, nil, nil, nil
+    local function paintGrip()
+        access()
+        local active = gripHover or resizeInput ~= nil
+        for _, mark in ipairs(gripTraces) do
+            TweenService:Create(mark, TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+                { BackgroundColor3 = active and C.gold or C.muted, BackgroundTransparency = active and 0 or 0.4 }):Play()
+        end
+    end
+    connect(grip.MouseEnter, function() gripHover = true; paintGrip() end)
+    connect(grip.MouseLeave, function() gripHover = false; paintGrip() end)
+    connect(grip.InputBegan, function(input)
+        if resizeInput or (input.UserInputType ~= Enum.UserInputType.MouseButton1 and input.UserInputType ~= Enum.UserInputType.Touch) then return end
+        dragging = false
+        resizeInput, resizeStart, resizeScale = input, input.Position, scale.Scale
+        paintGrip()
+    end)
+    connect(UIS.InputChanged, function(input)
+        if not resizeInput then return end
+        if resizeInput.UserInputType == Enum.UserInputType.Touch then
+            if input ~= resizeInput then return end
+        elseif input.UserInputType ~= Enum.UserInputType.MouseMovement then return end
+        local base = Vector2.new(PANEL_WIDTH, PANEL_HEIGHT)
+        userScale = scaling.Panel(scaling.Drag(resizeScale, base, input.Position - resizeStart), fitLimit())
+        fit()
+    end)
+    local function finishResize()
+        if not resizeInput then return end
+        resizeInput, resizeStart, resizeScale = nil, nil, nil
+        paintGrip(); save()
+    end
+    connect(UIS.InputEnded, function(input)
+        if resizeInput and (input == resizeInput or (resizeInput.UserInputType == Enum.UserInputType.MouseButton1
+            and input.UserInputType == Enum.UserInputType.MouseButton1)) then finishResize() end
+    end)
+    connect(UIS.WindowFocusReleased, finishResize)
     layout(); fit(); setDraft(search.config)
     task.spawn(function()
         access()
@@ -2043,6 +2099,32 @@ local function createFinderSupport()
             or string.format("Best Ping: %d/7, pagina %d (%d servidores revisados)", state.occupancy or 1, state.page or 1, state.servers or 0)
         if state.wait then text ..= " | " .. support.DeviceWaitMessage(state.wait) end
         return text
+    end
+    -- Escala de la tarjeta del hopper: limitada, redondeada a centesimas y, si
+    -- se conoce, sin superar lo que cabe en la pantalla.
+    local HOPPER_MIN_SCALE, HOPPER_MAX_SCALE = 0.75, 1.75
+    function support.HopperScale(value, fitLimit)
+        local upper = math.clamp(tonumber(fitLimit) or HOPPER_MAX_SCALE, HOPPER_MIN_SCALE, HOPPER_MAX_SCALE)
+        if type(value) ~= "number" or value ~= value then return math.min(1, upper) end
+        return math.floor(math.clamp(value, HOPPER_MIN_SCALE, upper) * 100 + 0.5) / 100
+    end
+    -- El asa inferior derecha sigue al puntero: manda el eje que mas cambia,
+    -- asi un arrastre solo horizontal o solo vertical tambien redimensiona.
+    function support.DragScale(startScale, base, delta)
+        local byWidth = (base.X * startScale + delta.X) / base.X
+        local byHeight = (base.Y * startScale + delta.Y) / base.Y
+        return math.abs(byWidth - startScale) >= math.abs(byHeight - startScale) and byWidth or byHeight
+    end
+    function support.ResizeHopperScale(startScale, base, delta, fitLimit)
+        return support.HopperScale(support.DragScale(startScale, base, delta), fitLimit)
+    end
+    -- El panel es grande: aqui la pantalla manda sobre el minimo elegido.
+    local PANEL_MIN_SCALE, PANEL_MAX_SCALE = 0.6, 1.5
+    function support.PanelScale(value, fitLimit)
+        local upper = math.max(0.1, math.min(PANEL_MAX_SCALE, tonumber(fitLimit) or PANEL_MAX_SCALE))
+        if type(value) ~= "number" or value ~= value then value = 1 end
+        local rounded = math.floor(math.clamp(value, math.min(PANEL_MIN_SCALE, upper), upper) * 100 + 0.5) / 100
+        return math.max(0.1, math.min(upper, rounded))
     end
     -- A fresh one-player reserve is already the minimum eligible occupancy.
     -- Larger groups still require a new OccupancyAsc proof before a hop.
@@ -2893,6 +2975,18 @@ do
     holder.Active = true
     holder.Parent = screenGui
 
+    -- Tamano elegido con el asa: escala toda la tarjeta, plegada o no.
+    local function fitScaleLimit()
+        local camera = workspace.CurrentCamera
+        local viewport = camera and camera.ViewportSize
+        if not viewport or viewport.X <= 0 or viewport.Y <= 0 then return nil end
+        return math.min((viewport.X - 16) / EXPANDED_SIZE.X, (viewport.Y - 16) / EXPANDED_SIZE.Y)
+    end
+    local holderScale = Instance.new("UIScale")
+    holderScale.Name = "UserScale"
+    holderScale.Scale = support.HopperScale(uiState.scale, fitScaleLimit())
+    holderScale.Parent = holder
+
     local function round(object, radius)
         local corner = Instance.new("UICorner")
         corner.CornerRadius = UDim.new(0, radius)
@@ -3005,12 +3099,14 @@ do
     local dragStart = nil
     local startPosition = nil
     local lastDragAt = -math.huge
+    local resizeInput, resizeStart, resizeScale, resizePosition = nil, nil, nil, nil
 
     local function saveUi()
         uiAccess()
         local state = readJson(UI_FILE, {})
         state.collapsed = collapsed
         state.auto = autoEnabled
+        state.scale = holderScale.Scale
         state.pos = {
             sx = holder.Position.X.Scale,
             xo = holder.Position.X.Offset,
@@ -3094,7 +3190,7 @@ do
     -- Los eventos del marco no reciben necesariamente los de sus controles.
     -- Registrar toda la tarjeta, incluidos texto, AUTO y plegado.
     local function beginDrag(input)
-        if pendingDrag then return end
+        if pendingDrag or resizeInput then return end
         if input.UserInputType == Enum.UserInputType.MouseButton1
             or input.UserInputType == Enum.UserInputType.Touch then
             pendingDrag = true
@@ -3156,6 +3252,101 @@ do
         end
     end)
     connect(UserInputService.WindowFocusReleased, finishDrag)
+
+    -- Asa de tamano en la esquina inferior derecha: tres trazos diagonales
+    -- dentro del borde redondeado. Se crea despues de registrar el arrastre de
+    -- la tarjeta, asi que tirar de ella redimensiona sin mover.
+    local GRIP_TRACES = { {11, 5}, {16, 11}, {21, 17} } -- distancia a la esquina, largo
+    local grip = Instance.new("TextButton")
+    grip.Name = "ResizeGrip"
+    grip.AutoButtonColor = false
+    grip.AnchorPoint = Vector2.new(1, 1)
+    grip.Position = UDim2.fromScale(1, 1)
+    grip.Size = UDim2.fromOffset(24, 24)
+    grip.BackgroundTransparency = 1
+    grip.Text = ""
+    grip.ZIndex = 3
+    grip.Parent = holder
+    local gripTraces = {}
+    for index, trace in ipairs(GRIP_TRACES) do
+        local line = Instance.new("Frame")
+        line.Name = "Trace" .. index
+        line.AnchorPoint = Vector2.new(0.5, 0.5)
+        line.Position = UDim2.new(1, -trace[1] / 2, 1, -trace[1] / 2)
+        line.Size = UDim2.fromOffset(trace[2], 1.5)
+        line.Rotation = -45
+        line.BackgroundColor3 = COLORS.muted
+        line.BackgroundTransparency = 0.4
+        line.BorderSizePixel = 0
+        line.ZIndex = 3
+        line.Parent = grip
+        gripTraces[index] = line
+    end
+
+    local gripHover = false
+    local function paintGrip()
+        uiAccess()
+        local active = gripHover or resizeInput ~= nil
+        local tween = TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+        for _, line in ipairs(gripTraces) do
+            TweenService:Create(line, tween, {
+                BackgroundColor3 = active and COLORS.gold or COLORS.muted,
+                BackgroundTransparency = active and 0 or 0.4,
+            }):Play()
+        end
+    end
+    connect(grip.MouseEnter, function() gripHover = true; paintGrip() end)
+    connect(grip.MouseLeave, function() gripHover = false; paintGrip() end)
+
+    connect(grip.InputBegan, function(input)
+        if resizeInput then return end
+        if input.UserInputType ~= Enum.UserInputType.MouseButton1
+            and input.UserInputType ~= Enum.UserInputType.Touch then
+            return
+        end
+        -- El marco puede recibir el mismo toque: el asa nunca mueve la tarjeta.
+        pendingDrag, dragging = false, false
+        dragInput, dragStart, startPosition = nil, nil, nil
+        resizeInput, resizeStart = input, input.Position
+        resizeScale, resizePosition = holderScale.Scale, holder.Position
+        paintGrip()
+    end)
+
+    connect(UserInputService.InputChanged, function(input)
+        if not resizeInput then return end
+        if resizeInput.UserInputType == Enum.UserInputType.Touch then
+            if input ~= resizeInput then return end
+        elseif input.UserInputType ~= Enum.UserInputType.MouseMovement then
+            return
+        end
+        local base = collapsed and COLLAPSED_SIZE or EXPANDED_SIZE
+        local scale = support.ResizeHopperScale(resizeScale, base, input.Position - resizeStart, fitScaleLimit())
+        holderScale.Scale = scale
+        -- AnchorPoint centra la tarjeta en X: compensar para fijar el borde izquierdo.
+        holder.Position = UDim2.new(
+            resizePosition.X.Scale,
+            resizePosition.X.Offset + base.X * (scale - resizeScale) / 2,
+            resizePosition.Y.Scale,
+            resizePosition.Y.Offset
+        )
+    end)
+
+    local function finishResize()
+        if not resizeInput then return end
+        resizeInput, resizeStart, resizeScale, resizePosition = nil, nil, nil, nil
+        lastDragAt = os.clock()
+        paintGrip()
+        saveUi()
+    end
+
+    connect(UserInputService.InputEnded, function(input)
+        if not resizeInput then return end
+        if input == resizeInput or (resizeInput.UserInputType == Enum.UserInputType.MouseButton1
+            and input.UserInputType == Enum.UserInputType.MouseButton1) then
+            finishResize()
+        end
+    end)
+    connect(UserInputService.WindowFocusReleased, finishResize)
 
     connect(toggle.MouseButton1Click, function()
         if draggedRecently() then
@@ -3478,7 +3669,8 @@ do
 
     local filterPanel = mountEggFilterPanel({ search = eggSearch,
         api = hopperEnvironment.ChilliEggSearch, session = session, screenGui = screenGui,
-        readJson = readJson, writeJson = writeJson })
+        readJson = readJson, writeJson = writeJson,
+        scaling = { Drag = support.DragScale, Panel = support.PanelScale } })
     session.DisposePanel = filterPanel.Destroy
 
     -- ---------------------------------------------------------------- el salto
