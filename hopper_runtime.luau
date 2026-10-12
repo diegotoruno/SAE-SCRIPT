@@ -769,6 +769,19 @@ do
     local StarterGui = game:GetService("StarterGui")
     local CoreGui = game:GetService("CoreGui")
 
+    -- ---------------------------------------------------------------- arranque
+    -- Antes de cualquier uso de LocalPlayer (cuenta, cookie, archivos por
+    -- UserId): el autoexec puede ejecutar esto antes de que exista.
+    if not game:IsLoaded() then
+        game.Loaded:Wait()
+    end
+
+    local player = Players.LocalPlayer
+    while not player do
+        Players:GetPropertyChangedSignal("LocalPlayer"):Wait()
+        player = Players.LocalPlayer
+    end
+
     -- Potassium restaura las capabilities de UI al fijar la identidad en el
     -- hilo que toca CoreGui. Los callbacks creados con task.spawn la necesitan.
     local function uiAccess()
@@ -1078,17 +1091,6 @@ do
     local function autoTestRunning()
         local state = readJson(SCOUT_STATE_FILE, nil)
         return type(state) == "table" and state.active == true
-    end
-
-    -- ---------------------------------------------------------------- arranque
-    if not game:IsLoaded() then
-        game.Loaded:Wait()
-    end
-
-    local player = Players.LocalPlayer
-    while not player do
-        Players:GetPropertyChangedSignal("LocalPlayer"):Wait()
-        player = Players.LocalPlayer
     end
 
     -- Servidor en el que nacio esta ejecucion del script. En cuanto game.JobId

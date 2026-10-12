@@ -14,7 +14,17 @@ loadstring(game:HttpGet("https://raw.githubusercontent.com/diegotoruno/SAE-SCRIP
 
 Para continuar entre servidores, coloca esa linea en el autoexec de tu executor. No hace falta copiar el archivo completo ni instalar otros archivos de este repositorio.
 
-**Chilli Hub se carga aparte.** Anade en el autoexec su propia linea (la original de su proyecto), separada de la anterior:
+**Chilli Hub se carga aparte.** Anade en el autoexec su propia linea, separada de la anterior. Se recomienda que espere a que el juego cargue: si Chilli carga los modulos del juego antes de que lleguen, el juego queda roto en ese servidor (en pruebas, ~15 % de las llegadas con la linea sola y 0 de 27 con la espera):
+
+```lua
+if not game:IsLoaded() then game.Loaded:Wait() end
+local player = game:GetService("Players").LocalPlayer
+if not player.Character then player.CharacterAdded:Wait() end
+game:GetService("ReplicatedStorage"):WaitForChild("Shared", 30)
+loadstring(game:HttpGet("https://raw.githubusercontent.com/tienkhanh1/spicy/main/Chilli.lua"))()
+```
+
+La linea original, sin espera, tambien funciona; con ella el hopper sale solo de los servidores rotos:
 
 ```lua
 loadstring(game:HttpGet("https://raw.githubusercontent.com/tienkhanh1/spicy/main/Chilli.lua"))()

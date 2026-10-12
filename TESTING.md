@@ -1,5 +1,18 @@
 # Pruebas y validacion
 
+## 2026-10-12 - Chilli con espera al juego y arranque del hopper
+
+Autoexec local de Chilli cambiado (autorizado por el usuario) a esperar
+game.Loaded, el personaje y ReplicatedStorage.Shared; original en
+backup_autoexec/chilli.luau.2026-10-12-antes-espera. 30 saltos, 27 llegadas
+distintas: 0 servidores rotos (Assets carga, 0 "Shared is not a valid
+member", 0 fallos del Kernel), Chilli presente en todas a ~7-11 s. Antes:
+~7 rotos en ~45 llegadas. Una llegada sin hopper: "attempt to index nil
+with 'UserId'" porque montarHopper leia LocalPlayer.UserId antes de su espera
+de carga; la espera de Chilli adelanto el arranque del hopper. Corregido
+moviendo la espera de juego y LocalPlayer al inicio. Build, siete
+compilaciones, 193 regresiones y diez Python correctos.
+
 ## 2026-10-12 - Servidores con modulos rotos
 
 Build, siete compilaciones, 193 regresiones Luau (tres nuevas) y diez Python
