@@ -1,5 +1,15 @@
 # Contexto del proyecto
 
+## Memoria del ciclo entre servidores (2026-10-12)
+
+Reporte del usuario: aparecio un Pegasus, AUTO salto y en el destino ya lo
+habian tomado; AUTO quedo en wait en vez de seguir saltando hasta la noche o
+una coincidencia. Causa: cada servidor ancla el mismo periodo con milisegundos
+distintos (Workspace.AreaEggCycleAnchorAt; nextReset 1791796794.001357 frente
+a .000655 con el mismo periodIndex) y la memoria exigia nextReset/untilTime
+exactos, asi que se borraba al llegar. Ahora exige el mismo periodIndex,
+periodo y noche, y tolera hasta 1 s en los tiempos.
+
 ## Salir de servidores donde el juego no cargo (2026-10-12)
 
 Barrera rapida publicada en build58 (PR22, main cdf7411). El usuario reporta

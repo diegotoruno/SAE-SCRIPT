@@ -1,5 +1,12 @@
 # Decisiones de producto e implementacion
 
+## Memoria valida entre servidores con 1 s de tolerancia (2026-10-12)
+
+La observacion del ciclo debe sobrevivir al salto (flujo acordado, paso 7).
+Igualdad exacta de tiempos la invalidaba en casi todos los destinos reales.
+La identidad del ciclo es el periodIndex; la tolerancia de 1 s cubre el ancla
+por servidor sin aceptar otro periodo ni overrides de reloj.
+
 ## Saltar servidores con modulos rotos (2026-10-12)
 
 Peticion del usuario: que nadie con el hopper y Chilli quede atascado cuando el

@@ -1,5 +1,16 @@
 # Pruebas y validacion
 
+## 2026-10-12 - Memoria del ciclo entre servidores
+
+Dos regresiones nuevas (198 en total, siete compilaciones y diez Python
+correctos): una busqueda guardada con nextReset 300.001357 continua en un
+destino con 300.000655 (hop, continuingCycle, memoria conservada) y termina
+con el periodo siguiente; 1.5 s de diferencia sigue cerrando la memoria. La
+comparacion exacta anterior hace fallar la primera. Potassium: anclas reales
+14180c80 (AnchorAt ...494.001357) y dd27b2e6 (...094.000655), mismo periodo.
+Instancia aislada con memoria en RAM sobre datos reales: memoria del otro
+servidor -> mode=hop, continuingCycle=true, ventana conservada.
+
 ## 2026-10-12 - Chilli con espera al juego y arranque del hopper
 
 Autoexec local de Chilli cambiado (autorizado por el usuario) a esperar

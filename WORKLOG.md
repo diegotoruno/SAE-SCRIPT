@@ -1,5 +1,11 @@
 # Estado del trabajo
 
+## 2026-10-12 - Memoria del ciclo entre servidores
+
+Rama codex/memoria-ciclo-entre-servidores sobre main 63e5570. Corrige que la
+observacion de rareza se borrara al llegar a otro servidor por milisegundos
+de diferencia en nextReset. Ver TESTING.
+
 ## 2026-10-12 - Tamano personalizable del boton Server Hop
 
 Rama codex/hopper-resize desde main 797eb46. Asa diagonal en la esquina
