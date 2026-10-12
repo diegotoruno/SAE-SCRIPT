@@ -1,5 +1,14 @@
 # Estado del trabajo
 
+## 2026-10-12 - Salto automatico desde servidores con modulos rotos
+
+Barrera rapida publicada: PR22 fusionado (cdf7411), CI build-58, bundle
+stable identico al local (SHA256 8b2370cd...) y servido por raw; llegada y
+reset reales con (complete) a ~3 s. Rama codex/servidor-roto-salta sobre
+cdf7411: deteccion de modulos rotos y hop con AUTO, limite de racha. Probado
+en dos servidores rotos reales (ver TESTING). Linea de Chilli con espera al
+juego recomendada, no aplicada al autoexec.
+
 ## 2026-10-12 - Barrera rapida con prueba de completitud
 
 Rama codex/barrera-rapida sobre main 9e6407a (worktree

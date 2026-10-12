@@ -1,8 +1,9 @@
 -- Behavioral regression tests: no executor, network, Roblox account or teleports.
 local factory = require("./map_egg_search")
-local loadClock, gameLoaded = 0, true
+local loadClock, gameLoaded, wallClock = 0, true, 1000
+local fakeGame = {IsLoaded = function() return gameLoaded end, JobId = "job-a"}
 setfenv(factory, setmetatable({task = {spawn = function() end},
-    os = {clock = function() return loadClock end}, game = {IsLoaded = function() return gameLoaded end}},
+    os = {clock = function() return loadClock end, time = function() return wallClock end}, game = fakeGame},
     {__index = getfenv(factory)}) :: any)
 local saved = {}
 local search = factory(function() return {} end, function(key, value) saved[key] = value; return true end)
@@ -1154,6 +1155,58 @@ test("complete field with a match stays only after the quiet window", function()
     loadClock = 3
     local mode, _, match = scan()
     assert(mode == "match" and match.uid == state.records[7].Uid and match.income == 9e9)
+end)
+local cachedError = "Requested module experienced an error while loading"
+test("cached module failure after load marks the server broken and AUTO hops", function()
+    local files, read, write = memoryStore()
+    local finder = factory(read, write)
+    fakeGame.JobId, wallClock, gameLoaded = "broken-1", 1000, true
+    finder.NoteLoadFailure(cachedError)
+    assert(finder.broken == nil, "one failure can still be the first real error")
+    finder.NoteLoadFailure(cachedError)
+    assert(finder.broken and finder.broken.count == 1)
+    assert(files["chilli_egg_search_broken.json"].count == 1)
+    local info = {ready = false}
+    assert(finder.Decide(nil, info, false) == "hop" and info.broken)
+    assert(files["chilli_egg_search_cycle.json"] == nil, "cycle memory untouched")
+    local _, scanInfo = finder.Scan()
+    assert(scanInfo.ready == false and string.find(scanInfo.reason, "no cargó bien", 1, true))
+end)
+test("transient or pre-load failures never mark the server broken", function()
+    local _, read, write = memoryStore()
+    local finder = factory(read, write)
+    for _ = 1, 4 do finder.NoteLoadFailure("No llego Areas") end
+    assert(finder.broken == nil)
+    gameLoaded = false
+    for _ = 1, 4 do finder.NoteLoadFailure(cachedError) end
+    gameLoaded = true
+    assert(finder.broken == nil)
+    finder.NoteLoadFailure(cachedError); finder.NoteLoadFailure("No llego Areas"); finder.NoteLoadFailure(cachedError)
+    assert(finder.broken == nil, "failures must be consecutive")
+end)
+test("broken streak counts servers, ignores re-execution and stops AUTO after the limit", function()
+    local files, read, write = memoryStore()
+    local function brokenIn(job, at)
+        fakeGame.JobId, wallClock = job, at
+        local finder = factory(read, write)
+        finder.NoteLoadFailure(cachedError); finder.NoteLoadFailure(cachedError)
+        return finder
+    end
+    assert(brokenIn("s1", 1000).broken.count == 1)
+    assert(brokenIn("s1", 1010).broken.count == 1, "same server re-executed")
+    assert(brokenIn("s2", 1100).broken.count == 2)
+    assert(brokenIn("s3", 1200).broken.count == 3)
+    local fourth = brokenIn("s4", 1300)
+    local info = {}
+    assert(fourth.broken.count == 4 and fourth.Decide(nil, info, false) == "loading")
+    assert(string.find(info.reason, "varios servidores", 1, true))
+    -- Older than the window: the streak starts again.
+    assert(brokenIn("s5", 1300 + 600).broken.count == 1)
+    -- A server that loads clears the streak.
+    local healthy = factory(read, write); healthy.NoteLoadSuccess()
+    assert(next(files["chilli_egg_search_broken.json"]) == nil)
+    assert(brokenIn("s6", 2000).broken.count == 1)
+    fakeGame.JobId, wallClock = "job-a", 1000
 end)
 test("cookie parser rejects headers multiple cookies controls and oversize input", function()
     assert(support.NormalizeCookie("  .ROBLOSECURITY=fake-secret;\n") == "fake-secret")

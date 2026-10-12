@@ -1,5 +1,22 @@
 # Pruebas y validacion
 
+## 2026-10-12 - Servidores con modulos rotos
+
+Build, siete compilaciones, 193 regresiones Luau (tres nuevas) y diez Python
+correctos. Nuevas: dos fallos cacheados tras la carga marcan roto, Decide hop
+sin escribir la memoria del ciclo y Scan informa el motivo; errores
+transitorios, previos a la carga o no consecutivos no marcan; la racha cuenta
+servidores, ignora reejecucion en la misma JobId, espera con el cuarto, se
+reinicia tras 600 s y al cargar bien. Tres mutaciones fallan donde se espera.
+
+Potassium: LogService de un servidor roto muestra en el mismo instante
+"Shared is not a valid member of ReplicatedStorage" en EggState, Guards,
+Gears, LimitedEgg, ScrambleTradeIn y "UI/World is not a valid member"; el
+Kernel del juego falla 7 s despues con modulos ya rotos. Copias de Areas y
+Assets cargan bien tras la carga. Frecuencia: 5/17 llegadas en una tanda,
+1/17 en otra. Bundle candidato ejecutado en dos servidores rotos reales con
+AUTO: mode=hop a 2.1 s y teleport, racha 1 y 2, destino final sano.
+
 ## 2026-10-12 - Barrera rapida con snapshot completo
 
 Build, compilacion de siete entradas, 190 regresiones Luau (ocho nuevas) y
@@ -32,10 +49,10 @@ los 12 s posteriores (8/8 vigiladas). Linea de tiempo de una llegada: ~65
 FieldShifted con HasFieldSnapshot=false a +0.5 s, un unico FieldRefreshed
 con los 65 registros a +3.6 s y ningun cambio despues en 25 s.
 
-Incidente de prueba: tres llegadas excluidas. Una sonda hizo require de
-EggState antes de game:IsLoaded(); el modulo fallo y la sesion publicada
-de ese servidor quedo en loading (ciclo=nil). Un salto nuevo lo recupero.
-Las sondas deben esperar juego cargado y sesion presente antes de require.
+Tres llegadas excluidas: el juego no cargo (modulos con error). Se atribuyo
+primero a una sonda, pero el mensaje "Requested module experienced an error
+while loading" ya indicaba un fallo anterior; ver la entrada de servidores
+con modulos rotos. Las sondas igualmente esperan juego cargado.
 
 ## 2026-10-11 - Eficiencia del finder y del hopper
 

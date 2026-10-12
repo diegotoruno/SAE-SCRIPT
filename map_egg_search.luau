@@ -3,6 +3,13 @@
 local function createMapEggSearch(readJson, writeJson)
     local CONFIG_FILE = "chilli_egg_search_config.json"
     local CYCLE_FILE = "chilli_egg_search_cycle.json"
+    local BROKEN_FILE = "chilli_egg_search_broken.json"
+    -- Roblox caches a module that errored while loading (for example when
+    -- another autoexec script requires game modules before replication ends).
+    -- The game, Chilli and this detector share that cache, so the server stays
+    -- broken. AUTO leaves it, but stops after several broken servers in a row.
+    local CACHED_MODULE_ERROR = "Requested module experienced an error while loading"
+    local BROKEN_LIMIT, BROKEN_WINDOW_SECONDS = 3, 600
     local search = { ready = false, error = nil, lastScan = nil, fieldRevision = 0,
         stats = { scans = 0, analyses = 0, incomeReads = 0, cacheHits = 0, lastMs = 0 } }
     -- HasFieldSnapshot can become true before the initial replication finishes.
@@ -463,9 +470,47 @@ local function createMapEggSearch(readJson, writeJson)
         return found[1], info, found
     end
 
+    local cachedFailures = 0
+    function search.NoteLoadFailure(message)
+        if search.broken then return end
+        search.error = tostring(message)
+        if not string.find(search.error, CACHED_MODULE_ERROR, 1, true) or not game:IsLoaded() then
+            cachedFailures = 0; return
+        end
+        -- Two reads: one failure could still be the first, real load error.
+        cachedFailures += 1
+        if cachedFailures < 2 then return end
+        local saved = readJson(BROKEN_FILE, {})
+        if type(saved) ~= "table" then saved = {} end
+        local now = os.time()
+        local recent = type(saved.count) == "number" and type(saved.at) == "number"
+            and now >= saved.at and now - saved.at < BROKEN_WINDOW_SECONDS
+        local count = recent and saved.count or 0
+        -- Re-executing in the same broken server does not count it twice.
+        if saved.job ~= game.JobId or count == 0 then count += 1 end
+        pcall(writeJson, BROKEN_FILE, {count = count, at = now, job = game.JobId})
+        search.broken = {count = count, job = game.JobId}
+        search.error = "el juego no cargó bien en este servidor (módulos del juego con error)"
+    end
+    function search.NoteLoadSuccess()
+        cachedFailures, search.broken, search.error = 0, nil, nil
+        local saved = readJson(BROKEN_FILE, {})
+        if type(saved) == "table" and next(saved) ~= nil then pcall(writeJson, BROKEN_FILE, {}) end
+    end
+
     -- La misma decision se usa al entrar, despues de un reset y antes de saltar.
     function search.Decide(match, info, cycle)
         if search.disposed then info.reason = "sesión terminada"; return "loading" end
+        if search.broken then
+            -- No map data exists here: leave without touching the cycle memory.
+            info.broken = true
+            if search.broken.count > BROKEN_LIMIT then
+                info.reason = "el juego no cargó bien en varios servidores seguidos; AUTO en espera"
+                return "loading"
+            end
+            info.reason = "el juego no cargó bien en este servidor; buscando otro"
+            return "hop"
+        end
         cycle = cycle == nil and search.CycleStatus() or cycle
         -- Pure Evaluate callers without modules retain the local decision.
         -- Runtime passes false when its clock is unavailable and must wait.
@@ -528,7 +573,7 @@ local function createMapEggSearch(readJson, writeJson)
             if search.disposed then return end
             if loaded then
                 search.modules = modules
-                search.error = nil
+                search.NoteLoadSuccess()
                 -- Validate persisted IDs after the real catalog arrives. An obsolete
                 -- selection waits for correction instead of making hop decisions.
                 table.insert(connections, modules.eggs.FieldRefreshed:Connect(function()
@@ -545,7 +590,7 @@ local function createMapEggSearch(readJson, writeJson)
                     search.resetting = false
                 end))
             else
-                search.error = tostring(modules)
+                search.NoteLoadFailure(modules)
                 task.wait(retryDelay); retryDelay = math.min(15, retryDelay * 2)
             end
         end
