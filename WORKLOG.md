@@ -1,5 +1,11 @@
 # Estado del trabajo
 
+## 2026-10-12 - Reporte de busquedas
+
+Rama codex/reporte-busqueda sobre main 1bccd5b (build-66 ya publicado con la
+memoria entre servidores). Agrega chilli_egg_hunt_report.json y la API
+HuntReport. Ver TESTING. Publicacion pendiente de decision del usuario.
+
 ## 2026-10-12 - Memoria del ciclo entre servidores
 
 Rama codex/memoria-ciclo-entre-servidores sobre main 63e5570. Corrige que la

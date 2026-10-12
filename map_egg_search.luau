@@ -95,6 +95,17 @@ local function createMapEggSearch(readJson, writeJson)
             search.stats.settleSeconds = snapshotLoad.stableAt - snapshotLoad.firstAt
             search.stats.readySeconds = now - snapshotLoad.firstAt
             search.stats.readyBy = complete and "complete" or "timer"
+            local areas = search.modules and search.modules.areas
+            if type(areas) == "table" and type(areas.Directory) == "table" then
+                local present, seen, total = 0, {}, 0
+                for _, egg in pairs(records) do
+                    if type(egg.AreaId) == "string" and areas.Directory[egg.AreaId] and not seen[egg.AreaId] then
+                        seen[egg.AreaId] = true; present += 1
+                    end
+                end
+                for _ in pairs(areas.Directory) do total += 1 end
+                search.stats.zonesPresent, search.stats.zonesTotal = present, total
+            end
         end
         return snapshotLoad.ready
     end
@@ -551,6 +562,110 @@ local function createMapEggSearch(readJson, writeJson)
         info.continuingCycle = valid and (info.rarityCount or 0) == 0
         info.searchUntil = valid and remembered.untilTime or nil
         return valid and "hop" or "wait"
+    end
+
+    -- Hunt report: audit trail for each hunt started by an in-scope rarity
+    -- egg. Records what was seen, how the snapshot was proven loaded before
+    -- each decision, the fresh check before every teleport and the outcome.
+    local REPORT_FILE = "chilli_egg_hunt_report.json"
+    local REPORT_HUNTS, REPORT_VISITS, REPORT_CANDIDATES = 30, 120, 10
+    local report = readJson(REPORT_FILE, {})
+    if type(report) ~= "table" or type(report.hunts) ~= "table" then report = {version = 1, hunts = {}} end
+    local function saveReport()
+        while #report.hunts > REPORT_HUNTS do table.remove(report.hunts, 1) end
+        pcall(writeJson, REPORT_FILE, report)
+    end
+    local function openHunt()
+        local hunt = report.hunts[#report.hunts]
+        return hunt and not hunt.outcome and hunt or nil
+    end
+    local function closeHunt(hunt, outcome, at)
+        hunt.outcome, hunt.endedAt = outcome, at
+        print(string.format("[EggHunt] fin: %s | servidores=%d", outcome, hunt.servers or 0))
+    end
+    -- Eggs of the minimum rarity or higher in the selected zones, with the
+    -- exact income and the reason they did or did not match.
+    function search.HuntCandidates(rows, config)
+        config = config or search.config
+        local list = {}
+        for _, row in ipairs(rows or {}) do
+            local egg, catalog = row.egg, row.catalog
+            local inZone = #config.zones == 0 or table.find(config.zones, egg.AreaId) ~= nil
+            if catalog and inZone and search.RarityMatches(catalog.Rarity, config.rarity) then
+                table.insert(list, {uid = row.uid, name = catalog.DisplayName or egg.AssetCategory,
+                    category = egg.AssetCategory, rarity = rarityId(catalog.Rarity), income = row.income,
+                    area = egg.AreaId, nest = egg.NestId, scale = egg.AssetScale,
+                    mutations = table.clone(egg.Mutations or {}), baseMutation = egg.BaseMutation,
+                    match = row.match == true, reason = row.reason})
+            end
+        end
+        table.sort(list, function(a, b) return (a.income or -1) > (b.income or -1) end)
+        return list
+    end
+    function search.ReportDecision(mode, match, info, rows, cycle, job, at)
+        if not info or not info.ready or type(cycle) ~= "table" then return end
+        local hunt = openHunt()
+        local scope = {rarity = search.config.rarity, zones = table.clone(search.config.zones)}
+        if hunt and (hunt.period ~= cycle.periodIndex or hunt.rarity ~= scope.rarity
+            or not sameInputs(hunt.zones, scope.zones)) then
+            closeHunt(hunt, hunt.period ~= cycle.periodIndex and "noche" or "filtros cambiados", at)
+            hunt = nil; saveReport()
+        end
+        local candidates = search.HuntCandidates(rows)
+        if not hunt then
+            if #candidates == 0 then return end
+            hunt = {startedAt = at, period = cycle.periodIndex, rarity = scope.rarity, zones = scope.zones,
+                minIncome = search.config.minIncome, first = candidates[1], startJob = job, servers = 0, visits = {}}
+            table.insert(report.hunts, hunt)
+            print(string.format("[EggHunt] inicio: %s (%s) %s/s en %s | job=%s", tostring(candidates[1].name),
+                tostring(candidates[1].rarity), tostring(candidates[1].income), tostring(candidates[1].area), job))
+        end
+        local visit = hunt.visits[#hunt.visits]
+        if not visit or visit.job ~= job then
+            if #hunt.visits >= REPORT_VISITS then table.remove(hunt.visits, 1) end
+            visit = {job = job, at = at}
+            table.insert(hunt.visits, visit)
+            hunt.servers += 1
+        elseif visit.mode == mode and visit.candidateCount == #candidates and sameInputs(visit.candidates,
+            table.move(candidates, 1, math.min(#candidates, REPORT_CANDIDATES), 1, {})) then
+            return
+        end
+        local stats = search.stats
+        visit.mode, visit.decidedAt = mode, at
+        visit.spawns, visit.rarityCount = info.count, info.rarityCount
+        visit.continuingCycle = info.continuingCycle == true
+        visit.load = {readyBy = stats.readyBy, readySeconds = stats.readySeconds, settleSeconds = stats.settleSeconds,
+            zonesPresent = stats.zonesPresent, zonesTotal = stats.zonesTotal}
+        -- The highest incomes are kept; a low minimum rarity can list dozens.
+        visit.candidateCount = #candidates
+        visit.candidates = table.move(candidates, 1, math.min(#candidates, REPORT_CANDIDATES), 1, {})
+        if mode == "match" and match then
+            hunt.found = {name = match.name, rarity = match.rarity, income = match.income, area = match.area,
+                nest = match.nest, uid = match.uid, job = job}
+            closeHunt(hunt, "match", at)
+        end
+        saveReport()
+    end
+    -- Fresh scan right before a teleport and the chosen destination.
+    function search.ReportHopCheck(mode, info, rows, job, target, at)
+        local hunt = openHunt()
+        local visit = hunt and hunt.visits[#hunt.visits]
+        if not visit or visit.job ~= job then return end
+        local matches = 0
+        for _, candidate in ipairs(search.HuntCandidates(rows)) do
+            if candidate.match then matches += 1 end
+        end
+        visit.beforeHop = {at = at, mode = mode, ready = info and info.ready == true,
+            spawns = info and info.count, rarityCount = info and info.rarityCount,
+            matches = matches, target = target}
+        saveReport()
+    end
+    function search.ReportStopped(at)
+        local hunt = openHunt()
+        if hunt then closeHunt(hunt, "AUTO apagado", at); saveReport() end
+    end
+    function search.HuntReport()
+        return copyInputs(report)
     end
 
     -- Datos y reloj replicados por el juego; no se modifica el ciclo.

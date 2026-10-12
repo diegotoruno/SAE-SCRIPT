@@ -1,5 +1,13 @@
 # Contexto del proyecto
 
+## Reporte de busquedas (2026-10-12)
+
+El usuario pide un reporte sencillo para revisar despues si el finder funciona
+y si carga bien los datos antes de saltar, sin perder un huevo que cumpla.
+Solo se crea al ver la rareza minima o superior en las zonas elegidas: primer
+huevo, servidor, cada servidor visitado con prueba de carga, candidatos con
+motivo, re-escaneo antes del teleport y resultado (match, noche, AUTO apagado).
+
 ## Memoria del ciclo entre servidores (2026-10-12)
 
 Reporte del usuario: aparecio un Pegasus, AUTO salto y en el destino ya lo
