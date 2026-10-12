@@ -1,5 +1,42 @@
 # Pruebas y validacion
 
+## 2026-10-12 - Barrera rapida con snapshot completo
+
+Build, compilacion de siete entradas, 190 regresiones Luau (ocho nuevas) y
+diez Python correctos. Nuevas: campo completo listo a 3 s (no 2.99) con
+readyBy=complete; cambio Slot reinicia la ventana; zona ausente, AreaId
+desconocido o nulo esperan 10 s (readyBy=timer); registros retirados por
+reclamos siguen completos; registros nocturnos de una zona no usan el atajo;
+Uid del periodo anterior (lote entero o un superviviente) obliga a 10 s hasta
+el siguiente lote nuevo; llegada con busqueda guardada salta a 3 s con
+continuingCycle; match solo tras la ventana. Tres mutaciones temporales (sin
+comprobacion de Uid viejos, sin atajo, conteo de zonas relajado) hacen fallar
+la prueba prevista.
+
+Potassium, cliente real, sin teleports, sin GUI ni entradas simuladas:
+sonda pasiva de senales EggState durante tres resets. Al empezar la noche se
+retiran los 65 registros; ~2 s despues del inicio del dia llega un solo
+FieldRefreshed con 65 registros nuevos, 13 zonas x 5 nidos. Despues solo hay
+cambios de juego (FieldShifted de jugadores, un FieldGone a mitad del dia
+deja una zona con 4). Version publicada en el mismo servidor: estable=0.0/10.1,
+8.0/11.0 y 7.1/10.1 s. Instancia aislada del detector candidato (config real
+Eternal>=20b/tres zonas, escrituras en memoria, Dispose al terminar): lectura
+inicial lista en 3.03 s y lote de reset listo en 3.04 s, ambos readyBy=complete.
+A/B con saltos reales autorizado por el usuario (API Hop, sin clics
+simulados): en cada llegada la sesion publicada carga por autoexec y en
+paralelo una instancia aislada del candidato lee los mismos datos. Nueve
+llegadas validas: candidato listo en 3.01-4.30 s (media 3.39, siempre
+readyBy=complete), publicado 10.08-10.49 s (media 10.24). Misma decision
+(wait) y mismos conteos en 9/9; ningun cambio de decision del candidato en
+los 12 s posteriores (8/8 vigiladas). Linea de tiempo de una llegada: ~65
+FieldShifted con HasFieldSnapshot=false a +0.5 s, un unico FieldRefreshed
+con los 65 registros a +3.6 s y ningun cambio despues en 25 s.
+
+Incidente de prueba: tres llegadas excluidas. Una sonda hizo require de
+EggState antes de game:IsLoaded(); el modulo fallo y la sesion publicada
+de ese servidor quedo en loading (ciclo=nil). Un salto nuevo lo recupero.
+Las sondas deben esperar juego cargado y sesion presente antes de require.
+
 ## 2026-10-11 - Eficiencia del finder y del hopper
 
 Build, compilacion de siete entradas, 182 regresiones Luau (seis nuevas) y diez

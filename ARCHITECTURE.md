@@ -1,5 +1,18 @@
 # Arquitectura
 
+## Barrera con prueba de completitud (2026-10-12)
+
+`snapshotReady` llama en cada lectura a `snapshotComplete(records, period)`:
+completo si existe `modules.areas.Directory`, cada zona oficial tiene al menos
+un registro (cualquier estado), todo AreaId es conocido y ningun Uid aparecio
+en el periodo anterior de esta sesion. Los Uid se acumulan por `periodIndex`;
+al cambiar de periodo el conjunto anterior pasa a `staleUids`. Listo =
+3 s sin cambios Slot/revision y (completo o 10 s desde la primera lectura).
+`stats.readyBy` indica `complete` o `timer`; el log AUTO lo muestra como
+`estable=X/Y s (complete)`. Noche/reset/snapshot ausente siguen reiniciando
+la barrera; no se exige igual numero de nidos porque un reclamo retira
+registros durante el dia.
+
 ## Eficiencia sin cambios de decision (2026-10-11)
 
 map_egg_search: Scan construye la tabla de rangos una vez por snapshot y la usa
@@ -150,7 +163,7 @@ La cache de analisis incorpora el ciclo para no trasladar decisiones entre perio
 
 El runtime coordina AUTO, revisa otra vez antes del teleport y conserva estado entre servidores. Un teleport ya enviado no se puede retirar; la decision nueva se aplica antes del siguiente intento y al llegar al destino. La observacion del ciclo recuerda el minimo seleccionado aunque el spawn observado sea superior; no requiere migrar la configuracion ni la ventana persistida.
 
-Antes de la primera decision de cada sesion/ciclo, Scan espera game:IsLoaded(), una lectura valida, minimo 10s desde esa lectura y 3s sin cambios de inputs Slot/catalogo ni revision. Compara copias para detectar cambios en el mismo record. Hasta validar, ready=false y no devuelve candidato confirmado, aunque exista memoria de busqueda. Los analisis cacheados se mantienen separados: se clona info antes de aplicar la barrera. Tras validar no demora cada poll. Noche/reset, cambio de ciclo/overrides/modulos, snapshot ausente o error de datos reinician la barrera; Scan(true) no la evita. El tiempo de carga usa os.clock(), sin sustituir el reloj del ciclo del juego. La estabilidad es una precaucion y no una señal explicita de completitud si una replicacion parcial queda detenida durante toda la ventana.
+Antes de la primera decision de cada sesion/ciclo, Scan espera game:IsLoaded(), una lectura valida, 3s sin cambios de inputs Slot/catalogo ni revision y, ademas, snapshot completo (todas las zonas, sin Uid del periodo anterior) o minimo 10s desde esa lectura. Compara copias para detectar cambios en el mismo record. Hasta validar, ready=false y no devuelve candidato confirmado, aunque exista memoria de busqueda. Los analisis cacheados se mantienen separados: se clona info antes de aplicar la barrera. Tras validar no demora cada poll. Noche/reset, cambio de ciclo/overrides/modulos, snapshot ausente o error de datos reinician la barrera; Scan(true) no la evita. El tiempo de carga usa os.clock(), sin sustituir el reloj del ciclo del juego. La estabilidad es una precaucion y no una señal explicita de completitud si una replicacion parcial queda detenida durante toda la ventana.
 
 ## API publica
 

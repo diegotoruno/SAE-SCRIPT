@@ -8,8 +8,11 @@ local function createMapEggSearch(readJson, writeJson)
     -- HasFieldSnapshot can become true before the initial replication finishes.
     -- Wait from the first usable read, then require unchanged Slot inputs in
     -- separate polls. This gate belongs to this session/cycle, never to disk.
+    -- A snapshot proven complete (every official zone present, no spawn left
+    -- from an earlier period) only needs the quiet window.
     local LOAD_SECONDS, QUIET_SECONDS = 10, 3
     local snapshotLoad
+    local currentPeriod, currentUids, staleUids = nil, {}, {}
     local function copyInputs(value)
         if type(value) ~= "table" then return value end
         local copy = {}
@@ -26,6 +29,33 @@ local function createMapEggSearch(readJson, writeJson)
     local function clearSnapshotLoad()
         snapshotLoad = nil
     end
+    -- Real field: the game delivers it in one batch (join or day start) with
+    -- nests in all 13 zones; later claims may remove single records. Any
+    -- missing/unknown zone or spawn left from the previous period keeps the
+    -- full arrival wait.
+    local function snapshotComplete(records, period)
+        if period ~= currentPeriod then
+            staleUids = period ~= nil and currentPeriod ~= nil and currentUids or {}
+            currentPeriod, currentUids = period, {}
+        end
+        local areas = search.modules and search.modules.areas
+        local complete = type(areas) == "table" and type(areas.Directory) == "table" and period ~= nil
+        local present = {}
+        for _, egg in pairs(records) do
+            if egg.Uid ~= nil then
+                currentUids[egg.Uid] = true
+                if staleUids[egg.Uid] then complete = false end
+            end
+            local area = egg.AreaId
+            if complete and (type(area) ~= "string" or not areas.Directory[area]) then complete = false end
+            if complete then present[area] = true end
+        end
+        if not complete or next(areas.Directory) == nil then return false end
+        for id in pairs(areas.Directory) do
+            if not present[id] then return false end
+        end
+        return true
+    end
     local function snapshotReady(records, directory, cycle)
         if not game:IsLoaded() then clearSnapshotLoad(); return false end
         local now = os.clock()
@@ -34,6 +64,8 @@ local function createMapEggSearch(readJson, writeJson)
             night = cycle and cycle.nightSeconds}
         if snapshotLoad and (snapshotLoad.modules ~= search.modules
             or not sameInputs(snapshotLoad.stamp, stamp)) then clearSnapshotLoad() end
+        -- Runs on every read so mid-period respawns also count as stale later.
+        local complete = snapshotComplete(records, stamp.period)
         if snapshotLoad and snapshotLoad.ready then return true end
         local inputs = {}
         for key, egg in pairs(records) do
@@ -49,12 +81,13 @@ local function createMapEggSearch(readJson, writeJson)
         elseif snapshotLoad.revision ~= search.fieldRevision or not sameInputs(snapshotLoad.inputs, inputs) then
             snapshotLoad.stableAt, snapshotLoad.revision, snapshotLoad.inputs = now, search.fieldRevision, inputs
         end
-        snapshotLoad.ready = now - snapshotLoad.firstAt >= LOAD_SECONDS
+        snapshotLoad.ready = (complete or now - snapshotLoad.firstAt >= LOAD_SECONDS)
             and now - snapshotLoad.stableAt >= QUIET_SECONDS
         if snapshotLoad.ready then
-            -- Diagnostic only: real settle times help calibrate LOAD_SECONDS.
+            -- Diagnostic only: real settle times and which proof released the gate.
             search.stats.settleSeconds = snapshotLoad.stableAt - snapshotLoad.firstAt
             search.stats.readySeconds = now - snapshotLoad.firstAt
+            search.stats.readyBy = complete and "complete" or "timer"
         end
         return snapshotLoad.ready
     end
@@ -659,7 +692,7 @@ local function createMapEggSearch(readJson, writeJson)
                 clearSnapshotLoad()
             elseif not snapshotReady(snapshot.Records, modules.assets.Directory, snapshotCycle) then
                 details.ready = false
-                details.reason = "cargando huevos del servidor; esperando datos estables (mínimo 10 s)"
+                details.reason = "cargando huevos del servidor; esperando datos estables y completos"
                 return nil, details, {}, mapRows
             end
             return best, details, matches, mapRows

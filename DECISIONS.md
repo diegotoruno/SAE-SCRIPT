@@ -1,5 +1,16 @@
 # Decisiones de producto e implementacion
 
+## Completitud demostrada en lugar de 10 s fijos (2026-10-12)
+
+Reemplaza "Barrera de carga sin cambios hasta medir". Las mediciones reales
+muestran que el campo se entrega en un lote atomico; esperar 10 s tras una
+lectura que ya cubre las 13 zonas y no contiene huevos del periodo anterior
+no agrega certeza. Se conserva la ventana de 3 s sin cambios para todos los
+casos y los 10 s como respaldo cuando falta una zona, hay una zona
+desconocida o sobrevive un Uid del periodo anterior. No se exige el mismo
+numero de nidos por zona: los reclamos retiran registros a mitad del dia.
+Rareza minima, Slot, zonas, ingreso exacto y flujo wait/hop/match no cambian.
+
 ## Barrera de carga sin cambios hasta medir (2026-10-11)
 
 La espera minima de 10 s ocupa la mayor parte del tiempo por servidor, pero
