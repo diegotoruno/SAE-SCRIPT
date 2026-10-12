@@ -1,5 +1,12 @@
 # Arquitectura
 
+## Tolerancia de reloj en la memoria del ciclo (2026-10-12)
+
+`validWindow` compara `periodIndex`, `periodSeconds` y `nightSeconds` exactos;
+`nextReset`, `untilTime` y `seenAt` con `CLOCK_TOLERANCE_SECONDS = 1`, porque
+el ancla del ciclo de cada servidor difiere en milisegundos. Un periodo
+distinto o desplazamientos mayores a 1 s siguen cerrando la memoria.
+
 ## Servidor con modulos rotos (2026-10-12)
 
 El cargador de modulos llama `NoteLoadFailure(err)`. Dos fallos seguidos con

@@ -115,15 +115,22 @@ local function createMapEggSearch(readJson, writeJson)
             and cycle.serverTime >= cycle.nextReset - cycle.periodSeconds
             and cycle.serverTime < cycle.nextReset - cycle.nightSeconds
     end
+    -- Each server anchors the same period a few milliseconds apart
+    -- (Workspace.AreaEggCycleAnchorAt), so times saved in the origin server
+    -- never equal the destination's exactly. The period index must match.
+    local CLOCK_TOLERANCE_SECONDS = 1
+    local function near(a, b)
+        return finite(a) and finite(b) and math.abs(a - b) <= CLOCK_TOLERANCE_SECONDS
+    end
     local function validWindow(cycle)
         return cycleReady(cycle) and remembered.version == 2
             and remembered.rarity == string.lower(search.config.rarity)
             and sameInputs(remembered.zones, search.config.zones)
-            and remembered.periodIndex == cycle.periodIndex and remembered.nextReset == cycle.nextReset
+            and remembered.periodIndex == cycle.periodIndex and near(remembered.nextReset, cycle.nextReset)
             and remembered.periodSeconds == cycle.periodSeconds and remembered.nightSeconds == cycle.nightSeconds
-            and finite(remembered.seenAt) and remembered.seenAt <= cycle.serverTime
-            and remembered.seenAt >= cycle.nextReset - cycle.periodSeconds
-            and remembered.untilTime == cycle.nextReset - cycle.nightSeconds
+            and finite(remembered.seenAt) and remembered.seenAt <= cycle.serverTime + CLOCK_TOLERANCE_SECONDS
+            and remembered.seenAt >= cycle.nextReset - cycle.periodSeconds - CLOCK_TOLERANCE_SECONDS
+            and near(remembered.untilTime, cycle.nextReset - cycle.nightSeconds)
     end
     local function saveWindow(value)
         local ok, saved = pcall(writeJson, CYCLE_FILE, value)

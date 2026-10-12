@@ -644,6 +644,28 @@ test("clock overrides and future or corrupt saved windows cannot drive a hop", f
     files["chilli_egg_search_cycle.json"] = {version = 9, rarity = "divine"}
     assert(decideCycle(cycleFactory(read, write), {}, 102) == "wait")
 end)
+test("saved hunt continues in a server whose cycle anchor differs by milliseconds", function()
+    -- Real servers: same period index, nextReset 1791796794.001357 vs .000655.
+    local _, read, write = memoryStore(); local finder = cycleFactory(read, write)
+    local match, info = finder.Evaluate({egg("pegasus", 6e9)}, catalog, function(e) return e.rate end)
+    info.ready = true
+    assert(finder.Decide(match, info, cycle(100, {nextReset = 300.001357})) == "hop")
+    local destination = cycleFactory(read, write)
+    local arrived = {ready = true, rarityCount = 0, count = 65, errors = 0}
+    assert(destination.Decide(nil, arrived, cycle(130, {nextReset = 300.000655})) == "hop")
+    assert(arrived.continuingCycle, "the observation must survive the hop")
+    assert(destination.SearchWindow().version == 2, "memory kept, not cleared")
+    -- Still ends at the next night and never crosses into another period.
+    assert(destination.Decide(nil, {ready = true, rarityCount = 0}, cycle(301, {nextReset = 600.0007})) == "wait")
+end)
+test("cycle tolerance stays within one second", function()
+    local _, read, write = memoryStore(); local finder = cycleFactory(read, write)
+    local match, info = finder.Evaluate({egg("a", 6e9)}, catalog, function(e) return e.rate end)
+    info.ready = true
+    assert(finder.Decide(match, info, cycle(100, {nextReset = 300.4})) == "hop")
+    assert(cycleFactory(read, write).Decide(nil, {ready = true, rarityCount = 0},
+        cycle(110, {nextReset = 301.5})) == "wait")
+end)
 test("failed window persistence waits and retries instead of losing the hunt", function()
     local _, read, write, fail = memoryStore(); local finder = cycleFactory(read, write)
     fail(true); assert(decideCycle(finder, {egg("a", 6e9)}, 100) == "loading")
