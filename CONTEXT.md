@@ -1,5 +1,17 @@
 # Contexto del proyecto
 
+## Pool sin servidores que ya se llenaron (2026-10-12)
+
+Primer reporte real (Eternal, 11 servidores): 4 de 15 teleports dieron
+GameFull aunque la lista los daba con 1-2 jugadores, y 3 terminaron
+reentrando al mismo servidor (~20 s cada uno). La reentrada era el "Auto
+Rejoin When Disconnect" de Chilli: con la opcion apagada, 3 GameFull
+provocados no reentraron. El usuario pide subir la certeza del pool para
+evitar el error. Observado: el pool ponia primero 1/7 vistos hace 147-162 s
+que la pasada mas reciente ya no listaba; los 1-2/7 cambian en menos de un
+minuto. El reporte agrega intentos rechazados, ocupacion/antiguedad del
+destino y recargas del mismo servidor para medirlo en busquedas reales.
+
 ## Reporte de busquedas (2026-10-12)
 
 El usuario pide un reporte sencillo para revisar despues si el finder funciona

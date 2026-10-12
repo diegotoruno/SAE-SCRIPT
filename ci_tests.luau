@@ -724,6 +724,31 @@ test("hunt report keeps the ten highest incomes per server and the total", funct
     local visit = finder.HuntReport().hunts[1].visits[1]
     assert(visit.candidateCount == 25 and #visit.candidates == 10 and visit.candidates[1].income == 25e8)
 end)
+test("hunt report records rejected hops, destination listing age and server reloads", function()
+    local _, read, write, _, writes = memoryStore(); local finder = cycleFactory(read, write)
+    local rows = {reportRow("pegasus", 6e9)}
+    finder.ReportDecision("hop", nil, readyInfo(1), rows, cycle(100), "j1", 1000)
+    finder.ReportHopCheck("hop", readyInfo(1), rows, "j1", "full", 1001, {id = "full", playing = 1, observedAt = 850})
+    finder.ReportHopFailure("j1", "full", "Enum.TeleportResult.GameFull / Requested experience is full", 1001,
+        {id = "full", playing = 1, observedAt = 850})
+    finder.ReportHopFailure("elsewhere", "x", "GameFull", 1001)
+    -- Rejoining the same server starts a new session that reads the report.
+    local again = cycleFactory(read, write)
+    again.ReportDecision("hop", nil, readyInfo(1), rows, cycle(100), "j1", 1020)
+    local written = writes()
+    again.ReportDecision("hop", nil, readyInfo(1), rows, cycle(100), "j1", 1021)
+    assert(writes() == written, "the same session does not count its own polls as reloads")
+    again.ReportHopCheck("hop", readyInfo(1), rows, "j1", "next", 1022, {id = "next", playing = 2, observedAt = 1010})
+    local hunt = again.HuntReport().hunts[1]
+    local visit = hunt.visits[1]
+    assert(hunt.servers == 1 and #hunt.visits == 1 and visit.reloads == 1)
+    local failed = visit.failedHops[1]
+    assert(#visit.failedHops == 1 and failed.playing == 1 and failed.listedAge == 151 and failed.reason:find("GameFull"))
+    assert(visit.beforeHop.target == "next" and visit.beforeHop.playing == 2 and visit.beforeHop.listedAge == 12)
+    for i = 1, 12 do again.ReportHopFailure("j1", "f" .. i, "GameFull", 1030 + i) end
+    visit = again.HuntReport().hunts[1].visits[1]
+    assert(#visit.failedHops == 10 and visit.failedHops[10].target == "f12" and visit.failedHops[1].listedAge == nil)
+end)
 test("hunt report never records a loading decision", function()
     local files, read, write = memoryStore(); local finder = cycleFactory(read, write)
     finder.ReportDecision("loading", nil, {ready = false}, {reportRow("x", 6e9)}, cycle(100), "j1", 1000)
@@ -1590,6 +1615,27 @@ test("balanced cold start uses native head immediately and never waits for globa
     assert(#calls == 1 and #pool == 3 and pool[1].id == "one" and #published == 1)
     pool = native.Pick("current", {one = 100})
     assert(#calls == 1 and pool[1].id == "two-first")
+end)
+
+test("balanced pass drops a server it should have listed again and keeps ones beyond its reach", function()
+    local clock, published, index = 100, {}, 0
+    local first = {{"one-gone", 1}, {"one-stays", 1}}
+    for i = 3, 149 do first[#first + 1] = {"five-" .. i, 5} end
+    first[#first + 1] = {"one-far", 1}
+    local head = {}; for i = 1, 120 do head[i] = {"head-" .. i, 5} end
+    head[5] = {"one-stays", 1}
+    local pages = {nativePage(head, "next"), nativePage({{"tail", 5}})}
+    local native = support.DeviceNative({reservePolicy = "Balanced", now = function() return clock end,
+        alive = function() return true end, publish = function(pool) published[#published + 1] = pool end,
+        fetch = function() index += 1; return pages[index] end})
+    assert(native.Seed(nativePage(first)))
+    clock = 110
+    native.Pick("current", {}, nil, 24)
+    local function ids(pool) local set = {}; for _, row in ipairs(pool or {}) do set[row.id] = true end; return set end
+    local afterHead, afterEnd = ids(published[2]), ids(published[3])
+    assert(index == 2 and afterHead["one-stays"] and afterHead["one-far"], "relisted and out-of-reach servers stay")
+    assert(not afterHead["one-gone"], "a head server the new pass did not list again is full or closed")
+    assert(afterEnd["one-stays"] and not afterEnd["one-far"], "a complete list proves the rest left")
 end)
 
 test("balanced initial account page and fresh ready stock need no extra requests", function()

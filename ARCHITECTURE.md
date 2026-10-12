@@ -1,5 +1,21 @@
 # Arquitectura
 
+## Reserva sin servidores que dejaron la lista (2026-10-12)
+
+Cada pasada Balanced reinicia en la cabeza BestLatency. Tras cada pagina,
+`observe` borra las filas de pasadas anteriores cuyo `nativeRank` +
+`support.RELIST_MARGIN` (100) ya quedo cubierto por el `rank` de la pasada
+actual sin volver a listarlas, y todas las anteriores si la lista termino
+(`complete`). La API excluye servidores llenos, asi que esa ausencia indica
+lleno o cerrado. Un servidor aun abierto que se movio mas reaparece cuando la
+pasada lo alcanza. El orden 1/7 antes de 2/7 y los TTL no cambian; la reserva
+y `server_hop_button_pool.json` se publican ya filtrados.
+
+Reporte: `ReportHopCheck(..., server)` guarda `playing` y `listedAge` del
+destino; `ReportHopFailure` agrega a `visit.failedHops` (10 max) cada teleport
+rechazado de AUTO; `visit.reloads` cuenta sesiones nuevas en el mismo JobId
+(reentrada o reejecucion), detectadas con `reportedJobs` por sesion.
+
 ## Reporte de busquedas (2026-10-12)
 
 `chilli_egg_hunt_report.json` (ultimas 30 busquedas, 120 visitas por busqueda,

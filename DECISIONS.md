@@ -1,5 +1,15 @@
 # Decisiones de producto e implementacion
 
+## Vigente = la pasada mas reciente no lo contradice (2026-10-12)
+
+Se mantiene "1/7 vigentes antes de 2/7" y los TTL 180/90 s; cambia que cuenta
+como vigente. Un 1/7 que la pasada nueva debia volver a listar y no listo
+gana a un 2/7 fresco solo por su TTL, y es el destino mas disputado. Muestra
+real: los 13 servidores 1-2/7 ausentes con margen 100 estaban cerrados o
+volvieron con 3+ jugadores; ninguno volvio en 1-2/7. Perder un 1/7 que solo
+se movio cuesta una opcion; mantener uno lleno cuesta un GameFull (y con
+Auto Rejoin de Chilli, ~20 s de reentrada). Sin consultas nuevas.
+
 ## Memoria valida entre servidores con 1 s de tolerancia (2026-10-12)
 
 La observacion del ciclo debe sobrevivir al salto (flujo acordado, paso 7).
