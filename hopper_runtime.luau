@@ -2176,10 +2176,11 @@ do
                     local period = cycle and cycle.periodIndex
                     if mode ~= lastMode or revision ~= lastRevision or period ~= lastPeriod then
                         local stats = eggSearch.stats
-                        print(string.format("[EggSearch] mode=%s | spawns=%d | rareza=%d | ciclo=%s | estable=%s/%s s | job=%s",
+                        print(string.format("[EggSearch] mode=%s | spawns=%d | rareza=%d | ciclo=%s | estable=%s/%s s (%s) | job=%s",
                             mode, info.count or 0, info.rarityCount or 0, tostring(period),
                             stats.settleSeconds and string.format("%.1f", stats.settleSeconds) or "-",
-                            stats.readySeconds and string.format("%.1f", stats.readySeconds) or "-", game.JobId))
+                            stats.readySeconds and string.format("%.1f", stats.readySeconds) or "-",
+                            stats.readyBy or "-", game.JobId))
                         lastMode, lastRevision, lastPeriod = mode, revision, period
                     end
                     local state = readJson(STATE_FILE, nil)

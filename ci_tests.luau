@@ -1052,6 +1052,109 @@ test("higher rarity hunt cannot bypass the empty destination load wait", functio
     local mode, info = scanDestination()
     assert(mode == "hop" and info.continuingCycle and info.rarityCount == 0)
 end)
+-- Real field shape: every official zone with the same number of nests.
+local function fullField(prefix, nests)
+    local records = {}
+    for area in pairs(areasFixture.Directory) do
+        for nest = 1, nests or 5 do
+            local record = egg(prefix .. ":" .. area .. ":" .. nest, 1e9, "other")
+            record.AreaId, record.NestId = area, string.format("Slot_%03d", nest)
+            table.insert(records, record)
+        end
+    end
+    return records
+end
+test("complete field releases after the quiet window without the full wait", function()
+    local finder, state, scan = loadingFixture()
+    state.records = fullField("p1")
+    state.records[1].AssetCategory, state.records[1].rate = "divine", 6e9
+    loadClock = 0; assert(scan() == "loading")
+    loadClock = 2.99; assert(scan() == "loading")
+    loadClock = 3
+    local mode, info = scan()
+    assert(mode == "hop" and info.count == 65 and info.rarityCount == 1)
+    assert(finder.stats.readyBy == "complete" and finder.stats.readySeconds == 3)
+end)
+test("complete field still restarts the quiet window on any Slot change", function()
+    local finder, state, scan = loadingFixture()
+    state.records = fullField("p1")
+    loadClock = 0; assert(scan() == "loading")
+    loadClock = 2; state.records[5].State = "Carried"; assert(scan() == "loading")
+    loadClock = 4.99; assert(scan() == "loading")
+    loadClock = 5; assert(scan() == "wait" and finder.stats.readyBy == "complete")
+end)
+test("missing or unknown zone keeps the full wait", function()
+    local variants = {
+        function(records) for index = #records, 1, -1 do
+            if records[index].AreaId == "Snow" then table.remove(records, index) end end end,
+        function(records) records[1].AreaId = "Retired Zone" end,
+        function(records) records[1].AreaId = nil end,
+    }
+    for index, change in ipairs(variants) do
+        local finder, state, scan = loadingFixture()
+        state.records = fullField("v" .. index); change(state.records)
+        loadClock = 0; assert(scan() == "loading", index)
+        loadClock = 9.99; assert(scan() == "loading", index)
+        loadClock = 10; assert(scan() ~= "loading", index)
+        assert(finder.stats.readyBy == "timer", index)
+    end
+end)
+test("records removed by claims during the day keep the field complete", function()
+    local finder, state, scan = loadingFixture()
+    state.records = fullField("claimed")
+    table.remove(state.records, 1); table.remove(state.records, 1)
+    loadClock = 0; assert(scan() == "loading")
+    loadClock = 3; assert(scan() == "wait" and finder.stats.readyBy == "complete")
+end)
+test("night records in one zone cannot use the complete shortcut", function()
+    local _, state, scan = loadingFixture()
+    state.records = fullField("night", 5)
+    for index = #state.records, 1, -1 do
+        if state.records[index].AreaId ~= "Cosmic" then table.remove(state.records, index) end
+    end
+    loadClock = 0; assert(scan() == "loading")
+    loadClock = 9.99; assert(scan() == "loading")
+end)
+test("spawns left from the previous period keep the full wait until replaced", function()
+    local finder, state, scan = loadingFixture()
+    state.records = fullField("p1")
+    loadClock = 0; assert(scan() == "loading")
+    loadClock = 3; assert(scan() == "wait" and finder.stats.readyBy == "complete")
+    -- New period but the old batch is still in place: no shortcut.
+    state.now = 301; loadClock = 20; assert(scan() == "loading")
+    loadClock = 29.99; assert(scan() == "loading")
+    loadClock = 30; assert(scan() == "wait" and finder.stats.readyBy == "timer")
+    -- One survivor from the previous period is enough to refuse the shortcut.
+    state.now = 601; state.records = fullField("p3"); state.records[1].Uid = "p1:" .. state.records[1].AreaId .. ":1"
+    loadClock = 40; assert(scan() == "loading")
+    loadClock = 43; assert(scan() == "loading")
+    loadClock = 50; assert(scan() == "wait" and finder.stats.readyBy == "timer")
+    -- The replacement batch of the following period is complete again.
+    state.now = 901; state.records = fullField("p4")
+    loadClock = 60; assert(scan() == "loading")
+    loadClock = 63; assert(scan() == "wait" and finder.stats.readyBy == "complete")
+end)
+test("complete arrival with a saved hunt hops after the quiet window", function()
+    local _, read, write = memoryStore()
+    assert(decideCycle(cycleFactory(read, write), {egg("origin", 6e9)}, 100) == "hop")
+    local _, state, scan = loadingFixture(read, write)
+    state.records = fullField("dest")
+    loadClock = 0; assert(scan() == "loading")
+    loadClock = 2.99; assert(scan() == "loading")
+    loadClock = 3
+    local mode, info = scan()
+    assert(mode == "hop" and info.continuingCycle and info.rarityCount == 0)
+end)
+test("complete field with a match stays only after the quiet window", function()
+    local _, state, scan = loadingFixture()
+    state.records = fullField("m")
+    state.records[7].AssetCategory, state.records[7].rate = "divine2", 9e9
+    loadClock = 0; assert(scan() == "loading")
+    loadClock = 2.99; assert(scan() == "loading")
+    loadClock = 3
+    local mode, _, match = scan()
+    assert(mode == "match" and match.uid == state.records[7].Uid and match.income == 9e9)
+end)
 test("cookie parser rejects headers multiple cookies controls and oversize input", function()
     assert(support.NormalizeCookie("  .ROBLOSECURITY=fake-secret;\n") == "fake-secret")
     for _, value in ipairs({"", "Cookie: .ROBLOSECURITY=fake", "a;b", "a\nb", "a b", string.rep("a", 16385)}) do

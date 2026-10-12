@@ -1,5 +1,18 @@
 # Estado del trabajo
 
+## 2026-10-12 - Barrera rapida con prueba de completitud
+
+Rama codex/barrera-rapida sobre main 9e6407a (worktree
+verification/fast-settle). El usuario pide ahorrar espera sin perder certeza.
+Medicion pasiva en Potassium (ver TESTING): el campo llega en un lote atomico
+con las 13 zonas; los 10 s fijos eran tiempo muerto. snapshotReady acepta
+3 s sin cambios cuando todas las zonas oficiales estan presentes y no queda
+ningun Uid del periodo anterior; en otro caso mantiene 10 s + 3 s. Log AUTO
+muestra `(complete)`/`(timer)`. Ahorro esperado ~7 s por servidor y por
+reset. Detector, filtros, Slot, ingreso exacto, memoria version2 y teleports
+sin cambios. Sondas retiradas del cliente; AUTO/config del usuario intactos.
+Sin publicar: PR/merge pendiente de decision del usuario.
+
 ## 2026-10-11 - Eficiencia del finder y del hopper
 
 Rama codex/eficiencia-finder-hopper sobre main 2b17783; el usuario pidio
