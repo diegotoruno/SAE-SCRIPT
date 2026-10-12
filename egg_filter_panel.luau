@@ -940,7 +940,10 @@ local function mountEggFilterPanel(context)
             stateTitle.TextColor3 = status.mode == "match" and C.green or C.white
             stateDot.BackgroundColor3 = status.mode == "match" and C.green or status.mode == "hop" and C.gold or status.active and C.cyan or C.muted
             local details = {
-                wait = string.format("Ninguno en %s. Se revisa al renovarse.", scope),
+                -- The panel's own map scans replace lastScan, so also read the saved cycle.
+                wait = (info.matchedHere or status.searchWindow and status.searchWindow.matchedJob == status.jobId)
+                    and "Ya encontraste uno aquí en este ciclo. Se revisa al renovarse."
+                    or string.format("Ninguno en %s. Se revisa al renovarse.", scope),
                 hop = info.continuingCycle and "Ya apareció en este ciclo; aquí no está. Sigo buscando."
                     or string.format("%d %s+ en %s, ninguno cumple los filtros.", info.rarityCount or 0, config.rarity, scope),
                 loading = sentence(info.reason or "esperando datos del mapa") .. ".",

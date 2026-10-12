@@ -666,6 +666,37 @@ test("cycle tolerance stays within one second", function()
     assert(cycleFactory(read, write).Decide(nil, {ready = true, rarityCount = 0},
         cycle(110, {nextReset = 301.5})) == "wait")
 end)
+test("a match ends the cycle's hunt in its server until the next night", function()
+    -- Real hunt 2026-10-12: match, egg claimed, AUTO turned back on, then 8
+    -- hops on the cycle's observation until the night.
+    local _, read, write, _, writes = memoryStore(); local finder = cycleFactory(read, write)
+    fakeGame.JobId = "first"
+    assert(decideCycle(finder, {egg("low", 6e9)}, 100) == "hop")
+    fakeGame.JobId = "found"
+    assert(decideCycle(finder, {egg("best", 8e9)}, 120) == "match")
+    local written = writes()
+    assert(decideCycle(finder, {egg("best", 8e9)}, 121) == "match" and writes() == written,
+        "polling the same match does not rewrite the window")
+    assert(finder.SearchWindow().matchedJob == "found" and finder.SearchWindow().seenAt == 100)
+    local mode, info = decideCycle(finder, {egg("best", 8e9, "divine", "Carried")}, 130)
+    assert(mode == "wait" and info.matchedHere and info.searchUntil == 290 and not info.continuingCycle)
+    assert(decideCycle(finder, {egg("other", 6e9)}, 140) == "wait", "insufficient eggs here do not restart it")
+    assert(decideCycle(cycleFactory(read, write), {}, 150) == "wait", "a rejoin into that server keeps waiting")
+    fakeGame.JobId = "elsewhere"
+    mode, info = decideCycle(finder, {}, 160)
+    assert(mode == "hop" and info.continuingCycle and not info.matchedHere, "another server keeps the hunt")
+    fakeGame.JobId = "found"
+    assert(decideCycle(finder, {egg("next", 6e9)}, 301) == "hop", "the next night repeats the flow")
+    assert(finder.SearchWindow().matchedJob == nil and finder.SearchWindow().periodIndex == 1)
+    -- A first-server match with no earlier hop also ends the hunt there.
+    local _, read2, write2 = memoryStore(); local fresh = cycleFactory(read2, write2)
+    assert(decideCycle(fresh, {egg("best", 8e9), egg("other", 6e9)}, 100) == "match")
+    assert(decideCycle(fresh, {egg("other", 6e9)}, 110) == "wait")
+    -- A window that cannot be saved never hides the match.
+    local _, read3, write3, fail = memoryStore(); local unsaved = cycleFactory(read3, write3)
+    fail(true); assert(decideCycle(unsaved, {egg("best", 8e9)}, 100) == "match")
+    fakeGame.JobId = "job-a"
+end)
 local function reportRow(uid, rate, category, area, matched)
     local record = egg(uid, rate, category or "divine"); record.AreaId = area or "Forest"; record.NestId = "Slot_001"
     return {uid = uid, egg = record, catalog = catalog[record.AssetCategory], income = rate,
@@ -748,6 +779,26 @@ test("hunt report records rejected hops, destination listing age and server relo
     for i = 1, 12 do again.ReportHopFailure("j1", "f" .. i, "GameFull", 1030 + i) end
     visit = again.HuntReport().hunts[1].visits[1]
     assert(#visit.failedHops == 10 and visit.failedHops[10].target == "f12" and visit.failedHops[1].listedAge == nil)
+end)
+test("hunt report after a match: no duplicate or waiting hunt, resumed hops recorded", function()
+    local _, read, write = memoryStore(); local finder = cycleFactory(read, write)
+    local found = finder.Evaluate({egg("winner", 8e9)}, catalog, function(e) return e.rate end)
+    local winner = {reportRow("winner", 8e9, "divine", "Forest", true)}
+    finder.ReportDecision("match", found, readyInfo(1), winner, cycle(100), "j1", 1000)
+    -- AUTO back on before claiming it: the same match is not a second hunt.
+    cycleFactory(read, write).ReportDecision("match", found, readyInfo(1), winner, cycle(110), "j1", 1010)
+    -- Claimed, insufficient ones left: waiting here never opens a hunt.
+    finder.ReportDecision("wait", nil, readyInfo(1), {reportRow("other", 6e9)}, cycle(120), "j1", 1020)
+    assert(#finder.HuntReport().hunts == 1 and finder.HuntReport().hunts[1].outcome == "match")
+    -- Hops on the cycle's observation from another server are reported;
+    -- other hops with nothing in scope (broken server) still are not.
+    finder.ReportDecision("hop", nil, readyInfo(0), {}, cycle(125), "j3", 1025)
+    assert(#finder.HuntReport().hunts == 1)
+    local continuing = readyInfo(0); continuing.continuingCycle = true
+    finder.ReportDecision("hop", nil, continuing, {}, cycle(130), "j2", 1030)
+    local hunts = finder.HuntReport().hunts
+    assert(#hunts == 2 and hunts[2].resumed and hunts[2].first == nil and hunts[2].startJob == "j2")
+    assert(hunts[2].servers == 1 and hunts[2].visits[1].continuingCycle)
 end)
 test("hunt report never records a loading decision", function()
     local files, read, write = memoryStore(); local finder = cycleFactory(read, write)

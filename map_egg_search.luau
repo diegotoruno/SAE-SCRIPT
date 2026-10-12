@@ -518,6 +518,7 @@ local function createMapEggSearch(readJson, writeJson)
 
     -- La misma decision se usa al entrar, despues de un reset y antes de saltar.
     function search.Decide(match, info, cycle)
+        info.matchedHere = nil
         if search.disposed then info.reason = "sesión terminada"; return "loading" end
         if search.broken then
             -- No map data exists here: leave without touching the cycle memory.
@@ -550,13 +551,29 @@ local function createMapEggSearch(readJson, writeJson)
             info.reason = "el snapshot pertenece al ciclo anterior; esperando lectura nueva"
             return "loading"
         end
-        if match then return "match" end
-        if (info.rarityCount or 0) > 0 and not valid then
-            local window = {version = 2, rarity = string.lower(search.config.rarity), zones = table.clone(search.config.zones),
+        local function newWindow()
+            return {version = 2, rarity = string.lower(search.config.rarity), zones = table.clone(search.config.zones),
                 periodIndex = cycle.periodIndex,
                 nextReset = cycle.nextReset, periodSeconds = cycle.periodSeconds, nightSeconds = cycle.nightSeconds,
                 untilTime = cycle.nextReset - cycle.nightSeconds, seenAt = cycle.serverTime}
-            if not saveWindow(window) then info.reason = "no se pudo guardar la búsqueda para continuar al reconectar"; return "loading" end
+        end
+        if match then
+            -- The hunt of this cycle ends in this server: AUTO turned back on
+            -- here (egg claimed, or others still insufficient) waits for the
+            -- next night instead of hopping on. A failed save keeps the match.
+            if not (valid and remembered.matchedJob == game.JobId) then
+                local window = valid and table.clone(remembered) or newWindow()
+                window.matchedJob = game.JobId
+                saveWindow(window)
+            end
+            return "match"
+        end
+        if valid and remembered.matchedJob == game.JobId then
+            info.matchedHere, info.searchUntil = true, remembered.untilTime
+            return "wait"
+        end
+        if (info.rarityCount or 0) > 0 and not valid then
+            if not saveWindow(newWindow()) then info.reason = "no se pudo guardar la búsqueda para continuar al reconectar"; return "loading" end
             valid = true
         end
         info.continuingCycle = valid and (info.rarityCount or 0) == 0
@@ -616,12 +633,25 @@ local function createMapEggSearch(readJson, writeJson)
         end
         local candidates = search.HuntCandidates(rows)
         if not hunt then
-            if #candidates == 0 then return end
+            -- The same match seen again (AUTO turned back on before claiming
+            -- it) is not a new hunt, and waiting never starts one. Hops with
+            -- nothing here resume this cycle's hunt (after a match elsewhere
+            -- or AUTO turned off and on), so they are reported too.
+            local last = report.hunts[#report.hunts]
+            if mode == "match" and match and last and last.found
+                and last.found.uid == match.uid and last.found.job == job then return end
+            local resumed = #candidates == 0 and mode == "hop" and info.continuingCycle == true
+            if mode == "wait" or (#candidates == 0 and not resumed) then return end
             hunt = {startedAt = at, period = cycle.periodIndex, rarity = scope.rarity, zones = scope.zones,
-                minIncome = search.config.minIncome, first = candidates[1], startJob = job, servers = 0, visits = {}}
+                minIncome = search.config.minIncome, first = candidates[1], resumed = resumed or nil,
+                startJob = job, servers = 0, visits = {}}
             table.insert(report.hunts, hunt)
-            print(string.format("[EggHunt] inicio: %s (%s) %s/s en %s | job=%s", tostring(candidates[1].name),
-                tostring(candidates[1].rarity), tostring(candidates[1].income), tostring(candidates[1].area), job))
+            if resumed then
+                print(string.format("[EggHunt] reanudada: ya apareció en este ciclo | job=%s", job))
+            else
+                print(string.format("[EggHunt] inicio: %s (%s) %s/s en %s | job=%s", tostring(candidates[1].name),
+                    tostring(candidates[1].rarity), tostring(candidates[1].income), tostring(candidates[1].area), job))
+            end
         end
         local visit = hunt.visits[#hunt.visits]
         local reloaded = false

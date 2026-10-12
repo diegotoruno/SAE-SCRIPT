@@ -1,5 +1,13 @@
 # Estado del trabajo
 
+## 2026-10-12 - Esperar la noche tras un match
+
+Rama codex/match-espera-noche sobre main 2fed20d (build-70 con el pool
+vigente). Tras un match, AUTO encendido otra vez en ese servidor espera la
+noche siguiente en vez de seguir el ciclo; el reporte deja de duplicar el
+match y registra hops que reanudan el ciclo. Ver TESTING. Publicacion
+pendiente de decision del usuario.
+
 ## 2026-10-12 - Pool sin servidores que dejaron la lista
 
 Rama codex/pool-vigente sobre main 2b312dc (build-68 con el reporte). Quita de

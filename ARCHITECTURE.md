@@ -1,5 +1,22 @@
 # Arquitectura
 
+## Match cierra el ciclo en su servidor (2026-10-12)
+
+En `Decide`, un `match` guarda la ventana del ciclo (la vigente o una nueva)
+con `matchedJob = game.JobId`, sin reescribirla en cada sondeo; si el guardado
+falla, el match se mantiene. Sin match y con ventana valida cuyo
+`matchedJob` es el JobId actual, devuelve `wait` con `info.matchedHere` y
+`searchUntil` antes de evaluar insuficientes; la ventana expira con la noche
+como siempre. Otro JobId del mismo ciclo sigue con `hop`. El runtime y el
+panel (tambien via `searchWindow.matchedJob == jobId`) muestran "Ya
+encontraste uno aqui en este ciclo".
+
+Reporte: sin busqueda abierta, el mismo match (uid y JobId del ultimo
+`found`) no abre otra y `wait` nunca abre una; un `hop` con `continuingCycle`
+sin candidatos abre una busqueda `resumed` (sin `first`), para que los hops
+que continuan el ciclo tras un match en otro servidor o AUTO apagado y
+encendido queden registrados.
+
 ## Reserva sin servidores que dejaron la lista (2026-10-12)
 
 Cada pasada Balanced reinicia en la cabeza BestLatency. Tras cada pagina,
@@ -204,7 +221,7 @@ No se mantiene el bundle manualmente. `dist/` es generado y esta ignorado por Gi
 
 `Decide(match, info, cycle)` devuelve `match`, `loading`, `hop` o `wait`. Ademas de la presencia local, conserva una observacion de la rareza seleccionada para continuar cuando falta en otro servidor. `Scan()` obtiene snapshot y calcula datos con los modulos reales, evitando noche y snapshots pendientes. Un fallo de datos espera; si el ciclo cambia durante el scan se descarta esa lectura.
 
-`chilli_egg_search_cycle.json` guarda version2, rareza, zones normalizadas, periodIndex, nextReset, periodSeconds, nightSeconds, seenAt y untilTime. La ventana termina al empezar la noche siguiente (`nextReset - nightSeconds`). Cambio de rareza o conjunto de zonas cierra la memoria antes de aplicar la configuracion; si falla ese guardado, no aplica el nuevo filtro. Periodo/overrides distintos, datos futuros/corruptos o expiracion tambien la invalidan. La version1 global se descarta porque no demuestra presencia en las zonas actuales. Un reloj desconocido/pausado espera; cambiar minimo/nombre/mutacion conserva la observacion de la misma rareza y zonas. El guardado usa la persistencia verificada existente y no se repite en cada poll. `GetStatus().searchWindow` devuelve una copia profunda de lo guardado; su existencia no demuestra vigencia ni presencia actual.
+`chilli_egg_search_cycle.json` guarda version2, rareza, zones normalizadas, periodIndex, nextReset, periodSeconds, nightSeconds, seenAt, untilTime y, tras un match, matchedJob. La ventana termina al empezar la noche siguiente (`nextReset - nightSeconds`). Cambio de rareza o conjunto de zonas cierra la memoria antes de aplicar la configuracion; si falla ese guardado, no aplica el nuevo filtro. Periodo/overrides distintos, datos futuros/corruptos o expiracion tambien la invalidan. La version1 global se descarta porque no demuestra presencia en las zonas actuales. Un reloj desconocido/pausado espera; cambiar minimo/nombre/mutacion conserva la observacion de la misma rareza y zonas. El guardado usa la persistencia verificada existente y no se repite en cada poll. `GetStatus().searchWindow` devuelve una copia profunda de lo guardado; su existencia no demuestra vigencia ni presencia actual.
 
 La cache de analisis incorpora el ciclo para no trasladar decisiones entre periodos sin senal de renovacion. La informacion de scan incluye el reloj capturado antes de leer los records; Decide rechaza un snapshot del periodo anterior. El panel distingue busqueda vigente sin rareza local de espera inicial.
 

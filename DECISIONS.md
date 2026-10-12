@@ -1,5 +1,15 @@
 # Decisiones de producto e implementacion
 
+## Un match termina la busqueda del ciclo en ese servidor (2026-10-12)
+
+Pedido del usuario: tras encontrar uno que cumpla, esperar la noche en el
+servidor actual. Se liga al JobId del match y no a todo el ciclo: un rejoin
+al mismo servidor sigue esperando, pero si el usuario se va a otro servidor
+y enciende AUTO, la observacion del ciclo sigue valiendo ahi. El match sigue
+apagando AUTO (flujo acordado, paso 5); lo nuevo aplica cuando se vuelve a
+encender. No reintroduce "esperar siempre en el mismo servidor": solo cubre
+el servidor donde ya hubo match y solo hasta la noche siguiente.
+
 ## Vigente = la pasada mas reciente no lo contradice (2026-10-12)
 
 Se mantiene "1/7 vigentes antes de 2/7" y los TTL 180/90 s; cambia que cuenta

@@ -2359,7 +2359,8 @@ do
                             local scope = #eggSearch.config.zones > 0 and " en tus zonas" or " en el mapa"
                             setLabel(remaining and string.format("Reset %d:%02d",
                                 math.floor(remaining / 60), remaining % 60) or "Esperando")
-                            setStatus("Sin " .. eggSearch.config.rarity .. "+" .. scope .. (cycle and not cycle.running
+                            setStatus((info.matchedHere and "Ya encontraste uno aquí en este ciclo"
+                                or "Sin " .. eggSearch.config.rarity .. "+" .. scope) .. (cycle and not cycle.running
                                 and ". Ciclo en pausa" or ". Esperando la renovación"), COLORS.muted)
                         else
                             setStatus(info.broken
