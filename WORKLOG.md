@@ -1,5 +1,13 @@
 # Estado del trabajo
 
+## 2026-10-12 - Linea de Chilli con espera y arranque del hopper
+
+PR23 publicado (build-60, c0053b2). Prueba de la linea de Chilli con espera
+en el autoexec local: 0 servidores rotos en 27 llegadas. Expuso un fallo
+latente del hopper (LocalPlayer nil al montar); rama
+codex/hopper-espera-jugador lo corrige y documenta la linea recomendada en
+README. El autoexec local queda con la linea nueva.
+
 ## 2026-10-12 - Salto automatico desde servidores con modulos rotos
 
 Barrera rapida publicada: PR22 fusionado (cdf7411), CI build-58, bundle
