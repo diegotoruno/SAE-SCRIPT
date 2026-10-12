@@ -1,5 +1,19 @@
 # Pruebas y validacion
 
+## 2026-10-12 - Reporte de busquedas
+
+Build, siete compilaciones, 202 regresiones (cuatro nuevas) y diez Python
+correctos. Nuevas: sin rareza en alcance no hay reporte; la busqueda sigue
+entre sesiones (cada salto) con una visita por servidor, sin reescribir en
+sondeos iguales, re-escaneo previo y destino, cierre por match con servidor
+correcto; zonas excluidas no abren; cierre por noche y AUTO apagado; 30
+busquedas maximo; diez candidatos por visita; loading no se registra. Tres
+mutaciones fallan donde se espera. Potassium: instancia aislada con datos
+reales genero una visita con readyBy=complete, 13/13 zonas, 65 spawns,
+candidatos con ingreso exacto y motivo y beforeHop con destino. Bundle
+candidato en la sesion del usuario: AUTO normal, sin avisos, reporte vacio
+sin Eternal en sus zonas.
+
 ## 2026-10-12 - Memoria del ciclo entre servidores
 
 Dos regresiones nuevas (198 en total, siete compilaciones y diez Python

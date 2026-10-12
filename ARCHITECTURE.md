@@ -1,5 +1,17 @@
 # Arquitectura
 
+## Reporte de busquedas (2026-10-12)
+
+`chilli_egg_hunt_report.json` (ultimas 30 busquedas, 120 visitas por busqueda,
+10 candidatos por visita con `candidateCount`). `ReportDecision` lo llama el
+vigilante AUTO tras cada `Decide` (pcall: nunca bloquea); abre una busqueda
+solo si `HuntCandidates(rows)` (rareza minima+, zonas elegidas, ingreso exacto
+y motivo de Explain) no esta vacio; una visita por JobId con `load`
+(readyBy, readySeconds, settleSeconds, zonesPresent/zonesTotal) y solo escribe
+si cambia la decision o los candidatos. `ReportHopCheck` guarda el Scan(true)
+previo a cada teleport y su destino; cierre por match, `noche` (otro periodo),
+`filtros cambiados` o `AUTO apagado`. API `ChilliEggSearch.HuntReport()`.
+
 ## Tolerancia de reloj en la memoria del ciclo (2026-10-12)
 
 `validWindow` compara `periodIndex`, `periodSeconds` y `nightSeconds` exactos;

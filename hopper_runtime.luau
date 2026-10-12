@@ -1676,9 +1676,17 @@ do
             match.name, eggSearch.FormatMinimum(match.income), match.area or "mapa"))
         print("[EggSearch] MATCH " .. HttpService:JSONEncode(match))
     end
-    local function verifyMapBeforeHop()
-        local match, info = eggSearch.Scan(true)
-        local mode = eggSearch.Decide(match, info, eggSearch.CycleStatus() or false)
+    -- The report never blocks a decision: failures only lose a report entry.
+    local function report(name, ...)
+        local ok, err = pcall(eggSearch[name], ...)
+        if not ok then warn("[EggHunt] " .. tostring(err)) end
+    end
+    local function verifyMapBeforeHop(target)
+        local match, info, _, rows = eggSearch.Scan(true)
+        local cycle = eggSearch.CycleStatus()
+        local mode = eggSearch.Decide(match, info, cycle or false)
+        if mode == "match" then report("ReportDecision", mode, match, info, rows, cycle, game.JobId, os.time()) end
+        report("ReportHopCheck", mode, info, rows, game.JobId, target, os.time())
         if mode == "match" then finishEggMatch(match); return false end
         setSearchMode(mode)
         return mode == "hop"
@@ -1690,6 +1698,7 @@ do
             return support.Copy(match), support.Copy(info), support.Copy(matches)
         end,
         CycleStatus = function() return eggSearch.CycleStatus() end,
+        HuntReport = function() return eggSearch.HuntReport() end,
         RarityOptions = function() return eggSearch.RarityOptions() end,
         ZoneOptions = function() return eggSearch.ZoneOptions() end,
         Presets = function()
@@ -2143,7 +2152,7 @@ do
                         if session.hopWorker == owner then setBusy(false) end
                         return false
                     end
-                    if automatic and not verifyMapBeforeHop() then return false end
+                    if automatic and not verifyMapBeforeHop(pool[index].id) then return false end
                     local candidate = pool[index]
                     setLabel("Saltando...")
                     setStatus(serverOrder == "BestLatency"
@@ -2302,9 +2311,10 @@ do
                 if game.PlaceId ~= PLACE_ID then
                     setSearchMode("loading")
                 else
-                    local match, info = eggSearch.Scan()
+                    local match, info, _, rows = eggSearch.Scan()
                     local cycle = eggSearch.CycleStatus()
                     local mode = eggSearch.Decide(match, info, cycle or false)
+                    report("ReportDecision", mode, match, info, rows, cycle, game.JobId, os.time())
                     setSearchMode(mode)
                     if mode == "match" then
                         finishEggMatch(match)
@@ -2377,6 +2387,7 @@ do
             if session.attempt and session.attempt.state == "pending" then
                 session.attempt.Cancel(); session.autoHopBlocked = true
             end
+            report("ReportStopped", os.time())
             setBusy(false)
             setLabel("Server Hop")
             setStatus("AUTO apagado. Pulsa Server Hop para cambiar de servidor", COLORS.muted)

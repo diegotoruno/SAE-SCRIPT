@@ -666,6 +666,69 @@ test("cycle tolerance stays within one second", function()
     assert(cycleFactory(read, write).Decide(nil, {ready = true, rarityCount = 0},
         cycle(110, {nextReset = 301.5})) == "wait")
 end)
+local function reportRow(uid, rate, category, area, matched)
+    local record = egg(uid, rate, category or "divine"); record.AreaId = area or "Forest"; record.NestId = "Slot_001"
+    return {uid = uid, egg = record, catalog = catalog[record.AssetCategory], income = rate,
+        match = matched == true, reason = matched and "Cumple todos los filtros" or "Ingreso inferior al mínimo"}
+end
+local readyInfo = function(rarity) return {ready = true, count = 65, rarityCount = rarity or 0} end
+test("hunt report starts only with an in-scope rarity egg and follows it across sessions", function()
+    local files, read, write, _, writes = memoryStore(); local finder = cycleFactory(read, write)
+    finder.ReportDecision("wait", nil, readyInfo(0), {reportRow("common", 99e9, "other")}, cycle(100), "j1", 1000)
+    assert(files["chilli_egg_hunt_report.json"] == nil, "no rarity in scope: no report")
+    finder.stats.readyBy, finder.stats.readySeconds, finder.stats.zonesPresent, finder.stats.zonesTotal = "complete", 3.02, 13, 13
+    finder.ReportDecision("hop", nil, readyInfo(1), {reportRow("pegasus", 6e9)}, cycle(100), "j1", 1000)
+    local written = writes()
+    finder.ReportDecision("hop", nil, readyInfo(1), {reportRow("pegasus", 6e9)}, cycle(100), "j1", 1001)
+    assert(writes() == written, "an unchanged poll does not rewrite the report")
+    finder.ReportHopCheck("hop", readyInfo(1), {reportRow("pegasus", 6e9)}, "j1", "j2", 1002)
+    local hunt = finder.HuntReport().hunts[1]
+    assert(hunt.first.uid == "pegasus" and hunt.first.income == 6e9 and hunt.startJob == "j1")
+    assert(hunt.servers == 1 and #hunt.visits == 1, "repeated polls do not add visits")
+    local visit = hunt.visits[1]
+    assert(visit.load.readyBy == "complete" and visit.load.zonesPresent == 13 and visit.candidates[1].reason)
+    assert(visit.beforeHop.target == "j2" and visit.beforeHop.ready and visit.beforeHop.matches == 0)
+    -- Each hop is a new session that reads the report from disk.
+    local second = cycleFactory(read, write)
+    local continuing = readyInfo(0); continuing.continuingCycle = true
+    second.ReportDecision("hop", nil, continuing, {}, cycle(130), "j2", 1030)
+    local third = cycleFactory(read, write)
+    local found = third.Evaluate({egg("winner", 8e9)}, catalog, function(e) return e.rate end)
+    third.ReportDecision("match", found, readyInfo(1), {reportRow("winner", 8e9, "divine", "Forest", true)}, cycle(160), "j3", 1060)
+    hunt = third.HuntReport().hunts[1]
+    assert(hunt.servers == 3 and hunt.visits[2].continuingCycle and #hunt.visits[2].candidates == 0)
+    assert(hunt.outcome == "match" and hunt.found.uid == "winner" and hunt.found.job == "j3")
+end)
+test("hunt report ignores excluded zones and closes at night or when AUTO stops", function()
+    local _, read, write = memoryStore(); local finder = cycleFactory(read, write)
+    finder.Configure({zones = {"Lake"}})
+    finder.ReportDecision("hop", nil, readyInfo(0), {reportRow("forest-divine", 6e9)}, cycle(100), "j1", 1000)
+    assert(#finder.HuntReport().hunts == 0, "excluded zone never starts a hunt")
+    finder.ReportDecision("hop", nil, readyInfo(1), {reportRow("lake-divine", 6e9, "divine", "Lake")}, cycle(100), "j1", 1000)
+    finder.ReportDecision("wait", nil, readyInfo(0), {}, cycle(301), "j2", 1300)
+    assert(finder.HuntReport().hunts[1].outcome == "noche")
+    finder.ReportDecision("hop", nil, readyInfo(1), {reportRow("lake-2", 6e9, "divine", "Lake")}, cycle(310), "j2", 1310)
+    finder.ReportStopped(1320)
+    assert(finder.HuntReport().hunts[2].outcome == "AUTO apagado")
+    for index = 1, 35 do
+        finder.ReportDecision("hop", nil, readyInfo(1), {reportRow("cap" .. index, 6e9, "divine", "Lake")}, cycle(300 * (index + 2)), "j", index)
+    end
+    assert(#finder.HuntReport().hunts == 30, "only the latest 30 hunts are kept")
+    finder.Configure({zones = {}})
+end)
+test("hunt report keeps the ten highest incomes per server and the total", function()
+    local _, read, write = memoryStore(); local finder = cycleFactory(read, write)
+    local rows = {}
+    for index = 1, 25 do table.insert(rows, reportRow("d" .. index, index * 1e8)) end
+    finder.ReportDecision("hop", nil, readyInfo(25), rows, cycle(100), "j1", 1000)
+    local visit = finder.HuntReport().hunts[1].visits[1]
+    assert(visit.candidateCount == 25 and #visit.candidates == 10 and visit.candidates[1].income == 25e8)
+end)
+test("hunt report never records a loading decision", function()
+    local files, read, write = memoryStore(); local finder = cycleFactory(read, write)
+    finder.ReportDecision("loading", nil, {ready = false}, {reportRow("x", 6e9)}, cycle(100), "j1", 1000)
+    assert(files["chilli_egg_hunt_report.json"] == nil)
+end)
 test("failed window persistence waits and retries instead of losing the hunt", function()
     local _, read, write, fail = memoryStore(); local finder = cycleFactory(read, write)
     fail(true); assert(decideCycle(finder, {egg("a", 6e9)}, 100) == "loading")
