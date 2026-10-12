@@ -46,6 +46,11 @@ ni contornos duplicados del texto.
 - AUTO muestra `AUTO / ON` en verde con texto oscuro o `AUTO / OFF` neutro.
 - El plegado usa un chevron geometrico: arriba para plegar, abajo para abrir.
 - Mientras hay un salto en curso el boton rojo baja al 50 % de opacidad.
+- Asa de tamano en la esquina inferior derecha: tres trazos diagonales de
+  1.5 px dentro del borde redondeado, gris al 60 % y champan al pasar o
+  arrastrar (120 ms, Quad Out). Escala la tarjeta entera (UIScale) entre
+  0.75 y 1.75, sin pasar del ancho/alto de la pantalla, y fija el borde
+  izquierdo. Las medidas de arriba son a escala 1.
 - Los mensajes de estado empiezan con mayuscula, dicen que pasa y que hacer
   ("Salto sin confirmar. Pulsa Server Hop para reintentar."). No usan glifos
   como ✓ o ✗ que algunas fuentes no tienen.
@@ -77,8 +82,11 @@ ni contornos duplicados del texto.
   ingreso, ingreso exacto, minimo guardado, tamano y peso, mutaciones y zona.
 - Opciones: secciones Presets, Alertas y Servidores con estados explicitos
   ("Notificacion: activada").
-- El escalado existente mantiene el panel dentro del viewport; posicion y
-  preferencias conservan el archivo de persistencia existente.
+- La misma asa de tres trazos del boton Server Hop, en la esquina inferior
+  derecha, escala el panel entre 0.6 y 1.5 con la esquina superior izquierda
+  fija. La pantalla manda: si no cabe, se reduce aunque baje de 0.6. Las
+  hojas modales la cubren. El tamano elegido (`scale`), la posicion y las
+  preferencias se guardan en `chilli_egg_panel_ui.json`.
 
 ## Interaccion
 

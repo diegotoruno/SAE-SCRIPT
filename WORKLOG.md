@@ -1,5 +1,16 @@
 # Estado del trabajo
 
+## 2026-10-12 - Tamano personalizable del boton Server Hop
+
+Rama codex/hopper-resize desde main 797eb46. Asa diagonal en la esquina
+inferior derecha de Holder escala la tarjeta (0.75-1.75, limitada a la
+pantalla) y guarda `scale` en server_hop_button_ui.json. El Egg Finder
+recibe la misma asa (0.6-1.5, siempre dentro de la pantalla) y guarda
+`scale` en chilli_egg_panel_ui.json. Build y 196 regresiones correctas
+(3 nuevas de escala). Candidato cargado en Potassium: una GUI, geometria del
+asa correcta; el usuario valido a mano el hopper y prueba el panel. No se
+simularon entradas.
+
 ## 2026-10-12 - Linea de Chilli con espera y arranque del hopper
 
 PR23 publicado (build-60, c0053b2). Prueba de la linea de Chilli con espera

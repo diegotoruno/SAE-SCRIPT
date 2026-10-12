@@ -206,6 +206,10 @@ finder.PanelStatus()
 
 El boton rojo se arrastra desde el marco y todos sus controles existentes (texto, AUTO y plegado), con raton o un solo toque activo. Un umbral de 6px distingue clic de arrastre; se bloquean acciones durante el gesto y los 250ms posteriores a soltar. La posicion se guarda en `server_hop_button_ui.json` al soltar o perder foco. Todos los listeners pertenecen a la sesion y se desconectan al destruirla.
 
+`ResizeGrip` (esquina inferior derecha de Holder) se crea despues de registrar las superficies de arrastre y cancela cualquier arrastre pendiente: redimensiona sin mover. Cambia `UIScale` `UserScale` de Holder con `support.ResizeHopperScale` (eje dominante, 0.75-1.75, limite de pantalla segun el tamano expandido) y compensa X por el AnchorPoint centrado. La escala se guarda como `scale` en `server_hop_button_ui.json` al soltar o perder foco; `support.HopperScale` la restaura y descarta valores invalidos.
+
+El Egg Finder recibe `context.scaling` (`support.DragScale`, `support.PanelScale`). Su `ResizeGrip` (ZIndex 5, bajo las hojas de ZIndex 50) guarda la escala elegida como `scale` en `chilli_egg_panel_ui.json`; `fit()` aplica `PanelScale(elegida, limite de pantalla)` a `ResponsiveScale` y reajusta la posicion. `GetStatus` expone `scale` efectiva y `userScale`.
+
 
 Los helpers `uiAccess()`/`access()` elevan la identidad para CoreGui. Funciones de modulos del juego o llamadas entre scripts pueden reducir esa identidad; restablecerla inmediatamente antes de acceder a la GUI. Las comprobaciones de pruebas deben hacer lo mismo.
 
