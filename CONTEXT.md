@@ -1,5 +1,17 @@
 # Contexto del proyecto
 
+## Salir de servidores donde el juego no cargo (2026-10-12)
+
+Barrera rapida publicada en build58 (PR22, main cdf7411). El usuario reporta
+servidores donde el juego no carga y pide una solucion del lado del hopper
+para todos los usuarios. Causa observada en LogService: al llegar, un script
+del autoexec (por el patron, Chilli cargado sin esperar) hace require de casi
+todos los modulos antes de que replique ReplicatedStorage.Shared; Roblox
+guarda ese fallo y el juego, Chilli y el detector quedan rotos en ese servidor.
+Elegida la opcion de recuperacion: con AUTO, el detector marca el servidor como
+roto y salta; tras mas de 3 seguidos en 10 min AUTO espera. La linea de Chilli
+con espera al juego queda como recomendacion no aplicada.
+
 ## Barrera rapida con snapshot completo (2026-10-12)
 
 El usuario pide ahorrar espera en cada servidor sin perder certeza sobre los

@@ -2198,7 +2198,9 @@ do
                             setStatus("Sin " .. eggSearch.config.rarity .. "+" .. scope .. (cycle and not cycle.running
                                 and ". Ciclo en pausa" or ". Esperando la renovación"), COLORS.muted)
                         else
-                            setStatus(info.continuingCycle
+                            setStatus(info.broken
+                                and "El juego no cargó bien en este servidor. Buscando otro"
+                                or info.continuingCycle
                                 and "Ya apareció en este ciclo, pero aquí no está. Buscando otro servidor"
                                 or string.format("%d %s+ aquí, ninguno cumple los filtros. Buscando otro servidor",
                                     info.rarityCount, eggSearch.config.rarity), COLORS.green)
@@ -2296,7 +2298,7 @@ do
             while session.alive do
                 local _, info = eggSearch.Scan(true)
                 local cycle = eggSearch.CycleStatus()
-                if info.ready and cycle and cycle.running and not cycle.night then break end
+                if (info.ready and cycle and cycle.running and not cycle.night) or eggSearch.broken then break end
                 task.wait(0.5)
             end
             if not session.alive then return end

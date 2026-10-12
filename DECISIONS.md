@@ -1,5 +1,14 @@
 # Decisiones de producto e implementacion
 
+## Saltar servidores con modulos rotos (2026-10-12)
+
+Peticion del usuario: que nadie con el hopper y Chilli quede atascado cuando el
+juego no carga. Un modulo que fallo al cargarse no se recupera en esa sesion
+del cliente, asi que esperar es inutil. Excepcion explicita a "un fallo de
+datos espera": con AUTO, un servidor marcado roto inicia hop sin evidencia de
+huevos y sin modificar la memoria del ciclo. Limite de 3 seguidos en 10 min
+para no saltar sin fin si el juego falla en todos los servidores.
+
 ## Completitud demostrada en lugar de 10 s fijos (2026-10-12)
 
 Reemplaza "Barrera de carga sin cambios hasta medir". Las mediciones reales

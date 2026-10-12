@@ -1,5 +1,17 @@
 # Arquitectura
 
+## Servidor con modulos rotos (2026-10-12)
+
+El cargador de modulos llama `NoteLoadFailure(err)`. Dos fallos seguidos con
+"Requested module experienced an error while loading" y `game:IsLoaded()`
+marcan `search.broken = {count, job}` y guardan
+`chilli_egg_search_broken.json` (count, at, job). La misma JobId no suma; una
+racha mas vieja de 600 s empieza en 1; `NoteLoadSuccess` la borra. `Decide`
+devuelve `hop` con `info.broken` antes de mirar reloj o memoria (no la toca);
+con count > 3 devuelve `loading` y AUTO espera. El vigilante muestra "El juego
+no cargo bien en este servidor. Buscando otro"; la espera de reconexion no se
+bloquea. Errores transitorios (WaitForChild) o previos a la carga no cuentan.
+
 ## Barrera con prueba de completitud (2026-10-12)
 
 `snapshotReady` llama en cada lectura a `snapshotComplete(records, period)`:
