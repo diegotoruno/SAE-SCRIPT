@@ -1,5 +1,24 @@
 # Pruebas y validacion
 
+## 2026-10-12 - Pool sin servidores que dejaron la lista
+
+Build, siete compilaciones y 204 regresiones (dos nuevas): una pasada que
+supera el rango+100 de un 1/7 sin listarlo lo quita, conserva el releido y el
+que esta fuera de alcance, y el fin de lista quita el resto; el reporte
+guarda intentos rechazados (10 max, ocupacion y antiguedad), destino con
+`playing`/`listedAge` y `reloads` en otra sesion del mismo JobId sin contar
+sondeos propios. Tres mutaciones fallan donde se espera.
+Datos reales (registros sanitizados de 4 pasadas, sin consultas extra): el
+rango cambia mediana 11, p90 147; 13/13 servidores 1-2/7 ausentes con margen
+100 cerrados o con 3+ jugadores despues. Antes el pool ponia primero 1/7 de
+147-162 s ya no listados. Candidato en la sesion del usuario: 16 lecturas
+del stream sin filas que debieran salir, 739 retiradas, 20-30 opciones 1-2/7;
+pool con 1/7 de 23 s y 2/7 de 8-38 s. Salto AUTO real con filtro temporal
+imposible: beforeHop con playing=1 y listedAge=3, entro sin GameFull; se
+restauraron filtros, memoria del ciclo y reporte desde copia al llegar.
+GameFull provocado: con Auto Rejoin de Chilli apagado, 3/3 sin reentrada
+(antes 3/4 reentraron al mismo servidor).
+
 ## 2026-10-12 - Reporte de busquedas
 
 Build, siete compilaciones, 202 regresiones (cuatro nuevas) y diez Python

@@ -433,6 +433,12 @@ local function createFinderSupport()
         end
         return #pool > 0 and support.RankServers(pool, "BestLatency") or nil
     end
+    -- A Balanced pass that listed this many places past a server's earlier
+    -- rank without listing it again is evidence the server left the open
+    -- list. Real passes 2026-10-12: all 13 such 1-2/7 servers had closed or
+    -- came back with 3+ players; a still-open one rarely moves this far and
+    -- is listed again when the pass reaches it.
+    support.RELIST_MARGIN = 100
     -- Native v2 paging on the user's device. A partial latency stream never
     -- establishes exhaustion of lower occupancy groups.
     function support.DeviceNative(env)
@@ -514,6 +520,15 @@ local function createFinderSupport()
             elseif type(cursor) ~= "string" or cursors[cursor] then
                 resetStream(); saveStream(); return false
             else cursors[cursor] = true end
+            -- Balanced passes restart at the native head, so an older row this
+            -- pass should already have listed again is no longer joinable.
+            if env.reservePolicy == "Balanced" then
+                for id, row in pairs(rows) do
+                    if row.pass ~= pass and (complete or row.nativeRank + support.RELIST_MARGIN <= rank) then
+                        rows[id] = nil
+                    end
+                end
+            end
             saveStream()
             return true
         end
@@ -1681,12 +1696,12 @@ do
         local ok, err = pcall(eggSearch[name], ...)
         if not ok then warn("[EggHunt] " .. tostring(err)) end
     end
-    local function verifyMapBeforeHop(target)
+    local function verifyMapBeforeHop(server)
         local match, info, _, rows = eggSearch.Scan(true)
         local cycle = eggSearch.CycleStatus()
         local mode = eggSearch.Decide(match, info, cycle or false)
         if mode == "match" then report("ReportDecision", mode, match, info, rows, cycle, game.JobId, os.time()) end
-        report("ReportHopCheck", mode, info, rows, game.JobId, target, os.time())
+        report("ReportHopCheck", mode, info, rows, game.JobId, server and server.id, os.time(), server)
         if mode == "match" then finishEggMatch(match); return false end
         setSearchMode(mode)
         return mode == "hop"
@@ -2152,7 +2167,7 @@ do
                         if session.hopWorker == owner then setBusy(false) end
                         return false
                     end
-                    if automatic and not verifyMapBeforeHop(pool[index].id) then return false end
+                    if automatic and not verifyMapBeforeHop(pool[index]) then return false end
                     local candidate = pool[index]
                     setLabel("Saltando...")
                     setStatus(serverOrder == "BestLatency"
@@ -2185,6 +2200,7 @@ do
                         if not string.find(string.lower(reason or ""), "flood", 1, true) then markVisited(candidate.id) end
                         setStatus("Servidor rechazado; probando otro", COLORS.amber)
                         print("[ServerHopButton] Teleport rechazado: " .. tostring(reason))
+                        if automatic then report("ReportHopFailure", game.JobId, candidate.id, reason, os.time(), candidate) end
                         waitForHop(1.5, automatic, generation)
                     else
                         session.autoHopBlocked = true

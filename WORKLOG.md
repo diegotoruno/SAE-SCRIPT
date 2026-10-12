@@ -1,5 +1,12 @@
 # Estado del trabajo
 
+## 2026-10-12 - Pool sin servidores que dejaron la lista
+
+Rama codex/pool-vigente sobre main 2b312dc (build-68 con el reporte). Quita de
+la reserva los servidores que la pasada mas reciente ya no lista y amplia el
+reporte con intentos rechazados y recargas. Ver TESTING. Publicacion
+pendiente de decision del usuario.
+
 ## 2026-10-12 - Reporte de busquedas
 
 Rama codex/reporte-busqueda sobre main 1bccd5b (build-66 ya publicado con la
