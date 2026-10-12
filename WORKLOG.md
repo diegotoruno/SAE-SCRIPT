@@ -11,7 +11,10 @@ ningun Uid del periodo anterior; en otro caso mantiene 10 s + 3 s. Log AUTO
 muestra `(complete)`/`(timer)`. Ahorro esperado ~7 s por servidor y por
 reset. Detector, filtros, Slot, ingreso exacto, memoria version2 y teleports
 sin cambios. Sondas retiradas del cliente; AUTO/config del usuario intactos.
-Sin publicar: PR/merge pendiente de decision del usuario.
+PR22 abierto, CI de PR success; la fusion fue bloqueada por el clasificador
+y queda para el usuario. A/B real autorizado: nueve llegadas, candidato 3.39 s
+de media frente a 10.24 s publicado, decisiones identicas (ver TESTING).
+Resultado: mejora confirmada, no se hace rollback.
 
 ## 2026-10-11 - Eficiencia del finder y del hopper
 

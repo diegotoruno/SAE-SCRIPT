@@ -22,7 +22,20 @@ deja una zona con 4). Version publicada en el mismo servidor: estable=0.0/10.1,
 8.0/11.0 y 7.1/10.1 s. Instancia aislada del detector candidato (config real
 Eternal>=20b/tres zonas, escrituras en memoria, Dispose al terminar): lectura
 inicial lista en 3.03 s y lote de reset listo en 3.04 s, ambos readyBy=complete.
-Pendiente: salto real con el bundle candidato (autoexec carga stable).
+A/B con saltos reales autorizado por el usuario (API Hop, sin clics
+simulados): en cada llegada la sesion publicada carga por autoexec y en
+paralelo una instancia aislada del candidato lee los mismos datos. Nueve
+llegadas validas: candidato listo en 3.01-4.30 s (media 3.39, siempre
+readyBy=complete), publicado 10.08-10.49 s (media 10.24). Misma decision
+(wait) y mismos conteos en 9/9; ningun cambio de decision del candidato en
+los 12 s posteriores (8/8 vigiladas). Linea de tiempo de una llegada: ~65
+FieldShifted con HasFieldSnapshot=false a +0.5 s, un unico FieldRefreshed
+con los 65 registros a +3.6 s y ningun cambio despues en 25 s.
+
+Incidente de prueba: tres llegadas excluidas. Una sonda hizo require de
+EggState antes de game:IsLoaded(); el modulo fallo y la sesion publicada
+de ese servidor quedo en loading (ciclo=nil). Un salto nuevo lo recupero.
+Las sondas deben esperar juego cargado y sesion presente antes de require.
 
 ## 2026-10-11 - Eficiencia del finder y del hopper
 
