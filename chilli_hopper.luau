@@ -570,8 +570,11 @@ local function createMapEggSearch(readJson, writeJson)
     -- egg. Records what was seen, how the snapshot was proven loaded before
     -- each decision, the fresh check before every teleport and the outcome.
     local REPORT_FILE = "chilli_egg_hunt_report.json"
-    local REPORT_HUNTS, REPORT_VISITS, REPORT_CANDIDATES = 30, 120, 10
+    local REPORT_HUNTS, REPORT_VISITS, REPORT_CANDIDATES, REPORT_FAILURES = 30, 120, 10, 10
     local report = readJson(REPORT_FILE, {})
+    -- Jobs this session already reported: a known job seen for the first
+    -- time here means the server was loaded again (rejoin or re-execution).
+    local reportedJobs = {}
     if type(report) ~= "table" or type(report.hunts) ~= "table" then report = {version = 1, hunts = {}} end
     local function saveReport()
         while #report.hunts > REPORT_HUNTS do table.remove(report.hunts, 1) end
@@ -623,12 +626,17 @@ local function createMapEggSearch(readJson, writeJson)
                 tostring(candidates[1].rarity), tostring(candidates[1].income), tostring(candidates[1].area), job))
         end
         local visit = hunt.visits[#hunt.visits]
+        local reloaded = false
         if not visit or visit.job ~= job then
             if #hunt.visits >= REPORT_VISITS then table.remove(hunt.visits, 1) end
             visit = {job = job, at = at}
             table.insert(hunt.visits, visit)
             hunt.servers += 1
-        elseif visit.mode == mode and visit.candidateCount == #candidates and sameInputs(visit.candidates,
+        elseif not reportedJobs[job] then
+            visit.reloads, reloaded = (visit.reloads or 0) + 1, true
+        end
+        reportedJobs[job] = true
+        if not reloaded and visit.mode == mode and visit.candidateCount == #candidates and sameInputs(visit.candidates,
             table.move(candidates, 1, math.min(#candidates, REPORT_CANDIDATES), 1, {})) then
             return
         end
@@ -648,18 +656,41 @@ local function createMapEggSearch(readJson, writeJson)
         end
         saveReport()
     end
-    -- Fresh scan right before a teleport and the chosen destination.
-    function search.ReportHopCheck(mode, info, rows, job, target, at)
+    local function currentVisit(job)
         local hunt = openHunt()
         local visit = hunt and hunt.visits[#hunt.visits]
-        if not visit or visit.job ~= job then return end
+        return visit and visit.job == job and visit or nil
+    end
+    -- Listed occupancy of a destination and how old that listing was.
+    local function serverListing(server, at)
+        if type(server) ~= "table" then return nil, nil end
+        local observedAt = tonumber(server.observedAt)
+        return tonumber(server.playing), observedAt and math.max(0, at - observedAt) or nil
+    end
+    -- Fresh scan right before a teleport and the chosen destination.
+    function search.ReportHopCheck(mode, info, rows, job, target, at, server)
+        local visit = currentVisit(job)
+        if not visit then return end
         local matches = 0
         for _, candidate in ipairs(search.HuntCandidates(rows)) do
             if candidate.match then matches += 1 end
         end
+        local playing, listedAge = serverListing(server, at)
         visit.beforeHop = {at = at, mode = mode, ready = info and info.ready == true,
             spawns = info and info.count, rarityCount = info and info.rarityCount,
-            matches = matches, target = target}
+            matches = matches, target = target, playing = playing, listedAge = listedAge}
+        saveReport()
+    end
+    -- A teleport Roblox rejected (GameFull...). A successful one ends the
+    -- session, so it shows up as the next visit instead.
+    function search.ReportHopFailure(job, target, reason, at, server)
+        local visit = currentVisit(job)
+        if not visit then return end
+        visit.failedHops = visit.failedHops or {}
+        if #visit.failedHops >= REPORT_FAILURES then table.remove(visit.failedHops, 1) end
+        local playing, listedAge = serverListing(server, at)
+        table.insert(visit.failedHops, {at = at, target = target, reason = tostring(reason),
+            playing = playing, listedAge = listedAge})
         saveReport()
     end
     function search.ReportStopped(at)
@@ -2294,6 +2325,12 @@ local function createFinderSupport()
         end
         return #pool > 0 and support.RankServers(pool, "BestLatency") or nil
     end
+    -- A Balanced pass that listed this many places past a server's earlier
+    -- rank without listing it again is evidence the server left the open
+    -- list. Real passes 2026-10-12: all 13 such 1-2/7 servers had closed or
+    -- came back with 3+ players; a still-open one rarely moves this far and
+    -- is listed again when the pass reaches it.
+    support.RELIST_MARGIN = 100
     -- Native v2 paging on the user's device. A partial latency stream never
     -- establishes exhaustion of lower occupancy groups.
     function support.DeviceNative(env)
@@ -2375,6 +2412,15 @@ local function createFinderSupport()
             elseif type(cursor) ~= "string" or cursors[cursor] then
                 resetStream(); saveStream(); return false
             else cursors[cursor] = true end
+            -- Balanced passes restart at the native head, so an older row this
+            -- pass should already have listed again is no longer joinable.
+            if env.reservePolicy == "Balanced" then
+                for id, row in pairs(rows) do
+                    if row.pass ~= pass and (complete or row.nativeRank + support.RELIST_MARGIN <= rank) then
+                        rows[id] = nil
+                    end
+                end
+            end
             saveStream()
             return true
         end
@@ -3542,12 +3588,12 @@ do
         local ok, err = pcall(eggSearch[name], ...)
         if not ok then warn("[EggHunt] " .. tostring(err)) end
     end
-    local function verifyMapBeforeHop(target)
+    local function verifyMapBeforeHop(server)
         local match, info, _, rows = eggSearch.Scan(true)
         local cycle = eggSearch.CycleStatus()
         local mode = eggSearch.Decide(match, info, cycle or false)
         if mode == "match" then report("ReportDecision", mode, match, info, rows, cycle, game.JobId, os.time()) end
-        report("ReportHopCheck", mode, info, rows, game.JobId, target, os.time())
+        report("ReportHopCheck", mode, info, rows, game.JobId, server and server.id, os.time(), server)
         if mode == "match" then finishEggMatch(match); return false end
         setSearchMode(mode)
         return mode == "hop"
@@ -4013,7 +4059,7 @@ do
                         if session.hopWorker == owner then setBusy(false) end
                         return false
                     end
-                    if automatic and not verifyMapBeforeHop(pool[index].id) then return false end
+                    if automatic and not verifyMapBeforeHop(pool[index]) then return false end
                     local candidate = pool[index]
                     setLabel("Saltando...")
                     setStatus(serverOrder == "BestLatency"
@@ -4046,6 +4092,7 @@ do
                         if not string.find(string.lower(reason or ""), "flood", 1, true) then markVisited(candidate.id) end
                         setStatus("Servidor rechazado; probando otro", COLORS.amber)
                         print("[ServerHopButton] Teleport rechazado: " .. tostring(reason))
+                        if automatic then report("ReportHopFailure", game.JobId, candidate.id, reason, os.time(), candidate) end
                         waitForHop(1.5, automatic, generation)
                     else
                         session.autoHopBlocked = true
