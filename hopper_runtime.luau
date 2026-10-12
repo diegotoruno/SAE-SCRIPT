@@ -361,6 +361,32 @@ local function createFinderSupport()
         if state.wait then text ..= " | " .. support.DeviceWaitMessage(state.wait) end
         return text
     end
+    -- Escala de la tarjeta del hopper: limitada, redondeada a centesimas y, si
+    -- se conoce, sin superar lo que cabe en la pantalla.
+    local HOPPER_MIN_SCALE, HOPPER_MAX_SCALE = 0.75, 1.75
+    function support.HopperScale(value, fitLimit)
+        local upper = math.clamp(tonumber(fitLimit) or HOPPER_MAX_SCALE, HOPPER_MIN_SCALE, HOPPER_MAX_SCALE)
+        if type(value) ~= "number" or value ~= value then return math.min(1, upper) end
+        return math.floor(math.clamp(value, HOPPER_MIN_SCALE, upper) * 100 + 0.5) / 100
+    end
+    -- El asa inferior derecha sigue al puntero: manda el eje que mas cambia,
+    -- asi un arrastre solo horizontal o solo vertical tambien redimensiona.
+    function support.DragScale(startScale, base, delta)
+        local byWidth = (base.X * startScale + delta.X) / base.X
+        local byHeight = (base.Y * startScale + delta.Y) / base.Y
+        return math.abs(byWidth - startScale) >= math.abs(byHeight - startScale) and byWidth or byHeight
+    end
+    function support.ResizeHopperScale(startScale, base, delta, fitLimit)
+        return support.HopperScale(support.DragScale(startScale, base, delta), fitLimit)
+    end
+    -- El panel es grande: aqui la pantalla manda sobre el minimo elegido.
+    local PANEL_MIN_SCALE, PANEL_MAX_SCALE = 0.6, 1.5
+    function support.PanelScale(value, fitLimit)
+        local upper = math.max(0.1, math.min(PANEL_MAX_SCALE, tonumber(fitLimit) or PANEL_MAX_SCALE))
+        if type(value) ~= "number" or value ~= value then value = 1 end
+        local rounded = math.floor(math.clamp(value, math.min(PANEL_MIN_SCALE, upper), upper) * 100 + 0.5) / 100
+        return math.max(0.1, math.min(upper, rounded))
+    end
     -- A fresh one-player reserve is already the minimum eligible occupancy.
     -- Larger groups still require a new OccupancyAsc proof before a hop.
     function support.BalancedReserve(servers, now, current, visited, limit)
@@ -1210,6 +1236,18 @@ do
     holder.Active = true
     holder.Parent = screenGui
 
+    -- Tamano elegido con el asa: escala toda la tarjeta, plegada o no.
+    local function fitScaleLimit()
+        local camera = workspace.CurrentCamera
+        local viewport = camera and camera.ViewportSize
+        if not viewport or viewport.X <= 0 or viewport.Y <= 0 then return nil end
+        return math.min((viewport.X - 16) / EXPANDED_SIZE.X, (viewport.Y - 16) / EXPANDED_SIZE.Y)
+    end
+    local holderScale = Instance.new("UIScale")
+    holderScale.Name = "UserScale"
+    holderScale.Scale = support.HopperScale(uiState.scale, fitScaleLimit())
+    holderScale.Parent = holder
+
     local function round(object, radius)
         local corner = Instance.new("UICorner")
         corner.CornerRadius = UDim.new(0, radius)
@@ -1322,12 +1360,14 @@ do
     local dragStart = nil
     local startPosition = nil
     local lastDragAt = -math.huge
+    local resizeInput, resizeStart, resizeScale, resizePosition = nil, nil, nil, nil
 
     local function saveUi()
         uiAccess()
         local state = readJson(UI_FILE, {})
         state.collapsed = collapsed
         state.auto = autoEnabled
+        state.scale = holderScale.Scale
         state.pos = {
             sx = holder.Position.X.Scale,
             xo = holder.Position.X.Offset,
@@ -1411,7 +1451,7 @@ do
     -- Los eventos del marco no reciben necesariamente los de sus controles.
     -- Registrar toda la tarjeta, incluidos texto, AUTO y plegado.
     local function beginDrag(input)
-        if pendingDrag then return end
+        if pendingDrag or resizeInput then return end
         if input.UserInputType == Enum.UserInputType.MouseButton1
             or input.UserInputType == Enum.UserInputType.Touch then
             pendingDrag = true
@@ -1473,6 +1513,101 @@ do
         end
     end)
     connect(UserInputService.WindowFocusReleased, finishDrag)
+
+    -- Asa de tamano en la esquina inferior derecha: tres trazos diagonales
+    -- dentro del borde redondeado. Se crea despues de registrar el arrastre de
+    -- la tarjeta, asi que tirar de ella redimensiona sin mover.
+    local GRIP_TRACES = { {11, 5}, {16, 11}, {21, 17} } -- distancia a la esquina, largo
+    local grip = Instance.new("TextButton")
+    grip.Name = "ResizeGrip"
+    grip.AutoButtonColor = false
+    grip.AnchorPoint = Vector2.new(1, 1)
+    grip.Position = UDim2.fromScale(1, 1)
+    grip.Size = UDim2.fromOffset(24, 24)
+    grip.BackgroundTransparency = 1
+    grip.Text = ""
+    grip.ZIndex = 3
+    grip.Parent = holder
+    local gripTraces = {}
+    for index, trace in ipairs(GRIP_TRACES) do
+        local line = Instance.new("Frame")
+        line.Name = "Trace" .. index
+        line.AnchorPoint = Vector2.new(0.5, 0.5)
+        line.Position = UDim2.new(1, -trace[1] / 2, 1, -trace[1] / 2)
+        line.Size = UDim2.fromOffset(trace[2], 1.5)
+        line.Rotation = -45
+        line.BackgroundColor3 = COLORS.muted
+        line.BackgroundTransparency = 0.4
+        line.BorderSizePixel = 0
+        line.ZIndex = 3
+        line.Parent = grip
+        gripTraces[index] = line
+    end
+
+    local gripHover = false
+    local function paintGrip()
+        uiAccess()
+        local active = gripHover or resizeInput ~= nil
+        local tween = TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+        for _, line in ipairs(gripTraces) do
+            TweenService:Create(line, tween, {
+                BackgroundColor3 = active and COLORS.gold or COLORS.muted,
+                BackgroundTransparency = active and 0 or 0.4,
+            }):Play()
+        end
+    end
+    connect(grip.MouseEnter, function() gripHover = true; paintGrip() end)
+    connect(grip.MouseLeave, function() gripHover = false; paintGrip() end)
+
+    connect(grip.InputBegan, function(input)
+        if resizeInput then return end
+        if input.UserInputType ~= Enum.UserInputType.MouseButton1
+            and input.UserInputType ~= Enum.UserInputType.Touch then
+            return
+        end
+        -- El marco puede recibir el mismo toque: el asa nunca mueve la tarjeta.
+        pendingDrag, dragging = false, false
+        dragInput, dragStart, startPosition = nil, nil, nil
+        resizeInput, resizeStart = input, input.Position
+        resizeScale, resizePosition = holderScale.Scale, holder.Position
+        paintGrip()
+    end)
+
+    connect(UserInputService.InputChanged, function(input)
+        if not resizeInput then return end
+        if resizeInput.UserInputType == Enum.UserInputType.Touch then
+            if input ~= resizeInput then return end
+        elseif input.UserInputType ~= Enum.UserInputType.MouseMovement then
+            return
+        end
+        local base = collapsed and COLLAPSED_SIZE or EXPANDED_SIZE
+        local scale = support.ResizeHopperScale(resizeScale, base, input.Position - resizeStart, fitScaleLimit())
+        holderScale.Scale = scale
+        -- AnchorPoint centra la tarjeta en X: compensar para fijar el borde izquierdo.
+        holder.Position = UDim2.new(
+            resizePosition.X.Scale,
+            resizePosition.X.Offset + base.X * (scale - resizeScale) / 2,
+            resizePosition.Y.Scale,
+            resizePosition.Y.Offset
+        )
+    end)
+
+    local function finishResize()
+        if not resizeInput then return end
+        resizeInput, resizeStart, resizeScale, resizePosition = nil, nil, nil, nil
+        lastDragAt = os.clock()
+        paintGrip()
+        saveUi()
+    end
+
+    connect(UserInputService.InputEnded, function(input)
+        if not resizeInput then return end
+        if input == resizeInput or (resizeInput.UserInputType == Enum.UserInputType.MouseButton1
+            and input.UserInputType == Enum.UserInputType.MouseButton1) then
+            finishResize()
+        end
+    end)
+    connect(UserInputService.WindowFocusReleased, finishResize)
 
     connect(toggle.MouseButton1Click, function()
         if draggedRecently() then
@@ -1795,7 +1930,8 @@ do
 
     local filterPanel = mountEggFilterPanel({ search = eggSearch,
         api = hopperEnvironment.ChilliEggSearch, session = session, screenGui = screenGui,
-        readJson = readJson, writeJson = writeJson })
+        readJson = readJson, writeJson = writeJson,
+        scaling = { Drag = support.DragScale, Panel = support.PanelScale } })
     session.DisposePanel = filterPanel.Destroy
 
     -- ---------------------------------------------------------------- el salto

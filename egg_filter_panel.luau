@@ -8,6 +8,9 @@ local function mountEggFilterPanel(context)
     local saved = readJson(FILE, {})
     local panel: { [string]: any } = { alive = true, open = saved.open ~= false, view = "map", cards = 0, matches = 0 }
     local onlyMatches = saved.onlyMatches == true
+    -- Tamano elegido con el asa; la pantalla puede reducirlo al mostrarlo.
+    local scaling = context.scaling
+    local userScale = scaling.Panel(tonumber(saved.scale))
     local connections = {}
     -- Paleta compartida: acento para acciones, colores semanticos para estados.
     local C = {
@@ -285,7 +288,7 @@ local function mountEggFilterPanel(context)
         access()
         local ok = writeJson(FILE, { open = panel.open, visual = visual, filtersOpen = filtersOpen,
             view = "map", onlyMatches = onlyMatches, sortBest = sortBest,
-            x = root.Position.X.Offset, y = root.Position.Y.Offset })
+            x = root.Position.X.Offset, y = root.Position.Y.Offset, scale = userScale })
         if not ok then panel.error = "No se pudo guardar la posición / vista"; warn("[EggPanel] " .. panel.error) end
     end
     local function closePopup() if popup then popup:Destroy(); popup = nil end end
@@ -322,12 +325,18 @@ local function mountEggFilterPanel(context)
         closePopup(); signature = nil
     end
     local initializedPosition = false
+    local function fitLimit()
+        local camera = workspace.CurrentCamera
+        if not camera then return nil end
+        local viewport = camera.ViewportSize
+        return math.min((viewport.X - 28) / PANEL_WIDTH, (viewport.Y - 28) / PANEL_HEIGHT)
+    end
     local function fit()
         access()
         local camera = workspace.CurrentCamera
         if not camera then return end
         local viewport = camera.ViewportSize
-        scale.Scale = math.max(0.1, math.min(1, (viewport.X - 28) / PANEL_WIDTH, (viewport.Y - 28) / PANEL_HEIGHT))
+        scale.Scale = scaling.Panel(userScale, fitLimit())
         local width, height = PANEL_WIDTH * scale.Scale, PANEL_HEIGHT * scale.Scale
         if not initializedPosition then
             root.Position = UDim2.fromOffset(tonumber(saved.x) or viewport.X - width - 20, tonumber(saved.y) or math.max(14, (viewport.Y - height) / 2))
@@ -771,7 +780,7 @@ local function mountEggFilterPanel(context)
     function panel.GetStatus()
         access(); return { open = panel.open, view = "map", onlyMatches = onlyMatches, cards = panel.cards, matches = panel.matches, dirty = dirty, error = panel.error,
             selected = selectionList(), allZones = allZones, visual = visual, sortBest = sortBest, position = {x = root.AbsolutePosition.X, y = root.AbsolutePosition.Y},
-            size = {x = root.AbsoluteSize.X, y = root.AbsoluteSize.Y}, scale = scale.Scale,
+            size = {x = root.AbsoluteSize.X, y = root.AbsoluteSize.Y}, scale = scale.Scale, userScale = userScale,
             stats = table.clone(panel.stats), resources = {mutations = data.mutations ~= nil, models = data.assetModels ~= nil} }
     end
     function panel.Destroy()
@@ -843,6 +852,53 @@ local function mountEggFilterPanel(context)
     connect(UIS.InputEnded, function(input)
         if dragging and (input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch) then dragging = false; save() end
     end)
+    -- Asa de tamano: tres trazos diagonales dentro de la esquina redondeada.
+    -- Escala todo el panel con la esquina superior izquierda fija; las hojas
+    -- modales (ZIndex 50) la cubren mientras estan abiertas.
+    local grip = make("TextButton", "ResizeGrip", root, { AnchorPoint = Vector2.new(1, 1), Position = UDim2.fromScale(1, 1),
+        Size = UDim2.fromOffset(24, 24), BackgroundTransparency = 1, Text = "", AutoButtonColor = false, ZIndex = 5 })
+    local gripTraces = {}
+    for index, trace in ipairs({ {11, 5}, {16, 11}, {21, 17} }) do -- distancia a la esquina, largo
+        local mark = line(grip, "Trace" .. index, 0, 0, trace[2], -45, C.muted, 5)
+        mark.Position = UDim2.new(1, -trace[1] / 2, 1, -trace[1] / 2); mark.BackgroundTransparency = 0.4
+        gripTraces[index] = mark
+    end
+    local gripHover, resizeInput, resizeStart, resizeScale = false, nil, nil, nil
+    local function paintGrip()
+        access()
+        local active = gripHover or resizeInput ~= nil
+        for _, mark in ipairs(gripTraces) do
+            TweenService:Create(mark, TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+                { BackgroundColor3 = active and C.gold or C.muted, BackgroundTransparency = active and 0 or 0.4 }):Play()
+        end
+    end
+    connect(grip.MouseEnter, function() gripHover = true; paintGrip() end)
+    connect(grip.MouseLeave, function() gripHover = false; paintGrip() end)
+    connect(grip.InputBegan, function(input)
+        if resizeInput or (input.UserInputType ~= Enum.UserInputType.MouseButton1 and input.UserInputType ~= Enum.UserInputType.Touch) then return end
+        dragging = false
+        resizeInput, resizeStart, resizeScale = input, input.Position, scale.Scale
+        paintGrip()
+    end)
+    connect(UIS.InputChanged, function(input)
+        if not resizeInput then return end
+        if resizeInput.UserInputType == Enum.UserInputType.Touch then
+            if input ~= resizeInput then return end
+        elseif input.UserInputType ~= Enum.UserInputType.MouseMovement then return end
+        local base = Vector2.new(PANEL_WIDTH, PANEL_HEIGHT)
+        userScale = scaling.Panel(scaling.Drag(resizeScale, base, input.Position - resizeStart), fitLimit())
+        fit()
+    end)
+    local function finishResize()
+        if not resizeInput then return end
+        resizeInput, resizeStart, resizeScale = nil, nil, nil
+        paintGrip(); save()
+    end
+    connect(UIS.InputEnded, function(input)
+        if resizeInput and (input == resizeInput or (resizeInput.UserInputType == Enum.UserInputType.MouseButton1
+            and input.UserInputType == Enum.UserInputType.MouseButton1)) then finishResize() end
+    end)
+    connect(UIS.WindowFocusReleased, finishResize)
     layout(); fit(); setDraft(search.config)
     task.spawn(function()
         access()
