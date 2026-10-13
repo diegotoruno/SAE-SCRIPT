@@ -43,7 +43,8 @@ def check():
     compiler = target / ("luau-compile" + suffix)
     runtime = target / ("luau" + suffix)
     files = ["map_egg_search.luau", "egg_filter_panel.luau", "hopper_runtime.luau",
-             "loader.luau", "chilli_hopper.luau", "ci_tests.luau", "dist/chilli_hopper.luau"]
+             "loader.luau", "chilli_hopper.luau", "chilli_loader.luau", "ci_tests.luau",
+             "dist/chilli_hopper.luau"]
     for filename in files:
         result = subprocess.run([str(compiler), str(ROOT / filename)],
                                 cwd=ROOT, capture_output=True, text=True,

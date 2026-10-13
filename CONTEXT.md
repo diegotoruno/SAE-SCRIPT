@@ -1,5 +1,17 @@
 # Contexto del proyecto
 
+## Cargador rapido de Chilli (2026-10-13)
+
+El usuario ve la carga de Chilli como el mayor cuello de botella para robar
+el huevo y pide que cargue lo mas rapido posible y sin errores. Medido en
+Potassium: el dispatcher de Chilli ya no usa Luarmor para Steal An Egg; baja
+un script Luraph de ~817 KB de Chilli-Hub-Script/StealAnEgg (lo actualizan
+varias veces al dia) en serie despues de la carga, y ~1 s se va en
+descomprimirlo. `chilli_loader.luau` adelanta ambas cosas a la carga del juego
+y arranca Chilli con juego, Shared y personaje completos. Archivo propio,
+publicado en `stable` por CI; el hopper sigue sin cargar Chilli. El usuario
+pidio publicarlo para el iPad y los conocidos; Delta pendiente de probar.
+
 ## Tras un match, comprobar la captura (2026-10-12)
 
 Reporte real: Skeleton Horse Eternal de 59.2B/s en el cuarto servidor; AUTO

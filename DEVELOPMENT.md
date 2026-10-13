@@ -38,7 +38,7 @@ VS Code o Git deben autenticar la cuenta para hacer push. La sesion web de GitHu
 
 ## Archivos locales e historicos
 
-`.venv/`, `.tools/`, `dist/` y archivos del executor estan ignorados. Las referencias y backups de la investigacion siguen en la carpeta padre y no se publican. El autoexec activo esta en `%LOCALAPPDATA%\Potassium\autoexec\chilli_hopper.luau`; contiene la linea de carga, no las fuentes del proyecto.
+`.venv/`, `.tools/`, `dist/` y archivos del executor estan ignorados. Las referencias y backups de la investigacion siguen en la carpeta padre y no se publican. El autoexec activo de Potassium tiene `mistake.luau` (linea del hopper) y `chilli.luau` (carga de Chilli); contienen lineas de carga, no las fuentes del proyecto.
 
 Guardar fuentes locales no publica cambios. No sustituir autoexec por un modulo suelto. Para probar un bundle candidato antes de publicarlo, generar `dist/chilli_hopper.luau` y ejecutarlo de forma controlada en Potassium.
 

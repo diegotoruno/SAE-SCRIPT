@@ -21,12 +21,16 @@ def build():
     bundle = "".join(parts).encode("utf-8")
     (OUT / "chilli_hopper.luau").write_bytes(bundle)
     (OUT / "loader.luau").write_bytes((ROOT / "loader.luau").read_bytes())
+    chilli = (ROOT / "chilli_loader.luau").read_bytes()
+    (OUT / "chilli_loader.luau").write_bytes(chilli)
     sha = hashlib.sha256(bundle).hexdigest()
     manifest = {"source_commit": os.getenv("GITHUB_SHA", "local"),
                 "run": os.getenv("GITHUB_RUN_NUMBER", "local"),
                 "sha256": sha, "bytes": len(bundle), "luau": "0.741"}
     (OUT / "version.json").write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
-    (OUT / "SHA256SUMS").write_text(f"{sha}  chilli_hopper.luau\n", encoding="utf-8")
+    chilli_sha = hashlib.sha256(chilli).hexdigest()
+    (OUT / "SHA256SUMS").write_text(
+        f"{sha}  chilli_hopper.luau\n{chilli_sha}  chilli_loader.luau\n", encoding="utf-8")
     print(f"Built {len(bundle)} bytes; SHA256 {sha}")
 
 

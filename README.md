@@ -14,7 +14,15 @@ loadstring(game:HttpGet("https://raw.githubusercontent.com/diegotoruno/SAE-SCRIP
 
 Para continuar entre servidores, coloca esa linea en el autoexec de tu executor. No hace falta copiar el archivo completo ni instalar otros archivos de este repositorio.
 
-**Chilli Hub se carga aparte.** Anade en el autoexec su propia linea, separada de la anterior. Se recomienda que espere a que el juego cargue: si Chilli carga los modulos del juego antes de que lleguen, el juego queda roto en ese servidor (en pruebas, ~15 % de las llegadas con la linea sola y 0 de 27 con la espera):
+**Chilli Hub se carga aparte.** Anade en el autoexec su propia linea, separada de la anterior. Recomendado, el cargador rapido de este repositorio:
+
+```lua
+loadstring(game:HttpGet("https://raw.githubusercontent.com/diegotoruno/SAE-SCRIPT/stable/chilli_loader.luau"))()
+```
+
+Descarga Chilli desde su URL original mientras el juego carga y lo ejecuta en cuanto el juego y tu personaje estan listos. Siempre pide la version actual de Chilli. En pruebas (17 llegadas reales en PC/Potassium), Chilli quedo listo 6.4 s despues de cargar el juego, frente a 8.0 s con la linea original. Su error "Bound Humanoid must belong to the current character" bajo de 4 de 8 llegadas a 1 de 9. Si cambia el formato del script de Chilli, ejecuta la linea original sin la mejora.
+
+Tambien funciona la linea original con espera al juego. Sin esa espera, si Chilli carga los modulos del juego antes de que lleguen, el juego queda roto en ese servidor (en pruebas, ~15 % de las llegadas con la linea sola y 0 de 27 con la espera):
 
 ```lua
 if not game:IsLoaded() then game.Loaded:Wait() end
@@ -24,13 +32,7 @@ game:GetService("ReplicatedStorage"):WaitForChild("Shared", 30)
 loadstring(game:HttpGet("https://raw.githubusercontent.com/tienkhanh1/spicy/main/Chilli.lua"))()
 ```
 
-La linea original, sin espera, tambien funciona; con ella el hopper sale solo de los servidores rotos:
-
-```lua
-loadstring(game:HttpGet("https://raw.githubusercontent.com/tienkhanh1/spicy/main/Chilli.lua"))()
-```
-
-Cada script se ejecuta, se actualiza y falla por su cuenta: el hopper no descarga, espera ni reintenta Chilli, y Chilli no depende del boton. Los cargadores de Chilli integrados en versiones anteriores ya no existen; si tu autoexec solo tenia la linea del hopper, Chilli dejara de iniciarse hasta que anadas la suya.
+Cada script se ejecuta, se actualiza y falla por su cuenta: el hopper no descarga, espera ni reintenta Chilli, y Chilli no depende del boton. El cargador de Chilli es un archivo aparte; el hopper sigue sin cargarlo. Los cargadores de Chilli integrados en versiones anteriores ya no existen; si tu autoexec solo tenia la linea del hopper, Chilli dejara de iniciarse hasta que anadas la suya.
 
 El punto de entrada de `main` carga el script validado de la rama `stable`. Los cambios de desarrollo solo se publican en `stable` despues de pasar CI. Cada publicacion tiene un archivo `version.json`, checksum y una [release](https://github.com/diegotoruno/SAE-SCRIPT/releases) para recuperar versiones anteriores. Una sesion ya abierta sigue usando la version que cargo; los cambios se reciben al ejecutar el cargador de nuevo o al entrar en otro servidor.
 
@@ -118,4 +120,4 @@ finder.HuntReport()   -- busquedas recientes, tambien en chilli_egg_hunt_report.
 
 ## Chilli Hub
 
-El script ya no carga [Chilli Hub](https://github.com/tienkhanh1/spicy); se instala por separado desde su URL original en el autoexec. El panel de filtros, el detector y el Server Hop no modifican el codigo interno de Chilli y funcionan sin el. Los recursos visuales y los datos de huevos se obtienen de los modulos del juego en el cliente.
+El script ya no carga [Chilli Hub](https://github.com/tienkhanh1/spicy); se instala por separado en el autoexec, con `chilli_loader.luau` o con su linea original. El cargador no cambia el codigo de Chilli: lo descarga de su URL original y solo adelanta la descarga y la descompresion. El panel de filtros, el detector y el Server Hop no modifican el codigo interno de Chilli y funcionan sin el. Los recursos visuales y los datos de huevos se obtienen de los modulos del juego en el cliente.

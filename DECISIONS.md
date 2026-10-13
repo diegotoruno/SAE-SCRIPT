@@ -1,5 +1,17 @@
 # Decisiones de producto e implementacion
 
+## Cargador de Chilli como archivo aparte (2026-10-13)
+
+Excepcion acotada a "Chilli separado del hopper": el hopper sigue sin cargar
+Chilli; `chilli_loader.luau` es otra linea de autoexec, opcional. Se separo
+porque el cargador integrado a veces no traia la version actual; este baja
+siempre el dispatcher y el script en cada llegada, sin cache. Solo divide la
+llamada final del script Luraph (`):u()(...)`) en descomprimir y ejecutar; no
+decodifica ni cambia su codigo. Si el formato cambia, usa el dispatcher
+original. Espera Humanoid y HumanoidRootPart: reduce el error de Chilli, no lo
+elimina (Chilli reemplaza su propio Humanoid ~5 s despues de aparecer el
+personaje; sin Chilli no hay reemplazo).
+
 ## Tras un match, AUTO sigue y comprueba la captura (2026-10-12)
 
 Pedido del usuario: capturado, esperar en ese servidor el nuevo ciclo con

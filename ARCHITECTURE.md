@@ -227,8 +227,9 @@ El proceso mantiene el cursor nativo entre hops. Al no tener candidatos 1/7, una
 | `.github/workflows/ci.yml` | Validacion en PR/push/manual; despliegue a `stable` y Releases despues de CI. |
 | `chilli_hopper.luau` | Puente publico de `main` hacia el bundle de `stable`; conserva la URL del usuario. |
 | `loader.luau` | Linea corta usada por el executor; no requiere modulos locales. |
+| `chilli_loader.luau` | Cargador opcional de Chilli, independiente del hopper: precarga y descomprime durante la carga del juego, arranca con el personaje completo. |
 
-No se mantiene el bundle manualmente. `dist/` es generado y esta ignorado por Git. `stable` contiene el bundle, cargador, checksum y metadata de publicacion, sin las fuentes ni workflows.
+No se mantiene el bundle manualmente. `dist/` es generado y esta ignorado por Git. `stable` contiene el bundle, cargador, `chilli_loader.luau`, checksum y metadata de publicacion, sin las fuentes ni workflows.
 
 ## Detector
 
