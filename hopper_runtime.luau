@@ -1782,6 +1782,8 @@ do
     local RunService = game:GetService("RunService")
     local TRAVEL_ATTEMPTS = 3
     local TRAVEL_WATCH_SECONDS = 12
+    local TRAVEL_LOG_FILE = "chilli_egg_travel_log.json"
+    local TRAVEL_LOG_LIMIT = 30
     local travel = {state = "idle", attempts = 0, done = {}}
     local function point(vector) return {x = vector.X, y = vector.Y, z = vector.Z} end
     local function vector(value) return Vector3.new(value.x, value.y, value.z) end
@@ -1906,6 +1908,15 @@ do
             print(string.format("[EggSearch] TP %s %s | %s%s", tostring(target.name), result,
                 travel.seconds and string.format("%.2f s", travel.seconds) or "-",
                 reason and (" | " .. tostring(reason)) or ""))
+            -- La consola se pierde en cada teleport: los ultimos viajes quedan en
+            -- un archivo junto al reporte de busquedas.
+            local entries = readJson(TRAVEL_LOG_FILE, {})
+            entries = type(entries) == "table" and entries or {}
+            table.insert(entries, {at = os.time(), job = game.JobId, name = target.name, key = target.key,
+                area = target.area, result = result, reason = reason, attempts = travel.attempts,
+                seconds = travel.seconds, speed = travel.speed})
+            while #entries > TRAVEL_LOG_LIMIT do table.remove(entries, 1) end
+            writeJson(TRAVEL_LOG_FILE, entries)
         end)
     end
     -- Antes de la barrera solo se usa un objetivo provisional; con match, el match.

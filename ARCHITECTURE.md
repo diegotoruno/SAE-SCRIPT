@@ -19,7 +19,9 @@ sitio (Chilli robando) termina sin pelear. No llama remotes ni roba: el robo es
 de Chilli. Apagar AUTO, la opcion o destruir la sesion corta el viaje.
 `support.EggTravel*` contiene los calculos puros (velocidades, paso, punto
 junto al nido, reversion) cubiertos por regresiones. `GetStatus().travel`
-muestra estado, objetivo, intentos, segundos y velocidad. API `Travel()` y
+muestra estado, objetivo, intentos, segundos y velocidad. Cada viaje terminado
+se anade a `chilli_egg_travel_log.json` (ultimos 30: hora, JobId, objetivo,
+resultado, motivo, intentos, segundos y velocidad). API `Travel()` y
 `ConfigureTravel({enabled})`; Opciones muestra **TP al huevo**.
 
 ## Captura del objetivo tras un match (2026-10-12)
