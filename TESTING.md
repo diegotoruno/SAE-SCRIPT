@@ -65,6 +65,16 @@ sirve porque Chilli lo reescribe con lo que tiene en memoria; cambiarlo exige
 su UI. El Skeleton Horse de 15.42B/s junto al que quedo el personaje no se
 robo en 25 s; queda por comprobar si Min Steal Value lo excluye.
 
+Robo de Chilli tras el TP (2026-10-13): la config de Chilli se escribio en
+cada ingreso (antes de que cargue; editada mientras corre la reescribe) con
+Min Rarity Cosmic y Min Steal Value minimo ("Common" no es opcion valida y
+Chilli lo devolvio a Eternal); Egg Finder Cosmic+ temporal. Tras el TP
+(3.5-3.9 s), Chilli robo y entrego huevos en dos llegadas (log "Area egg
+claim" 06:00:39, 06:03:49 y 06:04:02), empezando unos 30 s despues del TP,
+pero eligio otros huevos segun su Steal Priority (Highest Value) y no el
+objetivo del TP. Otra llegada cayo en la noche. Filtro del Egg Finder y
+config de Chilli restaurados y comprobados.
+
 ## 2026-10-12 - Captura tras un match
 
 Evidencia real: match 22:55:59 UTC, AUTO de false a true 22:57:14 y 8 saltos
