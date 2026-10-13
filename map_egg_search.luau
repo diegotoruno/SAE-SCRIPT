@@ -156,6 +156,25 @@ local function createMapEggSearch(readJson, writeJson, writeText)
     function search.SearchWindow()
         return copyInputs(remembered)
     end
+    -- Best egg of the last cycle that ended, for information only. It outlives
+    -- the window (which is cleared at the night) in its own file and never
+    -- takes part in a decision.
+    local PREVIOUS_FILE = "chilli_egg_search_previous.json"
+    local previous = readJson(PREVIOUS_FILE, {})
+    if type(previous) ~= "table" then previous = {} end
+    local function validBest(best)
+        return type(best) == "table" and type(best.key) == "string" and type(best.category) == "string"
+            and finite(best.income)
+    end
+    local function archive(window)
+        if type(window) ~= "table" or window.version ~= 2 or not validBest(window.best)
+            or not finite(window.periodIndex) then return end
+        if finite(previous.periodIndex) and previous.periodIndex > window.periodIndex then return end
+        local record = {version = 1, rarity = window.rarity, zones = copyInputs(window.zones),
+            periodIndex = window.periodIndex, best = copyInputs(window.best)}
+        local ok, saved = pcall(writeJson, PREVIOUS_FILE, record)
+        if ok and saved then previous = record end
+    end
 
     local incomeCache = {}
     local analysisKey, analysisResult
@@ -575,6 +594,25 @@ local function createMapEggSearch(readJson, writeJson, writeText)
             mutations = table.clone(top.mutations or {}), baseMutation = top.baseMutation,
             job = game.JobId, at = at}
     end
+    -- Best egg of the cycle that just ended, same rarity and zones, or nil.
+    -- Only the immediately preceding cycle counts (or the ending one during the
+    -- night); an older record would claim something false.
+    function search.BestPrevious(cycle)
+        if cycle == nil then cycle = search.CycleStatus() end
+        if not clockKnown(cycle) then return nil end
+        local wanted = string.lower(search.config.rarity)
+        local function adjacent(record)
+            return type(record) == "table" and record.rarity == wanted
+                and sameInputs(record.zones, search.config.zones) and validBest(record.best)
+                and finite(record.periodIndex)
+                and (record.periodIndex == cycle.periodIndex - 1
+                    or (cycle.night and record.periodIndex == cycle.periodIndex))
+        end
+        -- A window the night closed that was not archived yet (AUTO was off).
+        local record = remembered.version == 2 and adjacent(remembered) and remembered
+            or adjacent(previous) and previous or nil
+        return record and copyInputs(record.best) or nil
+    end
     -- Best in-scope egg seen so far in the current cycle (any server), or nil
     -- when there is none or the saved window does not belong to this cycle.
     function search.BestSeen(cycle)
@@ -610,6 +648,7 @@ local function createMapEggSearch(readJson, writeJson, writeText)
         if not valid and next(remembered) ~= nil then
             -- No clock means we cannot validate or expire the saved cycle yet.
             if not clockKnown(cycle) or cycle.running ~= true then return "loading" end
+            archive(remembered)
             if not saveWindow({}) then info.reason = "no se pudo cerrar la búsqueda del ciclo anterior"; return "loading" end
         end
         if not cycleReady(cycle) or not info.ready then return "loading" end
