@@ -913,6 +913,11 @@ do
         if not ok then warn("[EggFinder] No se pudo guardar " .. path) end
         return ok
     end
+    -- Plain text for people (the readable hunt report); failures stay silent.
+    local function writeText(path, text)
+        if session and not session.alive then return false end
+        return (pcall(writefile, path, text))
+    end
 
     local function notify(title, text, duration)
         pcall(function()
@@ -1634,7 +1639,7 @@ do
 
     applyCollapsed(collapsed, true)
 
-    local eggSearch = createMapEggSearch(readJson, writeJson)
+    local eggSearch = createMapEggSearch(readJson, writeJson, writeText)
     session.DisposeSearch = eggSearch.Dispose
     session.hopAllowed = false
     session.searchMode = "loading"

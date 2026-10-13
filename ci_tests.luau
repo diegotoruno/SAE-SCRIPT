@@ -3,7 +3,8 @@ local factory = require("./map_egg_search")
 local loadClock, gameLoaded, wallClock = 0, true, 1000
 local fakeGame = {IsLoaded = function() return gameLoaded end, JobId = "job-a"}
 setfenv(factory, setmetatable({task = {spawn = function() end},
-    os = {clock = function() return loadClock end, time = function() return wallClock end}, game = fakeGame},
+    os = {clock = function() return loadClock end, time = function() return wallClock end,
+        date = function(_, at) return "t" .. at end}, game = fakeGame},
     {__index = getfenv(factory)}) :: any)
 local saved = {}
 local search = factory(function() return {} end, function(key, value) saved[key] = value; return true end)
@@ -540,8 +541,8 @@ test("catalog income and rarity changes invalidate analysis", function()
     catalog.divine.Rarity = {_id = "Common"}; assert(scanDecision() == "wait")
     catalog.divine.Rarity = {_id = "Divine"}; catalog.divine.EarningRate = nil
 end)
-local function cycleFactory(read, write)
-    local finder = factory(read, write)
+local function cycleFactory(read, write, writeText)
+    local finder = factory(read, write, writeText)
     finder.modules = {areas = areasFixture, assets = {Directory = catalog}, rarities = {Rarities = rarities}}
     return finder
 end
@@ -897,6 +898,33 @@ test("hunt report never records a loading decision", function()
     local files, read, write = memoryStore(); local finder = cycleFactory(read, write)
     finder.ReportDecision("loading", nil, {ready = false}, {reportRow("x", 6e9)}, cycle(100), "j1", 1000)
     assert(files["chilli_egg_hunt_report.json"] == nil)
+end)
+test("readable hunt report is rewritten with the JSON, newest hunt first", function()
+    local texts, _, read, write = {}, memoryStore()
+    local finder = cycleFactory(read, write, function(path, text) texts[path] = text; return true end)
+    local rows = {reportRow("pegasus", 6e9)}
+    finder.ReportDecision("hop", nil, readyInfo(1), rows, cycle(100), "job-one-aaaa", 1000)
+    finder.ReportHopCheck("hop", readyInfo(1), rows, "job-one-aaaa", "job-two-bbbb", 1001,
+        {id = "job-two-bbbb", playing = 3, observedAt = 990})
+    finder.ReportHopFailure("job-one-aaaa", "job-two-bbbb", "GameFull", 1002, {playing = 8, observedAt = 990})
+    local text = texts["chilli_egg_hunt_report.txt"]
+    assert(text and text:find("Divine Alpha (Divine)", 1, true) and text:find("6.00B/s", 1, true))
+    assert(text:find("job-one-", 1, true) and text:find("salto fallido", 1, true) and text:find("GameFull", 1, true))
+    assert(text:find("Estado: EN CURSO", 1, true) and text:find("-> job-two-", 1, true))
+    finder.ReportDecision("match", nil, readyInfo(1), {reportRow("winner", 8e9, "divine", "Forest", true)},
+        cycle(310), "job-three-cc", 1310)
+    text = texts["chilli_egg_hunt_report.txt"]
+    assert(text:find("terminó: llegó la noche", 1, true) and text:find("QUEDARSE", 1, true))
+    assert(text:find("SÍ: Cumple todos los filtros", 1, true) and text:find("8.00B/s", 1, true))
+    local newest, oldest = text:find("BÚSQUEDA del t1310", 1, true), text:find("BÚSQUEDA del t1000", 1, true)
+    assert(newest and oldest and newest < oldest, "the newest hunt comes first")
+    assert(finder.HuntReportText() == finder.RenderHuntReport(finder.HuntReport(), wallClock))
+    -- A failing text writer never loses the JSON report.
+    local broken = cycleFactory(read, write, function() error("disco lleno") end)
+    broken.ReportDecision("hop", nil, readyInfo(1), rows, cycle(610), "job-four-dd", 1610)
+    assert(#broken.HuntReport().hunts == 3)
+    assert(finder.RenderHuntReport({hunts = {}}, 1):find("Todavía no hay", 1, true))
+    assert(finder.RenderHuntReport({hunts = {{visits = {{}}}}}, 1):find("BÚSQUEDA", 1, true), "tolerates partial data")
 end)
 test("failed window persistence waits and retries instead of losing the hunt", function()
     local _, read, write, fail = memoryStore(); local finder = cycleFactory(read, write)
