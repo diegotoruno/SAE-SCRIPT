@@ -1,5 +1,21 @@
 # Pruebas y validacion
 
+## 2026-10-13 - Cargador rapido de Chilli
+
+Sonda pasiva temporal en el autoexec (sin hooks, sin entradas): marcas de
+carga, GUIs de Chilli, texto de su pantalla "Loading part N/10", FPS y
+LogService; saltos reales con la API Hop y AUTO en espera, sin matches.
+Juego cargado -> "Chilli Hub 100% Loaded": linea original 8.0 s de media
+(6.4-11.0, 8 llegadas), error "Bound Humanoid must belong to the current
+character" en 4/8. Cargador nuevo 6.4 s (5.6-7.7, 9 llegadas), error 1/9.
+Precargar sin descomprimir (3 llegadas) no mejoraba: 8.3 s. Chilli descarga
+el script en ~0.65 s y la descompresion bloquea ~1 s; la fase interna de 10
+partes (~4.5 s) no cambia. Una llegada sin Chilli: el Humanoid no se
+reemplaza; con Chilli se reemplaza tras su carga. Carga manual en un servidor
+ya cargado y guarda contra doble carga correctas. Build, ocho compilaciones
+(con chilli_loader.luau), 207 regresiones y compilacion en el executor
+correctas. Delta/iPad sin probar.
+
 ## 2026-10-12 - Captura tras un match
 
 Evidencia real: match 22:55:59 UTC, AUTO de false a true 22:57:14 y 8 saltos

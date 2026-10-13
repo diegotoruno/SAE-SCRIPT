@@ -1,5 +1,14 @@
 # Estado del trabajo
 
+## 2026-10-13 - Cargador rapido de Chilli
+
+Rama codex/cargador-chilli-rapido sobre main cae4c23. Agrega
+`chilli_loader.luau` (build/CI lo compilan y lo publican en `stable` con
+checksum) y lo recomienda en el README. Autoexec local de esta PC ya usa la
+misma logica (original en backup_autoexec/chilli.luau.2026-10-13-antes-rapido);
+tras publicar, cambiarlo por la linea de `stable`. Ver TESTING. Publicacion
+pendiente de decision del usuario.
+
 ## 2026-10-12 - Captura tras un match
 
 Rama codex/match-espera-noche sobre main 2fed20d (build-70 con el pool

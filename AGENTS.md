@@ -14,4 +14,4 @@ Lee `CONTEXT.md`, `ARCHITECTURE.md`, `DECISIONS.md` y `TESTING.md` antes de camb
 - Preferir ramas `codex/descripcion` y pull requests hacia `main`. Actualizar documentacion cuando cambien flujo, API, configuracion o distribucion.
 - Mantener archivos del executor, credenciales, referencias de terceros y copias de seguridad fuera de Git. No editar directamente `stable`; la publica CI.
 
-Chilli ya no se carga desde este repositorio: el usuario lo instala aparte en su autoexec. No reintroducir un cargador de Chilli ni dependencias de su UI en el hopper. No se dispone de sus fuentes internas protegidas; no atribuirle comportamientos que no se hayan observado.
+Chilli no se carga desde el hopper: el usuario lo instala aparte en su autoexec, opcionalmente con `chilli_loader.luau` (archivo propio, publicado en `stable` por CI). No reintroducir un cargador de Chilli ni dependencias de su UI en el hopper. `chilli_loader.luau` siempre descarga la version actual de Chilli (sin cache en disco) y conserva el respaldo al dispatcher original. No se dispone de sus fuentes internas protegidas; no atribuirle comportamientos que no se hayan observado.
