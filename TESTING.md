@@ -75,6 +75,14 @@ pero eligio otros huevos segun su Steal Priority (Highest Value) y no el
 objetivo del TP. Otra llegada cayo en la noche. Filtro del Egg Finder y
 config de Chilli restaurados y comprobados.
 
+Intento de alinear el objetivo de Chilli con el del TP (Min Rarity Secret,
+Steal Priority Best Rarity y Target Areas en las tres zonas, Egg Finder Secret+
+en las mismas zonas): match Secret real (Gargoyle, Light Dark), TP junto al
+nido, sin robo en 90 s. La UI de Chilli mostraba Min Rarity "Any" y Steal
+Priority "Highest Value": no acepta esos valores escritos en su archivo (sus
+etiquetas tienen otro formato), asi que su objetivo no se puede fijar desde
+fuera. Configs restauradas y comprobadas.
+
 ## 2026-10-12 - Captura tras un match
 
 Evidencia real: match 22:55:59 UTC, AUTO de false a true 22:57:14 y 8 saltos
