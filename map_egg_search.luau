@@ -555,8 +555,9 @@ local function createMapEggSearch(readJson, writeJson)
         if type(saved) == "table" and next(saved) ~= nil then pcall(writeJson, BROKEN_FILE, {}) end
     end
 
-    -- First time (this session) the tracked target was seen off the field.
-    local absentSince = {}
+    -- This session's view of the tracked target: first time seen off the
+    -- field, carried by this player, and when it was lost on the way.
+    local absentSince, carrying, lostAt = {}, {}, {}
     -- La misma decision se usa al entrar, despues de un reset y antes de saltar.
     function search.Decide(match, info, cycle)
         info.tracked, info.capture, info.notCaptured = nil, nil, nil
@@ -632,8 +633,13 @@ local function createMapEggSearch(readJson, writeJson)
             info.tracked, info.searchUntil = tracked, valid and remembered.untilTime or nil
             local now = cycle.serverTime
             if egg and egg.carriedByMe then
-                absentSince[tracked.key] = nil
+                absentSince[tracked.key], carrying[tracked.key] = nil, true
                 info.capture = "capturando"; return "match"
+            end
+            if carrying[tracked.key] and egg then
+                -- Lost on the way (guard, dropped, taken) while the egg is
+                -- still here: a new wait to pick it up again.
+                carrying[tracked.key], lostAt[tracked.key] = nil, now
             end
             if not egg and field and mine then
                 absentSince[tracked.key] = absentSince[tracked.key] or now
@@ -645,7 +651,7 @@ local function createMapEggSearch(readJson, writeJson)
                 return valid and "hop" or "loading"
             end
             absentSince[tracked.key] = nil
-            if now - tracked.at >= CAPTURE_TIMEOUT_SECONDS then
+            if now - math.max(tracked.at, lostAt[tracked.key] or tracked.at) >= CAPTURE_TIMEOUT_SECONDS then
                 info.notCaptured = string.format("no se capturó en %d s", CAPTURE_TIMEOUT_SECONDS)
                 return valid and "hop" or "loading"
             end

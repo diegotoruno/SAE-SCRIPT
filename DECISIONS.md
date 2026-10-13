@@ -9,7 +9,9 @@ juego, no con Chilli: el huevo en los huevos del jugador. Se leen el estado
 del objetivo en el campo y `ReadOwnedEggs` solo para eso (excepcion acotada a
 "solo spawns Slot"; nunca son candidatos). Especie+semilla porque el Uid
 cambia al capturar. 90 s sin captura: las capturas reales tardaron 7 y 43 s
-con el guardia en medio; mientras el jugador lo lleva no se corta. Si no se
+con el guardia en medio; mientras el jugador lo lleva no se corta, y si lo
+pierde en el camino con el huevo aun en el mapa empieza otro plazo (pedido:
+no irse mientras el huevo siga ahi). Si no se
 pueden leer los duenos, nunca se declara perdido: solo cuenta el tiempo. La
 captura se guarda: si despues sale de la base, se sigue esperando la noche.
 

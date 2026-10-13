@@ -723,15 +723,26 @@ test("a target that is not captured sends AUTO to look for another one", functio
     assert(mode == "match" and info.capture == "comprobando", "replication grace")
     mode, info = decideCapture(finder, {}, {[2] = {77}}, 113)
     assert(mode == "hop" and info.notCaptured == "lo tomó otro jugador" and info.searchUntil == 290)
-    -- Dropped and returned by the guard: same target and timer. Never
-    -- captured: AUTO leaves after the wait, except while this player carries it.
-    local _, read2, write2 = memoryStore(); local back = cycleFactory(read2, write2); back.userId = 1
+    -- Dropped by someone else and returned by the guard: same target and
+    -- timer. Never carried here: AUTO leaves after the wait.
+    local _, read2, write2 = memoryStore(); local never = cycleFactory(read2, write2); never.userId = 1
+    assert(decideCapture(never, {seeded("best", 8e9, 77)}, {}, 100) == "match")
+    assert(decideCapture(never, {seeded("best", 8e9, 77, "Dropped")}, {}, 105) == "match")
+    assert(decideCapture(never, {seeded("best", 8e9, 77, "GuardCarried")}, {}, 106) == "match")
+    assert(decideCapture(never, {seeded("best", 8e9, 77)}, {}, 189) == "match")
+    mode, info = decideCapture(never, {seeded("best", 8e9, 77)}, {}, 190)
+    assert(mode == "hop" and info.notCaptured == "no se capturó en 90 s")
+    -- Carried by this player: no limit. Lost on the way (guard) while it is
+    -- still here: a new 90 s to pick it up again, then AUTO leaves.
+    local _, read6, write6 = memoryStore(); local back = cycleFactory(read6, write6); back.userId = 1
     assert(decideCapture(back, {seeded("best", 8e9, 77)}, {}, 100) == "match")
-    assert(decideCapture(back, {seeded("best", 8e9, 77, "Dropped")}, {}, 105) == "match")
-    assert(decideCapture(back, {seeded("best", 8e9, 77, "GuardCarried")}, {}, 106) == "match")
-    assert(decideCapture(back, {seeded("best", 8e9, 77)}, {}, 189) == "match")
-    assert(decideCapture(back, {seeded("best", 8e9, 77, "Carried", 1)}, {}, 195) == "match")
-    mode, info = decideCapture(back, {seeded("best", 8e9, 77)}, {}, 196)
+    assert(decideCapture(back, {seeded("best", 8e9, 77, "Carried", 1)}, {}, 150) == "match")
+    mode, info = decideCapture(back, {seeded("best", 8e9, 77, "Carried", 1)}, {}, 195)
+    assert(mode == "match" and info.capture == "capturando", "carrying it has no limit")
+    assert(decideCapture(back, {seeded("best", 8e9, 77, "GuardCarried")}, {}, 196) == "match")
+    mode, info = decideCapture(back, {seeded("best", 8e9, 77)}, {}, 285)
+    assert(mode == "match" and info.capture == "esperando captura", "lost on the way: a new wait")
+    mode, info = decideCapture(back, {seeded("best", 8e9, 77)}, {}, 286)
     assert(mode == "hop" and info.notCaptured == "no se capturó en 90 s")
     -- A better target restarts the wait; unknown owners never declare it lost.
     local _, read3, write3 = memoryStore(); local better = cycleFactory(read3, write3); better.userId = 1

@@ -15,7 +15,8 @@ vigente o una nueva; sin reescribir en sondeos; un guardado fallido no oculta
 el match) y un objetivo mejor lo reemplaza. Para el objetivo de este JobId:
 en `mine` -> guarda `captured` y devuelve `wait` (`info.capture =
 "capturado"`, hasta la noche, aunque luego deje de estar); llevado por el
-jugador -> `match` sin limite; fuera del campo con duenos conocidos -> 3 s de
+jugador -> `match` sin limite (si deja de llevarlo y el huevo sigue en el
+campo, el plazo empieza de nuevo; `carrying`/`lostAt` por sesion); fuera del campo con duenos conocidos -> 3 s de
 gracia y luego `hop` (`info.notCaptured` "lo tomo otro jugador" si esta en
 `others`, si no "ya no esta en el mapa"); 90 s sin capturar
 (`CAPTURE_TIMEOUT_SECONDS`) -> `hop`; si no, `match` ("esperando captura",
