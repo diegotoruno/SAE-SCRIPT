@@ -54,6 +54,17 @@ pasar sobre Cosmic y Cherry Blossom puede dejar al personaje junto a sus
 nidos; entonces el viaje termina sin pelear y queda Chilli. Build y 217
 regresiones; candidato compilado con `loadstring` en Potassium.
 
+Flujo real con el candidato de produccion (sin variante de prueba): filtro
+del Egg Finder bajado temporalmente a Cosmic+ con minimo 1/s en las mismas
+tres zonas. Match en el servidor actual (Astral Jackalope, Enchanted Forest):
+TP junto al nido en 1.73 s. Tras un hop, match al llegar (Holy Peacock, Light
+Dark) y TP junto al nido en 3.50 s. Filtro restaurado (Eternal >= 15B, tres
+zonas). El robo de Chilli no se pudo provocar: sus filtros son Min Rarity
+Eternal y Min Steal Value 797.34, y editar su archivo de configuracion no
+sirve porque Chilli lo reescribe con lo que tiene en memoria; cambiarlo exige
+su UI. El Skeleton Horse de 15.42B/s junto al que quedo el personaje no se
+robo en 25 s; queda por comprobar si Min Steal Value lo excluye.
+
 ## 2026-10-12 - Captura tras un match
 
 Evidencia real: match 22:55:59 UTC, AUTO de false a true 22:57:14 y 8 saltos
