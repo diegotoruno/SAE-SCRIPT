@@ -92,7 +92,7 @@ El minimo acepta `500k`, `25m`, `7b`, `7.5b`, `1t` o `1q`, tambien en mayusculas
 
 **Cumplen** muestra los spawns actuales que cumplen los filtros guardados y **Todos** el mapa completo; cada uno indica su cantidad. **Orden: Rareza** muestra primero la mejor rareza usando el rango real del juego; dentro de cada rareza, primero el mayor ingreso. El boton alterna con **Orden: Nombre** y conserva la preferencia. Este orden se aplica a huevos, criaturas y modelos 3D. Puedes cambiar la vista visual, arrastrar el panel y plegar los filtros.
 
-Cada tarjeta indica **Cumple** o el motivo corto por el que queda fuera. Tocarla abre el **detalle**, que explica el motivo completo y muestra el ingreso exacto, sin redondear. **Opciones** permite guardar, cargar y borrar presets, activar notificaciones o sonido y probar la alerta. Un preset cargado queda pendiente de **Aplicar filtros**; no inicia ni detiene AUTO. La lista crea solo tarjetas cercanas a la vista y reutiliza sus instancias.
+Cada tarjeta indica **Cumple** o el motivo corto por el que queda fuera. Tocarla abre el **detalle**, que explica el motivo completo y muestra el ingreso exacto, sin redondear. **Opciones** permite guardar, cargar y borrar presets, activar notificaciones o sonido, probar la alerta y activar o desactivar **TP al huevo**. Con AUTO y TP al huevo activos, en cuanto aparece un huevo que cumple los filtros (incluso antes de que termine la espera de carga) el personaje sale de la base por la abertura y se desliza hasta el nido a una velocidad proporcional a su WalkSpeed; el robo lo hace Chilli. Un preset cargado queda pendiente de **Aplicar filtros**; no inicia ni detiene AUTO. La lista crea solo tarjetas cercanas a la vista y reutiliza sus instancias.
 
 Si un teleport queda sin confirmar, AUTO sigue revisando el mapa pero no envia otro salto. **Server Hop** permite reintentarlo manualmente. Los modulos que fallen al cargar se reintentan y los modelos ausentes usan imagen. Los archivos guardados conservan una copia `.bak` para recuperacion.
 
@@ -114,6 +114,7 @@ finder.Start()
 finder.HuntReport()   -- busquedas recientes, tambien en chilli_egg_hunt_report.json
 -- finder.RarityOptions() -- IDs, nombres y rangos reales del catalogo
 -- finder.ZoneOptions() -- IDs, nombres y orden de las zonas oficiales
+-- finder.ConfigureTravel({enabled = false}) -- TP al huevo (por defecto activo)
 ```
 
 ## Chilli Hub

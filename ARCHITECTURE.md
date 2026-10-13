@@ -1,5 +1,27 @@
 # Arquitectura
 
+## TP al huevo (2026-10-12)
+
+`Scan` expone `info.provisional` (el mejor candidato de `Evaluate`) mientras
+la barrera de carga no esta lista; la decision sigue siendo `loading` y el
+match/hop/wait no cambia. En el runtime, con AUTO y la opcion activa
+(`chilli_egg_preferences.json` -> `travel.enabled`, por defecto true), el
+vigilante y la comprobacion previa al hop llaman `maybeTravel`: con `match`
+usa el match y con `loading` el provisional. Una vez por objetivo (`key`) y
+por sesion: lee el registro con `ReadFieldEgg(uid)` (debe seguir en `Slot`),
+sale de la base con PathfindingService hasta 45 studs mas alla de la
+`SeparationLine` a `min(3x WalkSpeed, 1200)` studs/s, y desliza el
+HumanoidRootPart hasta 4 studs del nido a `min(12x WalkSpeed, 2500)` studs/s
+con pasos de 40 studs como maximo. Vigila 12 s: si el servidor lo devuelve
+hacia el inicio reintenta con la mitad de velocidad (3 intentos); si el huevo
+deja de estar en `Slot`, el jugador lo carga o el personaje se mueve a otro
+sitio (Chilli robando) termina sin pelear. No llama remotes ni roba: el robo es
+de Chilli. Apagar AUTO, la opcion o destruir la sesion corta el viaje.
+`support.EggTravel*` contiene los calculos puros (velocidades, paso, punto
+junto al nido, reversion) cubiertos por regresiones. `GetStatus().travel`
+muestra estado, objetivo, intentos, segundos y velocidad. API `Travel()` y
+`ConfigureTravel({enabled})`; Opciones muestra **TP al huevo**.
+
 ## Captura del objetivo tras un match (2026-10-12)
 
 Identidad que sobrevive a la captura: `EggKey` = especie#`AssetColorSeed`

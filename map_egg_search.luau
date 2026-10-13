@@ -1028,6 +1028,10 @@ local function createMapEggSearch(readJson, writeJson)
             elseif not snapshotReady(snapshot.Records, modules.assets.Directory, snapshotCycle) then
                 details.ready = false
                 details.reason = "cargando huevos del servidor; esperando datos estables y completos"
+                -- A Slot egg that already passes every filter is positive evidence
+                -- even before the quiet window: the runtime may move toward it.
+                -- The decision itself still waits for the barrier.
+                details.provisional = best
                 return nil, details, {}, mapRows
             end
             return best, details, matches, mapRows

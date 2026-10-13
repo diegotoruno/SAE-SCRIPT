@@ -1,5 +1,26 @@
 # Contexto del proyecto
 
+## TP al huevo antes de que Chilli robe (2026-10-12)
+
+El usuario pide reproducir el TP del Auto Steal / Instant Steal V2 de Chilli
+para que el Egg Finder lleve el personaje al huevo en cuanto lo detecta, antes
+de que el mapa cargue graficamente, y dejar que Chilli lo robe. Chilli indica
+que Instant Steal V2 depende de la velocidad del personaje; el usuario
+observo que Chilli primero va a un huevo del area inicial y luego hace el TP.
+
+Medido en una cuenta alterna (WalkSpeed 18-19) y en la principal (334), sin
+hooks: `StreamingEnabled=false`, el mapa entero existe al cargar; la posicion
+de cada spawn esta en el snapshot (`BottomCFrame`). Cruzar la linea de la base
+(`World.Areas.SeparationLine`) sin pasar por la abertura derriba al personaje
+y lo reaparece ("Enter the gameplay area first"); salir por el camino lo
+habilita. Saltos sueltos grandes se revierten; trayectos largos muy por encima
+de WalkSpeed dejan de ser de confianza ("Movement is not currently trusted") y
+el servidor los revierte hasta 10 s despues. Deslizando en pasos pequenos la
+alterna mantuvo confianza hasta 80x WalkSpeed en 400-500 studs y 12x en 4250
+studs (carry aceptado). La principal llego de su base a Enchanted Forest
+(~6200 studs) en 2.7-2.9 s sin reversiones. Los hooks de metamethods
+provocaron una expulsion BAC-9333; no usarlos.
+
 ## Tras un match, comprobar la captura (2026-10-12)
 
 Reporte real: Skeleton Horse Eternal de 59.2B/s en el cuarto servidor; AUTO

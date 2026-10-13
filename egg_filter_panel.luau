@@ -769,7 +769,11 @@ local function mountEggFilterPanel(context)
         sound.Activated:Connect(function() access(); if result(function() api.ConfigureAlerts({sound = not settings.sound}) end) then panel.OpenOptions() end end)
         local test = button("TestAlert", card, "Probar alerta", 18, 452, 226, 38)
         test.Activated:Connect(function() access(); result(api.TestAlert) end)
-        paragraph("AlertHint", card, "Al encontrar un objetivo se avisa; AUTO espera la captura.", 252, 452, 226, 38, C.muted, 11).TextYAlignment = Enum.TextYAlignment.Center
+        -- Con AUTO, lleva al personaje junto al huevo encontrado; Chilli lo roba.
+        local travelSettings = type(api.Travel) == "function" and api.Travel() or {enabled = false}
+        local travelToggle = button("EggTravel", card, "TP al huevo" .. (travelSettings.enabled and ": activado" or ": desactivado"), 252, 452, 226, 38)
+        if travelSettings.enabled then paint(travelToggle, C.selected, C.green, C.green) else paint(travelToggle, C.card, C.muted, C.border) end
+        travelToggle.Activated:Connect(function() access(); if result(function() api.ConfigureTravel({enabled = not travelSettings.enabled}) end) then panel.OpenOptions() end end)
         if type(api.OpenServerAccount) == "function" then
             caption(card, "SERVIDORES", 506)
             local account = button("ServerAccount", card, "Cuenta y Best Ping", 18, 528, CONTENT - 36, 40)

@@ -1410,6 +1410,30 @@ test("complete field with a match stays only after the quiet window", function()
     local mode, _, match = scan()
     assert(mode == "match" and match.uid == state.records[7].Uid and match.income == 9e9)
 end)
+test("matching spawn is exposed as provisional before the quiet window", function()
+    local _, state, scan = loadingFixture()
+    state.records = fullField("pv")
+    state.records[7].AssetCategory, state.records[7].rate = "divine2", 9e9
+    loadClock = 0
+    local mode, info, match = scan()
+    assert(mode == "loading" and match == nil)
+    assert(info.provisional and info.provisional.uid == state.records[7].Uid and info.provisional.income == 9e9)
+    loadClock = 3
+    mode, info, match = scan()
+    assert(mode == "match" and match.uid == state.records[7].Uid and info.provisional == nil)
+end)
+test("insufficient or absent spawns expose no provisional target", function()
+    local _, state, scan = loadingFixture()
+    state.records = fullField("pn")
+    state.records[2].AssetCategory, state.records[2].rate = "divine", 6e9
+    loadClock = 0
+    local mode, info = scan()
+    assert(mode == "loading" and info.provisional == nil and info.rarityCount == 1)
+    state.records = fullField("pe")
+    loadClock = 1
+    mode, info = scan()
+    assert(mode == "loading" and info.provisional == nil)
+end)
 local cachedError = "Requested module experienced an error while loading"
 test("cached module failure after load marks the server broken and AUTO hops", function()
     local files, read, write = memoryStore()
@@ -2393,6 +2417,45 @@ test("egg finder scale keeps the chosen size but always fits the screen", functi
     local base = {X = 540, Y = 700}
     assert(support.PanelScale(support.DragScale(1, base, {X = 0, Y = 140}), 1.4) == 1.2)
     assert(support.PanelScale(support.DragScale(1, base, {X = -108, Y = 0}), 1.4) == 0.8)
+end)
+local function near(a, b) return math.abs(a - b) < 1e-6 end
+test("egg travel speeds follow WalkSpeed within the measured limits", function()
+    local exit, trip = support.EggTravelSpeeds(19.5)
+    assert(near(exit, 58.5) and near(trip, 234))
+    exit, trip = support.EggTravelSpeeds(334)
+    assert(near(exit, 1002) and trip == support.EggTravel.maxTravel)
+    exit, trip = support.EggTravelSpeeds(334, 4)
+    assert(near(exit, 250.5) and near(trip, 1002))
+    for _, invalid in ipairs({0, -5, 0 / 0, math.huge, "fast"}) do
+        exit, trip = support.EggTravelSpeeds(invalid :: any)
+        assert(exit == support.EggTravel.minSpeed * 3 and trip == support.EggTravel.minSpeed * 12)
+    end
+end)
+test("egg travel never jumps more than one step on a frame hitch", function()
+    local from, to = {x = 0, y = 70, z = 0}, {x = 6000, y = 70, z = 0}
+    local nextPoint, arrived = support.EggTravelStep(from, to, 2500, 1, 40)
+    assert(not arrived and near(nextPoint.x, 40) and nextPoint.y == 70 and nextPoint.z == 0)
+    nextPoint, arrived = support.EggTravelStep(from, to, 2500, 1 / 240, 40)
+    assert(not arrived and near(nextPoint.x, 2500 / 240))
+    nextPoint, arrived = support.EggTravelStep({x = 5990, y = 70, z = 0}, to, 2500, 1, 40)
+    assert(arrived and nextPoint.x == 6000)
+    nextPoint, arrived = support.EggTravelStep(to, to, 2500, 1, 40)
+    assert(arrived and nextPoint.x == 6000)
+end)
+test("egg travel stops beside the nest on the arrival side", function()
+    local bottom = {x = 100, y = 67, z = -300}
+    local spot = support.EggTravelBeside(bottom, {x = 0, y = 70, z = -300})
+    assert(near(spot.x, 96) and near(spot.y, 70) and near(spot.z, -300))
+    spot = support.EggTravelBeside(bottom, {x = 100, y = 70, z = -300})
+    assert(near(support.EggTravelDistance({x = spot.x, y = 67, z = spot.z}, bottom), 4))
+end)
+test("egg travel tells a server rewind from Chilli or the player moving", function()
+    local start, arrived = {x = 600, y = 70, z = -360}, {x = 6700, y = 70, z = -350}
+    assert(support.EggTravelOutcome({x = 6705, y = 70, z = -350}, arrived, start) == "here")
+    assert(support.EggTravelOutcome({x = 600, y = 70, z = -362}, arrived, start) == "rewound")
+    assert(support.EggTravelOutcome({x = 545, y = 70, z = -424}, arrived, start) == "rewound")
+    assert(support.EggTravelOutcome({x = 6900, y = 70, z = -340}, arrived, start) == "moved")
+    assert(support.EggTravelOutcome({x = 480, y = 70, z = -240}, {x = 760, y = 70, z = -410}, {x = 600, y = 70, z = -360}) == "moved")
 end)
 
 print(string.format("%d regression tests passed", passed))

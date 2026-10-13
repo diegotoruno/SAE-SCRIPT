@@ -1,5 +1,13 @@
 # Estado del trabajo
 
+## 2026-10-12 - TP al huevo
+
+Rama codex/tp-al-huevo sobre main cae4c23 (build-74). Con AUTO, el objetivo
+provisional o el match llevan al personaje junto al nido (salida por la
+abertura, deslizamiento a <=12x WalkSpeed, tope 2500 studs/s) y Chilli lo
+roba. Opcion en Opciones, activa por defecto. Ver TESTING. Publicacion
+pendiente de decision del usuario.
+
 ## 2026-10-12 - Captura tras un match
 
 Rama codex/match-espera-noche sobre main 2fed20d (build-70 con el pool

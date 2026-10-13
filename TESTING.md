@@ -1,5 +1,27 @@
 # Pruebas y validacion
 
+## 2026-10-12 - TP al huevo
+
+Cuenta alterna (roblox_user_9492807460, WalkSpeed 18-19, Chilli descargado
+en esa instancia para medir sin interferencia) y principal, sin hooks:
+TP desde la base -> "Enter the gameplay area first" y luego derribado y
+reaparicion; caminar o deslizar por la abertura y luego carry -> aceptado.
+Saltos sueltos 10-90 studs se mantienen; 136 y 600 se revierten. Con carry
+como prueba de confianza: 5x-30x WalkSpeed inmediato, 50x-80x tras ~1.7 s en
+400-500 studs; 128x en 1600 studs -> "Movement is not currently trusted" y
+reversion a los 8-10 s (las esperas de 1.5-2 s no bastan para saber).
+Arnes generado del bloque del candidato: alterna base -> Titan Temple
+(~4250 studs) en 19.1 s a 234 studs/s, 12 s sin reversion y carry de
+verificacion aceptado (huevo soltado). Principal base -> Enchanted Forest
+(~6200 studs) en 2.93 s y 2.73 s a 2500 studs/s, salida 0.2 s, sin
+reversiones; despues Chilli movio el personaje (huevo no Eternal) y el viaje
+termino sin pelear. Candidato completo cargado en la principal: AUTO activo,
+`travel` enabled/idle, sin errores. Build y 213 regresiones (seis nuevas:
+provisional antes de la barrera y sin provisional con insuficientes o
+ausentes; velocidades, paso con tiron de frame, punto junto al nido y
+reversion frente a movimiento ajeno). Un match real con robo de Chilli tras
+el TP queda pendiente de que aparezca el objetivo.
+
 ## 2026-10-12 - Captura tras un match
 
 Evidencia real: match 22:55:59 UTC, AUTO de false a true 22:57:14 y 8 saltos

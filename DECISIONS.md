@@ -1,5 +1,19 @@
 # Decisiones de producto e implementacion
 
+## TP al huevo deslizando, no de un salto (2026-10-12)
+
+Pedido del usuario: llevar el personaje al huevo en cuanto el Egg Finder lo
+detecta y dejar el robo a Chilli. Se usa el objetivo provisional antes de la
+barrera porque un spawn `Slot` que cumple todos los filtros es evidencia
+positiva; la barrera sigue protegiendo las decisiones negativas (hop). Se
+desliza en pasos en vez de un salto de un frame como Chilli: en la alterna los
+saltos grandes se revertian y el deslizamiento conserva la confianza del
+servidor; en la principal el trayecto completo tarda ~3 s. La salida de la
+base imita a un jugador (camino por la abertura) porque cruzar la linea de
+otra forma derriba al personaje. El hopper no carga el huevo ni llama remotes:
+la captura sigue siendo de Chilli y la comprueba el flujo existente. Opcion
+activa por defecto y desactivable en Opciones.
+
 ## Tras un match, AUTO sigue y comprueba la captura (2026-10-12)
 
 Pedido del usuario: capturado, esperar en ese servidor el nuevo ciclo con
