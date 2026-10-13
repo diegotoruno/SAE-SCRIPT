@@ -83,6 +83,15 @@ Priority "Highest Value": no acepta esos valores escritos en su archivo (sus
 etiquetas tienen otro formato), asi que su objetivo no se puede fijar desde
 fuera. Configs restauradas y comprobadas.
 
+Robo del objetivo del TP confirmado (2026-10-13): con Chilli configurado por
+el usuario en su UI (Min Rarity Any, Steal Priority Highest Value, Min Steal
+Value 0) y el Egg Finder en Common+ sin zonas (objetivo = mayor ingreso del
+mapa), tras el TP Chilli cargo y entrego el mismo huevo en dos servidores:
+Snowy Owl (Carried por el jugador a los 17.7 s, fuera del campo a los 20.5 s)
+y Petal Beetle (17.3 s / 21.4 s); "Area egg claim" 06:26:24 a 06:28:01.
+Filtro del Egg Finder restaurado; la config de Chilli queda como la dejo el
+usuario.
+
 ## 2026-10-12 - Captura tras un match
 
 Evidencia real: match 22:55:59 UTC, AUTO de false a true 22:57:14 y 8 saltos
