@@ -1,5 +1,13 @@
 # Estado del trabajo
 
+## 2026-10-13 - Mejor huevo del ciclo
+
+Rama codex/mejor-visto-ciclo sobre main 1ccb115. El detector guarda en la
+ventana version2 el mejor huevo (rareza minima o superior, zonas elegidas)
+y el panel lo fija en Cumplen con el aviso MEJOR DEL CICLO. Build y 212
+regresiones correctos; tarjeta validada en Potassium (otro servidor, aqui, ya
+no esta aqui). Publicado por PR. Ver TESTING.
+
 ## 2026-10-13 - Reporte legible
 
 Rama codex/reporte-legible sobre main 7ed715f. Agrega

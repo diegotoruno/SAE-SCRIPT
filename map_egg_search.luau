@@ -465,7 +465,7 @@ local function createMapEggSearch(readJson, writeJson, writeText)
             if type(id) == "string" and string.lower(id) == wanted then canonical = id; break end
         end
         filters.rarity = canonical or error("Rareza no disponible en el catalogo del juego: " .. filters.rarity)
-        local found = {}
+        local found, top = {}, nil
         local info = { count = 0, rarityCount = 0, eligible = 0, errors = 0 }
         local zoneSet = {}
         for _, id in ipairs(filters.zones) do zoneSet[id] = true end
@@ -499,22 +499,32 @@ local function createMapEggSearch(readJson, writeJson, writeText)
                     if #filters.zones > 0 and not zoneKnown then info.errors += 1 end
                     -- An excluded-zone egg neither starts nor seeds a hunt.
                     -- Income/name/mutation remain quality filters within scope.
-                    if zoneOk then info.rarityCount += 1 end
-                    if nameOk and mutationOk and zoneOk then
-                        info.eligible += 1
+                    local eligible = nameOk and mutationOk and zoneOk
+                    if zoneOk then
+                        info.rarityCount += 1
+                        if eligible then info.eligible += 1 end
                         local incomeOk, income = pcall(incomeFor, egg)
                         if not incomeOk or type(income) ~= "number"
                             or income ~= income or income < 0 or income == math.huge then
-                            info.errors += 1
-                        elseif income >= filters.minIncome then
+                            -- Only a candidate that could match blocks the decision;
+                            -- the best-seen reminder just skips an unreadable income.
+                            if eligible then info.errors += 1 end
+                        else
                             local position = egg.BoundsCFrame and egg.BoundsCFrame.Position
-                            table.insert(found, {
+                            local entry = {
                                 uid = egg.Uid, key = eggKey(egg), category = egg.AssetCategory,
                                 name = name, rarity = tier, income = income,
                                 area = egg.AreaId, nest = egg.NestId, scale = egg.AssetScale,
-                                mutations = table.clone(egg.Mutations or {}),
+                                mutations = table.clone(egg.Mutations or {}), baseMutation = egg.BaseMutation,
                                 position = position and { x = position.X, y = position.Y, z = position.Z } or nil,
-                            })
+                            }
+                            if eligible and income >= filters.minIncome then table.insert(found, entry) end
+                            -- Best income of the minimum rarity or higher in scope,
+                            -- whether or not it meets the income/name/mutation filters.
+                            if not top or income > top.income
+                                or (income == top.income and tostring(entry.uid) < tostring(top.uid)) then
+                                top = entry
+                            end
                         end
                     end
                 end
@@ -524,6 +534,7 @@ local function createMapEggSearch(readJson, writeJson, writeText)
             if a.income ~= b.income then return a.income > b.income end
             return tostring(a.uid) < tostring(b.uid)
         end)
+        info.top = top
         return found[1], info, found
     end
 
@@ -558,6 +569,21 @@ local function createMapEggSearch(readJson, writeJson, writeText)
     -- This session's view of the tracked target: first time seen off the
     -- field, carried by this player, and when it was lost on the way.
     local absentSince, carrying, lostAt = {}, {}, {}
+    local function bestRecord(top, at)
+        return {key = top.key, name = top.name, category = top.category, rarity = top.rarity,
+            income = top.income, area = top.area, nest = top.nest, scale = top.scale,
+            mutations = table.clone(top.mutations or {}), baseMutation = top.baseMutation,
+            job = game.JobId, at = at}
+    end
+    -- Best in-scope egg seen so far in the current cycle (any server), or nil
+    -- when there is none or the saved window does not belong to this cycle.
+    function search.BestSeen(cycle)
+        if cycle == nil then cycle = search.CycleStatus() end
+        local best = remembered.best
+        if not cycle or not validWindow(cycle) or type(best) ~= "table"
+            or type(best.key) ~= "string" or type(best.category) ~= "string" or not finite(best.income) then return nil end
+        return copyInputs(best)
+    end
     -- La misma decision se usa al entrar, despues de un reset y antes de saltar.
     function search.Decide(match, info, cycle)
         info.tracked, info.capture, info.notCaptured = nil, nil, nil
@@ -593,11 +619,21 @@ local function createMapEggSearch(readJson, writeJson, writeText)
             info.reason = "el snapshot pertenece al ciclo anterior; esperando lectura nueva"
             return "loading"
         end
+        local top = info.top
         local function newWindow()
             return {version = 2, rarity = string.lower(search.config.rarity), zones = table.clone(search.config.zones),
                 periodIndex = cycle.periodIndex,
                 nextReset = cycle.nextReset, periodSeconds = cycle.periodSeconds, nightSeconds = cycle.nightSeconds,
-                untilTime = cycle.nextReset - cycle.nightSeconds, seenAt = cycle.serverTime}
+                untilTime = cycle.nextReset - cycle.nightSeconds, seenAt = cycle.serverTime,
+                best = top and bestRecord(top, cycle.serverTime) or nil}
+        end
+        -- Best egg of the cycle: rides on the same window, so it dies with the
+        -- night, a rarity change or a zone change, and travels to every server.
+        if top and valid and not (type(remembered.best) == "table" and finite(remembered.best.income)
+            and remembered.best.income >= top.income) then
+            local window = table.clone(remembered)
+            window.best = bestRecord(top, cycle.serverTime)
+            saveWindow(window) -- a failed save is retried on the next poll
         end
         -- After a match AUTO stays on and follows that egg in this server.
         -- Captured (now in this player's eggs): the cycle's hunt ends here and
