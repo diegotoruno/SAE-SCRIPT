@@ -92,6 +92,13 @@ y Petal Beetle (17.3 s / 21.4 s); "Area egg claim" 06:26:24 a 06:28:01.
 Filtro del Egg Finder restaurado; la config de Chilli queda como la dejo el
 usuario.
 
+Tres pruebas en las tres zonas (Egg Finder Common+ en ellas, Chilli Any /
+Highest Value / 0 en las mismas areas): Chilli robo el objetivo en 2 de 3
+(Sacred Moth: carga 4.4 s, entrega 7.7 s; Demon Hound: 6.8 s / 10.4 s, aunque
+el TP fue cortado por Chilli tirando hacia atras); en la tercera el TP llego
+(1.45 s) pero Chilli llevo al personaje a la zona de laboratorio y robo otros
+huevos. Tras el reporte del usuario de ese choque, el viaje ya no reintenta.
+
 ## 2026-10-12 - Captura tras un match
 
 Evidencia real: match 22:55:59 UTC, AUTO de false a true 22:57:14 y 8 saltos

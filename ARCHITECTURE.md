@@ -22,9 +22,9 @@ a `min(3x WalkSpeed, 1200)` studs/s, y vuela hasta 4 studs del nido: sube 55
 studs sobre el destino, avanza y baja (`EggTravelRoute`), a
 `min(12x WalkSpeed, 4000)` studs/s, con pasos de 80 studs como maximo y solo en
 frames de <= 0.1 s. Un desvio que devuelve al personaje a la base o al inicio
-es una reversion (reintenta a mitad de velocidad, 3 intentos); cualquier otro
-desvio es otro moviendo al personaje (Chilli o el jugador) y termina sin
-pelear. Vigila 12 s tras llegar con el mismo criterio. No llama remotes ni
+se registra como reversion y cualquier otro como movido por otro; en ambos
+casos el viaje termina sin reintentar (un solo intento): Chilli tira del
+personaje hacia su propio inicio y reintentar peleaba con el. Vigila 12 s tras llegar con el mismo criterio. No llama remotes ni
 roba: el robo es de Chilli. Apagar AUTO, la opcion o destruir la sesion corta
 el viaje.
 

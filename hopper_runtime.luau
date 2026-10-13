@@ -1840,7 +1840,9 @@ do
         -- HumanoidRootPart: no llama remotes del juego ni carga el huevo.
         local PathfindingService = game:GetService("PathfindingService")
         local RunService = game:GetService("RunService")
-        local TRAVEL_ATTEMPTS = 3
+        -- Un solo intento: tras un desvio, Chilli suele estar llevando al personaje a
+        -- su propio inicio; reintentar pelearia con el. La carga ya se espera antes.
+        local TRAVEL_ATTEMPTS = 1
         local TRAVEL_WATCH_SECONDS = 12
         local TRAVEL_LOG_FILE = "chilli_egg_travel_log.json"
         local TRAVEL_LOG_LIMIT = 30
