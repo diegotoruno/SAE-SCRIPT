@@ -1,5 +1,15 @@
 # Pruebas y validacion
 
+## 2026-10-13 - Reporte legible
+
+Build, ocho compilaciones y 208 regresiones (una nueva: el texto se reescribe
+con el JSON, la busqueda mas reciente va primero, un escritor de texto que
+falla no pierde el JSON y datos parciales no rompen el render). El render se
+probo ademas con el reporte real de 20 busquedas (544 lineas), generado con
+el Luau oficial 0.741 sobre `chilli_egg_hunt_report.json`. Sin prueba en el
+juego: el escritor es `writefile` directo y queda pendiente verificarlo tras
+publicar.
+
 ## 2026-10-13 - Cargador rapido de Chilli
 
 Sonda pasiva temporal en el autoexec (sin hooks, sin entradas): marcas de

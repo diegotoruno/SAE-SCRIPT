@@ -114,6 +114,7 @@ finder.Start()
 -- finder.OpenPanel()
 -- finder.GetStatus()
 finder.HuntReport()   -- busquedas recientes, tambien en chilli_egg_hunt_report.json
+finder.HuntReportText() -- el mismo reporte legible (chilli_egg_hunt_report.txt)
 -- finder.RarityOptions() -- IDs, nombres y rangos reales del catalogo
 -- finder.ZoneOptions() -- IDs, nombres y orden de las zonas oficiales
 ```

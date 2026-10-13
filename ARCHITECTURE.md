@@ -60,6 +60,16 @@ si cambia la decision o los candidatos. `ReportHopCheck` guarda el Scan(true)
 previo a cada teleport y su destino; cierre por match, `noche` (otro periodo),
 `filtros cambiados` o `AUTO apagado`. API `ChilliEggSearch.HuntReport()`.
 
+`chilli_egg_hunt_report.txt` es la copia legible para personas: se reescribe
+junto al JSON en cada `saveReport` (pcall; un fallo de escritura no pierde el
+JSON). `RenderHuntReport(data, now)` es puro: busqueda mas reciente primero,
+cabecera con estado, filtro, primer huevo, mejor ingreso visto y coincidencias,
+y una linea por servidor (hora, JobId corto, accion y destino, spawns, huevos
+de la rareza, carga) con hasta 3 candidatos (ingreso, escala, mutacion y motivo).
+La revision previa al salto solo aparece si aun veia coincidencias; los saltos
+fallidos y las recargas se listan. `createMapEggSearch(readJson, writeJson,
+writeText)`: el hopper pasa `writefile`; sin `writeText` no se genera el texto.
+
 ## Tolerancia de reloj en la memoria del ciclo (2026-10-12)
 
 `validWindow` compara `periodIndex`, `periodSeconds` y `nightSeconds` exactos;

@@ -1,6 +1,6 @@
 -- Detector de spawns del mapa para Chilli + Server Hop.
 -- Solo lee EggState.ReadFieldEggs: no inspecciona huevos de bases.
-local function createMapEggSearch(readJson, writeJson)
+local function createMapEggSearch(readJson, writeJson, writeText)
     local CONFIG_FILE = "chilli_egg_search_config.json"
     local CYCLE_FILE = "chilli_egg_search_cycle.json"
     local BROKEN_FILE = "chilli_egg_search_broken.json"
@@ -680,9 +680,15 @@ local function createMapEggSearch(readJson, writeJson)
     -- time here means the server was loaded again (rejoin or re-execution).
     local reportedJobs = {}
     if type(report) ~= "table" or type(report.hunts) ~= "table" then report = {version = 1, hunts = {}} end
+    local REPORT_TEXT_FILE = "chilli_egg_hunt_report.txt"
     local function saveReport()
         while #report.hunts > REPORT_HUNTS do table.remove(report.hunts, 1) end
         pcall(writeJson, REPORT_FILE, report)
+        -- Readable copy; the JSON stays the source of truth and the API.
+        if writeText then
+            local ok, text = pcall(search.RenderHuntReport, report, os.time())
+            if ok then pcall(writeText, REPORT_TEXT_FILE, text) end
+        end
     end
     local function openHunt()
         local hunt = report.hunts[#report.hunts]
@@ -831,6 +837,130 @@ local function createMapEggSearch(readJson, writeJson)
     end
     function search.HuntReport()
         return copyInputs(report)
+    end
+
+    -- Readable report: newest hunt first, one block per server visited.
+    local OUTCOME_TEXT = {noche = "terminó: llegó la noche y el ciclo se renovó", capturado = "terminó: CAPTURADO",
+        match = "terminó: se quedó en una coincidencia", ["filtros cambiados"] = "terminó: cambiaron los filtros", ["AUTO apagado"] = "terminó: AUTO apagado"}
+    local ACTION_TEXT = {hop = "salto", match = "QUEDARSE", wait = "espera", loading = "cargando"}
+    local RATE_UNITS = {{1e12, "T"}, {1e9, "B"}, {1e6, "M"}, {1e3, "K"}}
+    local SHOWN_CANDIDATES = 3
+    local function reportRate(value)
+        if type(value) ~= "number" or value ~= value then return "?" end
+        for _, unit in ipairs(RATE_UNITS) do
+            if value >= unit[1] then return string.format("%.2f%s/s", value / unit[1], unit[2]) end
+        end
+        return string.format("%.0f/s", value)
+    end
+    local function reportClock(at, format)
+        if type(at) ~= "number" then return "--" end
+        local ok, text = pcall(os.date, format, at)
+        return ok and type(text) == "string" and text or tostring(at)
+    end
+    local function shortJob(job) return job and string.sub(tostring(job), 1, 8) or "?" end
+    local function describeCandidate(candidate)
+        local mutations = type(candidate.mutations) == "table" and #candidate.mutations > 0
+            and table.concat(candidate.mutations, "+") or candidate.baseMutation
+        return string.format("%s (%s) · %s · escala %s%s · %s", tostring(candidate.name), tostring(candidate.rarity),
+            tostring(candidate.area), tonumber(candidate.scale) and string.format("%.2f", candidate.scale) or "?",
+            mutations and (" · " .. tostring(mutations)) or "", reportRate(candidate.income))
+    end
+    local function describeVisit(visit, lines)
+        local load = type(visit.load) == "table" and visit.load or {}
+        local before = type(visit.beforeHop) == "table" and visit.beforeHop or nil
+        local count = tonumber(visit.rarityCount)
+        local slow = load.readyBy ~= nil and load.readyBy ~= "complete"
+            and string.format(" · carga por %s, zonas %s/%s", tostring(load.readyBy), tostring(load.zonesPresent or "?"),
+                tostring(load.zonesTotal or "?"))
+        table.insert(lines, string.format("  %s  %s  %-8s%s  %s spawns · %s · carga %.1f s%s",
+            reportClock(visit.decidedAt or visit.at, "%H:%M:%S"), shortJob(visit.job),
+            ACTION_TEXT[visit.mode] or tostring(visit.mode), before and before.target and (" -> " .. shortJob(before.target)) or "",
+            tostring(visit.spawns or "?"), count == 1 and "1 huevo de la rareza" or string.format("%s huevos de la rareza",
+                tostring(count or "?")), tonumber(load.readySeconds) or 0, slow or ""))
+        local candidates = type(visit.candidates) == "table" and visit.candidates or {}
+        local shown = math.min(#candidates, SHOWN_CANDIDATES)
+        for index = 1, shown do
+            local candidate = candidates[index]
+            table.insert(lines, string.format("      %s -> %s: %s", describeCandidate(candidate),
+                candidate.match and "SÍ" or "NO", tostring(candidate.reason or "?")))
+        end
+        local total = tonumber(visit.candidateCount) or #candidates
+        if total > shown then
+            table.insert(lines, string.format("      ... y %d huevos más de la rareza en las zonas", total - shown))
+        elseif total == 0 then
+            table.insert(lines, visit.continuingCycle
+                and "      sin huevo de la rareza aquí; se sigue por lo visto antes en este ciclo"
+                or "      sin huevo de la rareza en las zonas elegidas")
+        end
+        if visit.capture then table.insert(lines, "      captura: " .. tostring(visit.capture)) end
+        if (visit.reloads or 0) > 0 then
+            table.insert(lines, string.format("      servidor cargado de nuevo %d vez/veces (reentrada o reejecución)",
+                visit.reloads))
+        end
+        if before and (before.matches or 0) > 0 then
+            table.insert(lines, string.format("      ¡ATENCIÓN! la revisión previa al salto aún veía %d coincidencia(s)",
+                before.matches))
+        end
+        for _, failed in ipairs(type(visit.failedHops) == "table" and visit.failedHops or {}) do
+            table.insert(lines, string.format("      salto fallido %s a %s (%s jugando): %s",
+                reportClock(failed.at, "%H:%M:%S"), shortJob(failed.target), tostring(failed.playing or "?"),
+                tostring(failed.reason)))
+        end
+    end
+    local function describeHunt(hunt, lines)
+        local visits = type(hunt.visits) == "table" and hunt.visits or {}
+        local zones = type(hunt.zones) == "table" and #hunt.zones > 0 and table.concat(hunt.zones, ", ") or "todas"
+        local best
+        for _, visit in ipairs(visits) do
+            for _, candidate in ipairs(type(visit.candidates) == "table" and visit.candidates or {}) do
+                if not best or (candidate.income or -1) > (best.income or -1) then best = candidate end
+            end
+        end
+        local ended = hunt.endedAt and hunt.startedAt
+        table.insert(lines, string.rep("=", 78))
+        table.insert(lines, string.format("BÚSQUEDA del %s al %s (%s)", reportClock(hunt.startedAt, "%d/%m %H:%M:%S"),
+            hunt.endedAt and reportClock(hunt.endedAt, "%H:%M:%S") or "ahora",
+            ended and string.format("%.1f min", (hunt.endedAt - hunt.startedAt) / 60) or "en curso"))
+        table.insert(lines, "Estado: " .. (hunt.outcome
+            and (OUTCOME_TEXT[hunt.outcome] or ("terminó: " .. tostring(hunt.outcome))) or "EN CURSO"))
+        table.insert(lines, string.format("Filtro: %s o superior · ingreso mínimo %s · zonas: %s", tostring(hunt.rarity),
+            reportRate(hunt.minIncome), zones))
+        if type(hunt.first) == "table" then
+            table.insert(lines, (hunt.resumed and "Reanudada (ya había aparecido en este ciclo); primer huevo: "
+                or "Primer huevo que la inició: ") .. describeCandidate(hunt.first))
+        end
+        table.insert(lines, string.format("Servidores visitados: %d · mejor ingreso visto: %s", hunt.servers or #visits,
+            best and (reportRate(best.income) .. " (" .. tostring(best.name) .. ")") or "ninguno"))
+        local matches = type(hunt.matches) == "table" and #hunt.matches > 0 and hunt.matches
+            or type(hunt.found) == "table" and {hunt.found} or nil
+        if matches then
+            table.insert(lines, "Coincidencias:")
+            for _, item in ipairs(matches) do
+                table.insert(lines, string.format("  - %s %s (%s) %s en %s · servidor %s · captura: %s",
+                    reportClock(item.at, "%H:%M:%S"), tostring(item.name), tostring(item.rarity), reportRate(item.income),
+                    tostring(item.area), shortJob(item.job), tostring(item.capture or "?")))
+            end
+        else
+            table.insert(lines, "Coincidencias: ninguna")
+        end
+        table.insert(lines, string.rep("-", 78))
+        for _, visit in ipairs(visits) do describeVisit(visit, lines) end
+        table.insert(lines, "")
+    end
+    function search.RenderHuntReport(data, now)
+        local hunts = type(data) == "table" and type(data.hunts) == "table" and data.hunts or {}
+        local lines = {"CHILLI EGG FINDER · REPORTE DE BÚSQUEDAS",
+            string.format("Actualizado %s · %d búsqueda(s), la más reciente primero", reportClock(now, "%d/%m %H:%M:%S"), #hunts),
+            "Una búsqueda empieza al ver un huevo de la rareza elegida en las zonas elegidas y termina al capturarlo,",
+            "al llegar la noche (renovación del ciclo), al cambiar los filtros o al apagar AUTO.",
+            "Cada línea con hora es un servidor: qué se hizo allí, cuántos huevos de la rareza había y por qué cumplieron o no.",
+            "Datos completos: chilli_egg_hunt_report.json", ""}
+        for index = #hunts, 1, -1 do describeHunt(hunts[index], lines) end
+        if #hunts == 0 then table.insert(lines, "Todavía no hay búsquedas registradas.") end
+        return table.concat(lines, "\n") .. "\n"
+    end
+    function search.HuntReportText()
+        return search.RenderHuntReport(report, os.time())
     end
 
     -- Datos y reloj replicados por el juego; no se modifica el ciclo.

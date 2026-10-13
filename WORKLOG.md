@@ -1,5 +1,12 @@
 # Estado del trabajo
 
+## 2026-10-13 - Reporte legible
+
+Rama codex/reporte-legible sobre main 7ed715f. Agrega
+`chilli_egg_hunt_report.txt` (copia legible del reporte, mas reciente primero)
+y `HuntReportText()`. El JSON no cambia. Ver TESTING. Publicacion pendiente de
+decision del usuario.
+
 ## 2026-10-13 - Cargador rapido de Chilli
 
 Rama codex/cargador-chilli-rapido sobre main cae4c23. Agrega
