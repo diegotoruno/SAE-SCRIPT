@@ -1,5 +1,20 @@
 # Decisiones de producto e implementacion
 
+## Tras un match, AUTO sigue y comprueba la captura (2026-10-12)
+
+Pedido del usuario: capturado, esperar en ese servidor el nuevo ciclo con
+AUTO (puede aparecer otro Eternal); no capturado, buscar otro servidor.
+Reemplaza "apagar AUTO" del paso 5. La captura se comprueba con datos del
+juego, no con Chilli: el huevo en los huevos del jugador. Se leen el estado
+del objetivo en el campo y `ReadOwnedEggs` solo para eso (excepcion acotada a
+"solo spawns Slot"; nunca son candidatos). Especie+semilla porque el Uid
+cambia al capturar. 90 s sin captura: las capturas reales tardaron 7 y 43 s
+con el guardia en medio; mientras el jugador lo lleva no se corta, y si lo
+pierde en el camino con el huevo aun en el mapa empieza otro plazo (pedido:
+no irse mientras el huevo siga ahi). Si no se
+pueden leer los duenos, nunca se declara perdido: solo cuenta el tiempo. La
+captura se guarda: si despues sale de la base, se sigue esperando la noche.
+
 ## Vigente = la pasada mas reciente no lo contradice (2026-10-12)
 
 Se mantiene "1/7 vigentes antes de 2/7" y los TTL 180/90 s; cambia que cuenta

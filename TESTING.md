@@ -1,5 +1,30 @@
 # Pruebas y validacion
 
+## 2026-10-12 - Captura tras un match
+
+Evidencia real: match 22:55:59 UTC, AUTO de false a true 22:57:14 y 8 saltos
+sin reporte. Log de Roblox: "Area egg claim" 7 s y 43 s despues de los dos
+matches del dia, ambos huevos en `ReadOwnedEggs` del usuario con otro Uid y
+la misma especie, semilla y escala. Senales observadas en vivo: Carried con
+CarrierUserId, Dropped, GuardCarried y vuelta a Slot; entrega de otro jugador
+con FieldGone y su registro (misma semilla) en el mismo frame, 11 s despues.
+Build, siete compilaciones y 207 regresiones (tres nuevas, dos del PR
+anterior reemplazadas; una existente ajustada: el match es observacion del
+ciclo y un objetivo que sale del alcance sigue con hop): captura propia
+guarda y espera hasta la noche (rejoin, insuficientes, sale de la base),
+otro servidor hace hop, la noche repite; lo lleva otro -> espera, entregado a
+otro -> 3 s de gracia y hop; Dropped/GuardCarried/Slot mantiene objetivo y
+tiempo; 90 s -> hop; cargandolo sin limite y, perdido en el camino (guardia)
+con el huevo aun ahi, otros 90 s y luego hop; objetivo mejor reinicia; duenos
+ilegibles nunca lo dan por perdido; filtros subidos lo ignoran; guardado
+fallido no oculta el match; reporte con matches/capture y cierre capturado.
+Diez mutaciones fallan donde se espera. Potassium, instancia aislada en RAM
+sobre datos reales (57 en campo, 4 propios, 80 de otros): Peacock real ->
+match esperando captura; Skeleton Horse propio -> wait capturado (guardado);
+Lamb de otro -> comprobando y a los 3.5 s hop "lo tomo otro jugador";
+objetivo real de hace 100 s -> hop "no se capturo en 90 s". Bundle candidato
+en la sesion del usuario: carga ok, AUTO activo en wait, filtros intactos.
+
 ## 2026-10-12 - Pool sin servidores que dejaron la lista
 
 Build, siete compilaciones y 204 regresiones (dos nuevas): una pasada que

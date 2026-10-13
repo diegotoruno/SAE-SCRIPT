@@ -1,5 +1,20 @@
 # Contexto del proyecto
 
+## Tras un match, comprobar la captura (2026-10-12)
+
+Reporte real: Skeleton Horse Eternal de 59.2B/s en el cuarto servidor; AUTO
+se apago con el match, el huevo paso a la base del jugador 7 s despues y al
+encender AUTO otra vez la observacion del ciclo hizo 8 saltos hasta la
+noche. El usuario pide que, al encontrar uno, se compruebe si Chilli lo
+capturo: capturado, esperar en ese servidor el nuevo ciclo con AUTO activo
+(puede aparecer otro Eternal); no capturado, buscar otro servidor.
+
+Observado en datos del juego: mientras alguien lo lleva el huevo sigue en el
+campo con `State=Carried` y `CarrierUserId`; puede pasar a `Dropped` y
+`GuardCarried` y volver a `Slot`. Al entregarlo sale del campo y aparece en
+`ReadOwnedEggs()` del dueno con otro Uid, misma especie y `AssetColorSeed`.
+Los dos matches del dia estan en la base del usuario (capturas a 7 y 43 s).
+
 ## Pool sin servidores que ya se llenaron (2026-10-12)
 
 Primer reporte real (Eternal, 11 servidores): 4 de 15 teleports dieron
@@ -207,7 +222,7 @@ La rareza seleccionada es un minimo inclusivo segun Data.Rarity.Rarities/Rank: E
 2. Sin Divine disponible ni observacion guardada de Divine en el ciclo vigente, quedarse en ese servidor y esperar la renovacion.
 3. Al renovarse los huevos, esperar el snapshot nuevo y escanear otra vez. Si no hay Divine, seguir esperando.
 4. Si hay Divine pero ninguno cumple el minimo y los demas filtros, hacer hop y escanear el servidor de destino.
-5. Si cualquier Divine cumple, quedarse, apagar AUTO y mostrar la coincidencia. Chilli permanece activo con sus opciones actuales.
+5. Si cualquier Divine cumple, quedarse con AUTO activo, avisar y comprobar la captura (aclaracion 2026-10-12, reemplaza apagar AUTO). Capturado (aparece en los huevos del jugador): esperar en ese servidor el nuevo ciclo con AUTO. Lo entrega otro jugador, desaparece o no se captura en 90 s: hop para buscar otro. Mientras el jugador lo lleva no hay limite; si lo pierde en el camino y el huevo sigue en el mapa, otros 90 s para recogerlo (aclaracion 2026-10-12: no irse si el huevo sigue ahi). Chilli permanece activo con sus opciones actuales.
 6. Si la noche se reinicia durante los hops, descartar la decision previa, esperar los nuevos datos y repetir el mismo ciclo. **El reset no detiene la busqueda por completo.**
 7. Si se observo Divine disponible y se inicio la busqueda en ese ciclo, su ausencia en otro servidor por robo/recogida no termina la busqueda. Continuar los hops hasta match o hasta empezar la siguiente noche. La observacion no demuestra que el huevo siga disponible en otros servidores.
 8. Persistir esa ventana antes de saltar. Tras una desconexion, recuperar la busqueda con AUTO activo y un reloj/snapshot valido del mismo ciclo. Un Stop manual se conserva; reejecutar en la misma conexion no confirma llegada.
