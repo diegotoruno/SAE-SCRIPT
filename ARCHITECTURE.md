@@ -6,23 +6,35 @@
 la barrera de carga no esta lista; la decision sigue siendo `loading` y el
 match/hop/wait no cambia. En el runtime, con AUTO y la opcion activa
 (`chilli_egg_preferences.json` -> `travel.enabled`, por defecto true), el
-vigilante y la comprobacion previa al hop llaman `maybeTravel`: con `match`
-usa el match y con `loading` el provisional. Una vez por objetivo (`key`) y
-por sesion: lee el registro con `ReadFieldEgg(uid)` (debe seguir en `Slot`),
-sale de la base con PathfindingService hasta 45 studs mas alla de la
-`SeparationLine` a `min(3x WalkSpeed, 1200)` studs/s, y desliza el
-HumanoidRootPart hasta 4 studs del nido a `min(12x WalkSpeed, 2500)` studs/s
-con pasos de 40 studs como maximo. Vigila 12 s: si el servidor lo devuelve
-hacia el inicio reintenta con la mitad de velocidad (3 intentos); si el huevo
-deja de estar en `Slot`, el jugador lo carga o el personaje se mueve a otro
-sitio (Chilli robando) termina sin pelear. No llama remotes ni roba: el robo es
-de Chilli. Apagar AUTO, la opcion o destruir la sesion corta el viaje.
-`support.EggTravel*` contiene los calculos puros (velocidades, paso, punto
-junto al nido, reversion) cubiertos por regresiones. `GetStatus().travel`
-muestra estado, objetivo, intentos, segundos y velocidad. Cada viaje terminado
-se anade a `chilli_egg_travel_log.json` (ultimos 30: hora, JobId, objetivo,
-resultado, motivo, intentos, segundos y velocidad). API `Travel()` y
-`ConfigureTravel({enabled})`; Opciones muestra **TP al huevo**.
+vigilante y la comprobacion previa al hop llaman `eggTravel.maybe`: con
+`match` usa el match y con `loading` el provisional. El bloque vive en su
+propio ambito (`eggTravel`) porque el ambito principal del runtime esta cerca
+del limite de 200 locales del compilador del executor.
+
+Una vez por objetivo (`key`) y por sesion: lee el registro con
+`ReadFieldEgg(uid)` (debe seguir en `Slot`); espera a que el cliente termine
+de cargar (ultimos 10 frames <= 0.5 s y ninguno > 0.25 s; maximo 30 s) porque
+lo movido durante la carga el servidor lo devuelve al punto de aparicion; si
+WalkSpeed es 0 (derribado) espera hasta 10 s. Sale de la base en linea recta
+por el cruce aprendido mas cercano (`chilli_egg_travel_exit.json`, aprendido
+del primer camino de PathfindingService, que al llegar puede tardar segundos)
+a `min(3x WalkSpeed, 1200)` studs/s, y vuela hasta 4 studs del nido: sube 55
+studs sobre el destino, avanza y baja (`EggTravelRoute`), a
+`min(12x WalkSpeed, 4000)` studs/s, con pasos de 80 studs como maximo y solo en
+frames de <= 0.1 s. Un desvio que devuelve al personaje a la base o al inicio
+es una reversion (reintenta a mitad de velocidad, 3 intentos); cualquier otro
+desvio es otro moviendo al personaje (Chilli o el jugador) y termina sin
+pelear. Vigila 12 s tras llegar con el mismo criterio. No llama remotes ni
+roba: el robo es de Chilli. Apagar AUTO, la opcion o destruir la sesion corta
+el viaje.
+
+`support.EggTravel*` contiene los calculos puros (velocidades, paso, frames
+fluidos, cliente listo, ruta de vuelo, salida recta, punto junto al nido,
+reversion) cubiertos por regresiones. `GetStatus().travel` muestra estado,
+objetivo, intentos, segundos y velocidad. Cada viaje terminado se anade a
+`chilli_egg_travel_log.json` (ultimos 30: hora, JobId, objetivo, resultado,
+motivo, intentos, segundos, velocidad y una traza corta de tramos con FPS).
+API `Travel()` y `ConfigureTravel({enabled})`; Opciones muestra **TP al huevo**.
 
 ## Captura del objetivo tras un match (2026-10-12)
 

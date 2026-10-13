@@ -14,6 +14,20 @@ otra forma derriba al personaje. El hopper no carga el huevo ni llama remotes:
 la captura sigue siendo de Chilli y la comprueba el flujo existente. Opcion
 activa por defecto y desactivable en Opciones.
 
+
+Tras las pruebas con hops: esperar a que el cliente termine de cargar en vez
+de moverse antes (lo anterior se pierde) y no esperar flotando sobre las zonas
+(no gano tiempo en ninguna llegada y dejaria al personaje en el aire en cada
+servidor). Volar a altura de crucero como Chilli para no pasar al alcance de
+los guardias. Salida recta por un cruce aprendido en lugar de calcular el
+camino en cada llegada. Si otro mueve al personaje (Chilli robando o el
+jugador) el viaje termina: no se pelea por el control.
+
+
+Se descarto un carril fuera de las areas de guardia: junto a la base los
+muros lo bloquean. Se acepta que ~1 de cada 4 viajes a las zonas del fondo
+quede junto a nidos de Cosmic/Cherry Blossom; el usuario pidio consolidar.
+
 ## Tras un match, AUTO sigue y comprueba la captura (2026-10-12)
 
 Pedido del usuario: capturado, esperar en ese servidor el nuevo ciclo con

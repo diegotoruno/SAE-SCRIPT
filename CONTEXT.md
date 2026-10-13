@@ -21,6 +21,18 @@ studs (carry aceptado). La principal llego de su base a Enchanted Forest
 (~6200 studs) en 2.7-2.9 s sin reversiones. Los hooks de metamethods
 provocaron una expulsion BAC-9333; no usarlos.
 
+
+Pruebas con hops reales en la cuenta principal (pedido del usuario: "al cargar
+el mapa ya este en el huevo"): el personaje aparece en su parcela a ~+9 s del
+autoexec, el snapshot de huevos llega a ~+14-16 s y el cliente va a 1-7 FPS
+mientras carga el mapa. Todo lo movido durante esa carga el servidor lo
+devuelve al punto de aparicion cuando termina, aunque solo se avance en frames
+rapidos; tampoco sirve esperar flotando en las zonas antes del snapshot (el
+cliente nunca estuvo listo antes). PathfindingService justo al llegar tarda
+hasta ~7 s; la salida recta por un cruce aprendido tarda 0.1 s. Pasar junto a
+nidos a ras de suelo puede dejar al personaje derribado (WalkSpeed 0) y
+Chilli, ya activo, lo mueve a sus propios objetivos.
+
 ## Tras un match, comprobar la captura (2026-10-12)
 
 Reporte real: Skeleton Horse Eternal de 59.2B/s en el cuarto servidor; AUTO

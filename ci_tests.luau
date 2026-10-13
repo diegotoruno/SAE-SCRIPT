@@ -2442,12 +2442,57 @@ test("egg travel never jumps more than one step on a frame hitch", function()
     nextPoint, arrived = support.EggTravelStep(to, to, 2500, 1, 40)
     assert(arrived and nextPoint.x == 6000)
 end)
+test("egg travel only advances on smooth frames", function()
+    assert(support.EggTravelSmoothFrame(1 / 60) and support.EggTravelSmoothFrame(0.1))
+    assert(not support.EggTravelSmoothFrame(0.5) and not support.EggTravelSmoothFrame(1.1))
+    assert(not support.EggTravelSmoothFrame(-1) and not support.EggTravelSmoothFrame(0 / 0)
+        and not support.EggTravelSmoothFrame(nil :: any))
+end)
+test("egg travel waits until the client keeps 20 fps without big hitches", function()
+    local frames = {}
+    for _ = 1, 9 do table.insert(frames, 1 / 40) end
+    assert(not support.EggTravelReady(frames))
+    table.insert(frames, 1 / 40)
+    assert(support.EggTravelReady(frames))
+    frames[5] = 0.3
+    assert(not support.EggTravelReady(frames))
+    local slow = {}
+    for _ = 1, 10 do table.insert(slow, 0.06) end
+    assert(not support.EggTravelReady(slow))
+    assert(not support.EggTravelReady(nil) and not support.EggTravelReady({0 / 0}))
+end)
+test("egg travel flies long trips at cruise height and goes direct when close", function()
+    local route = support.EggTravelRoute({x = 600, y = 71, z = -380}, {x = 5660, y = 71, z = -330})
+    assert(#route == 3)
+    assert(route[1].x == 600 and route[1].y == 71 + support.EggTravel.cruise and route[1].z == -380)
+    assert(route[2].x == 5660 and route[2].y == 71 + support.EggTravel.cruise and route[2].z == -330)
+    assert(route[3].y == 71)
+    route = support.EggTravelRoute({x = 5600, y = 126, z = -330}, {x = 5660, y = 71, z = -330})
+    assert(#route == 1 and route[1].x == 5660 and route[1].y == 71)
+end)
 test("egg travel stops beside the nest on the arrival side", function()
     local bottom = {x = 100, y = 67, z = -300}
     local spot = support.EggTravelBeside(bottom, {x = 0, y = 70, z = -300})
     assert(near(spot.x, 96) and near(spot.y, 70) and near(spot.z, -300))
     spot = support.EggTravelBeside(bottom, {x = 100, y = 70, z = -300})
     assert(near(support.EggTravelDistance({x = spot.x, y = 67, z = spot.z}, bottom), 4))
+end)
+test("egg travel leaves the base straight through the nearest learned crossing", function()
+    local exits = {
+        {inside = {x = 549.1, y = 68, z = -385.8}, outside = {x = 552.8, y = 68, z = -384.2}},
+        {inside = {x = 550.7, y = 68, z = -322.2}, outside = {x = 553.7, y = 68, z = -324.8}},
+        {inside = {x = 0 / 0, y = 68, z = 0}, outside = {x = 1, y = 1, z = 1}},
+        "broken",
+    }
+    local look = {x = 1, y = 0, z = 0}
+    local exit = support.EggTravelExit(exits, {x = 465, y = 70, z = -244}, look)
+    assert(near(exit.inside.z, -322.2) and near(exit.inside.y, 68 + support.EggTravel.lift))
+    assert(near(exit.outside.x, 553.7 + 40) and near(exit.outside.z, -324.8))
+    exit = support.EggTravelExit(exits, {x = 523, y = 70, z = -483}, look)
+    assert(near(exit.inside.z, -385.8))
+    assert(support.EggTravelExit({}, {x = 0, y = 0, z = 0}, look) == nil)
+    assert(support.EggTravelExit(nil, {x = 0, y = 0, z = 0}, look) == nil)
+    assert(support.EggTravelExit(exits, {x = 0 / 0, y = 0, z = 0}, look) == nil)
 end)
 test("egg travel tells a server rewind from Chilli or the player moving", function()
     local start, arrived = {x = 600, y = 70, z = -360}, {x = 6700, y = 70, z = -350}

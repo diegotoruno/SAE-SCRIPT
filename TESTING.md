@@ -22,6 +22,38 @@ ausentes; velocidades, paso con tiron de frame, punto junto al nido y
 reversion frente a movimiento ajeno). Un match real con robo de Chilli tras
 el TP queda pendiente de que aparezca el objetivo.
 
+
+Hops reales en la cuenta principal (variante de prueba fuera de Git que, sin
+match, toma el mejor huevo de las zonas elegidas; registro en
+`chilli_egg_travel_log.json` con marcas de tiempo y traza). Hallazgos por orden:
+1) el compilador del executor rechazo el bundle por mas de 200 locales en un
+ambito ("Out of local registers"), que el compilador oficial no detecto: el
+bloque del viaje paso a su propio ambito y cada candidato se compila tambien
+con `loadstring` en Potassium; 2) PathfindingService justo al llegar tardo
+hasta ~7 s: salida recta por cruce aprendido (0.1 s; carry posterior
+aceptado); 3) moverse durante la carga del mapa (1-7 FPS) termina devuelto al
+punto de aparicion; 4) a ras de suelo, derribos junto a nidos (WalkSpeed 0);
+5) a altura, 7 de 27 viajes atrapados junto a nidos de Cosmic y Cherry Blossom
+(las areas de guardia cubren z -440..-288 en todo el pasillo). Con espera de
+cliente listo, vuelo a altura y salida recta, 27 servidores: llegada en 17,
+`moved` en 7 (todas por ese paso sobre Cosmic/Cherry Blossom), 1 reversion, 1
+fallo y 1 huevo ya tomado; snapshot a +14.0-17.0 s del autoexec (mediana
+14.8), personaje junto al huevo a +18.1-22.2 s (mediana 19.6), movimiento real
+1.2-3.3 s (mediana 1.6) una vez listo el cliente. Match real visto en la
+prueba: Skeleton Horse Eternal 15.42B/s en Light Dark, TP junto al nido en
+0.32 s; la variante de prueba hizo hop a los 25 s sin captura de Chilli (fallo
+de la prueba, corregido: la variante ya no salta con match ni Eternal+) y al
+volver el servidor estaba lleno y el ciclo ya se habia renovado.
+
+
+Carril de vuelo fuera de las areas de guardia (z < -440 o > -288) probado en
+7 servidores: 6 terminaron `moved` porque junto a la salida el personaje fue
+empujado contra x~555 (muros `LobbyBoundaries` que siguen fuera de la
+abertura); se retiro y queda el vuelo directo a altura. Limitacion abierta:
+pasar sobre Cosmic y Cherry Blossom puede dejar al personaje junto a sus
+nidos; entonces el viaje termina sin pelear y queda Chilli. Build y 217
+regresiones; candidato compilado con `loadstring` en Potassium.
+
 ## 2026-10-12 - Captura tras un match
 
 Evidencia real: match 22:55:59 UTC, AUTO de false a true 22:57:14 y 8 saltos

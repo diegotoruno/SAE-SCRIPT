@@ -8,6 +8,14 @@ abertura, deslizamiento a <=12x WalkSpeed, tope 2500 studs/s) y Chilli lo
 roba. Opcion en Opciones, activa por defecto. Ver TESTING. Publicacion
 pendiente de decision del usuario.
 
+
+Pruebas con hops reales: espera a que el cliente termine de cargar, salida
+recta por cruce aprendido, vuelo a altura de crucero, desvios ajenos sin pelea
+y carril fuera de las areas de guardia. Espera adelantada retirada (no gano
+tiempo). Autoexec local del PC apunta temporalmente al candidato
+(`sae_egg_tp_candidate.luau`), linea original respaldada en
+verification/egg-tp-autoexec-backup. Ver TESTING.
+
 ## 2026-10-12 - Captura tras un match
 
 Rama codex/match-espera-noche sobre main 2fed20d (build-70 con el pool

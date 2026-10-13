@@ -392,10 +392,45 @@ local function createFinderSupport()
     -- revierte; y un trayecto largo muy por encima de WalkSpeed deja de ser de
     -- confianza ("Movement is not currently trusted") y se revierte hasta 10 s
     -- despues. Se sale a <=3x WalkSpeed por el camino y se viaja a <=12x
-    -- WalkSpeed con tope absoluto, sin pasos de mas de 40 studs por frame.
+    -- WalkSpeed con tope absoluto, sin pasos de mas de 80 studs por frame.
+    -- maxStep: saltos sueltos de 90 studs nunca se revirtieron (136 si), y justo
+    -- al llegar el cliente va a ~1-40 FPS; el paso por frame decide la velocidad real.
+    -- slowFrame: movido a 1-2 FPS (mapa cargando) el servidor devolvio el personaje
+    -- al punto de aparicion; a 39-49 FPS nunca. Solo se avanza en frames fluidos.
     local EGG_TRAVEL = {exitFactor = 3, travelFactor = 12, minSpeed = 16, maxExit = 1200,
-        maxTravel = 2500, maxStep = 40, gap = 4, lift = 3, rewindTolerance = 30}
+        maxTravel = 4000, maxStep = 80, gap = 4, lift = 3, rewindTolerance = 30, slowFrame = 0.1,
+        cruise = 55, directDistance = 120, readyFrames = 10, readyWindow = 0.5, readyHitch = 0.25}
     support.EggTravel = EGG_TRAVEL
+    function support.EggTravelSmoothFrame(dt)
+        return type(dt) == "number" and dt >= 0 and dt <= EGG_TRAVEL.slowFrame
+    end
+    -- Moverse mientras el cliente aun carga el mapa se pierde: al terminar la
+    -- carga el servidor devuelve el personaje al punto de aparicion. Listo = los
+    -- ultimos readyFrames frames suman <= readyWindow s y ninguno pasa de
+    -- readyHitch (>= 20 FPS de media sin tirones grandes).
+    function support.EggTravelReady(recent)
+        if type(recent) ~= "table" or #recent < EGG_TRAVEL.readyFrames then return false end
+        local total = 0
+        for index = #recent - EGG_TRAVEL.readyFrames + 1, #recent do
+            local dt = recent[index]
+            if type(dt) ~= "number" or dt ~= dt or dt < 0 or dt > EGG_TRAVEL.readyHitch then return false end
+            total += dt
+        end
+        return total <= EGG_TRAVEL.readyWindow
+    end
+    -- Los guardias derriban al pasar cerca de los nidos: los trayectos largos van
+    -- a altura de crucero (subir, avanzar, bajar), como hace Chilli. Un carril
+    -- fuera de las areas de guardia (z < -440) choco con los muros de la base.
+    function support.EggTravelRoute(from, dest, cruise)
+        cruise = cruise or EGG_TRAVEL.cruise
+        local dx, dz = dest.x - from.x, dest.z - from.z
+        if math.sqrt(dx * dx + dz * dz) <= EGG_TRAVEL.directDistance then
+            return {{x = dest.x, y = dest.y, z = dest.z}}
+        end
+        local high = math.max(from.y, dest.y + cruise)
+        return {{x = from.x, y = high, z = from.z}, {x = dest.x, y = high, z = dest.z},
+            {x = dest.x, y = dest.y, z = dest.z}}
+    end
     function support.EggTravelSpeeds(walkSpeed, slowdown)
         local valid = type(walkSpeed) == "number" and walkSpeed == walkSpeed and walkSpeed > 0
             and walkSpeed < math.huge
@@ -422,6 +457,28 @@ local function createFinderSupport()
         local flat = math.sqrt(dx * dx + dz * dz)
         if flat < 1e-3 then dx, dz, flat = 1, 0, 1 end
         return {x = bottom.x + dx / flat * gap, y = bottom.y + lift, z = bottom.z + dz / flat * gap}
+    end
+    -- Learned crossings of the base line through its opening. The nearest one
+    -- gives a straight exit: inside point, then 40 studs past the line. Path
+    -- finding right after a server join can block for seconds.
+    local function validPoint(value)
+        return type(value) == "table" and type(value.x) == "number" and type(value.y) == "number"
+            and type(value.z) == "number" and value.x == value.x and value.y == value.y and value.z == value.z
+            and math.abs(value.x) < 1e6 and math.abs(value.y) < 1e6 and math.abs(value.z) < 1e6
+    end
+    function support.EggTravelExit(exits, position, look)
+        if type(exits) ~= "table" or not validPoint(position) or not validPoint(look) then return nil end
+        local best, bestDistance
+        for _, entry in ipairs(exits) do
+            if type(entry) == "table" and validPoint(entry.inside) and validPoint(entry.outside) then
+                local distance = support.EggTravelDistance(entry.inside, position)
+                if not bestDistance or distance < bestDistance then best, bestDistance = entry, distance end
+            end
+        end
+        if not best then return nil end
+        local lift = EGG_TRAVEL.lift
+        return {inside = {x = best.inside.x, y = best.inside.y + lift, z = best.inside.z},
+            outside = {x = best.outside.x + look.x * 40, y = best.outside.y + lift, z = best.outside.z + look.z * 40}}
     end
     function support.EggTravelDistance(a, b)
         local dx, dy, dz = a.x - b.x, a.y - b.y, a.z - b.z
@@ -1775,156 +1832,274 @@ do
     end
 
     -- ------------------------------------------------------------ TP al huevo
-    -- Con AUTO, el primer objetivo (provisional antes de la barrera o match)
-    -- lleva al personaje junto al nido; el robo queda para Chilli. Solo mueve el
-    -- HumanoidRootPart: no llama remotes del juego ni carga el huevo.
-    local PathfindingService = game:GetService("PathfindingService")
-    local RunService = game:GetService("RunService")
-    local TRAVEL_ATTEMPTS = 3
-    local TRAVEL_WATCH_SECONDS = 12
-    local TRAVEL_LOG_FILE = "chilli_egg_travel_log.json"
-    local TRAVEL_LOG_LIMIT = 30
-    local travel = {state = "idle", attempts = 0, done = {}}
-    local function point(vector) return {x = vector.X, y = vector.Y, z = vector.Z} end
-    local function vector(value) return Vector3.new(value.x, value.y, value.z) end
-    local function travelBody()
-        local character = player.Character
-        local root = character and character:FindFirstChild("HumanoidRootPart")
-        local humanoid = character and character:FindFirstChildOfClass("Humanoid")
-        if root and humanoid and humanoid.Health > 0 then return root, humanoid end
-        return nil
-    end
-    local separationLine, guardGeometry
-    local function pastLine(position)
-        if separationLine == nil then
-            local world = workspace:FindFirstChild("World")
-            local areas = world and world:FindFirstChild("Areas")
-            local line = areas and areas:FindFirstChild("SeparationLine")
-            separationLine = (line and line:IsA("BasePart")) and line or false
-            local ok, geometry = pcall(function()
-                return require(game:GetService("ReplicatedStorage").Shared.Util.GuardAreaGeometry)
-            end)
-            guardGeometry = ok and geometry or false
+    -- Todo el viaje vive en un ambito propio: el bloque principal del runtime
+    -- ya esta cerca del limite de 200 locales de Luau.
+    local eggTravel = (function()
+        -- Con AUTO, el primer objetivo (provisional antes de la barrera o match)
+        -- lleva al personaje junto al nido; el robo queda para Chilli. Solo mueve el
+        -- HumanoidRootPart: no llama remotes del juego ni carga el huevo.
+        local PathfindingService = game:GetService("PathfindingService")
+        local RunService = game:GetService("RunService")
+        local TRAVEL_ATTEMPTS = 3
+        local TRAVEL_WATCH_SECONDS = 12
+        local TRAVEL_LOG_FILE = "chilli_egg_travel_log.json"
+        local TRAVEL_LOG_LIMIT = 30
+        local travel = {state = "idle", attempts = 0, done = {}, trace = {}}
+        local travelClock = os.clock()
+        local function point(vector) return {x = vector.X, y = vector.Y, z = vector.Z} end
+        -- Traza corta de cada viaje para el registro: que tramo, desde donde y por que paro.
+        local function note(text)
+            table.insert(travel.trace, string.format("%.2f %s", os.clock() - travelClock, text))
+            while #travel.trace > 24 do table.remove(travel.trace, 1) end
         end
-        if not separationLine then return true end
-        if guardGeometry then
-            local ok, past = pcall(guardGeometry.IsPastLine, separationLine, position)
-            if ok then return past == true end
+        local function where(value)
+            return string.format("(%.0f,%.0f,%.0f)", value.X or value.x, value.Y or value.y, value.Z or value.z)
         end
-        return (position - separationLine.Position):Dot(separationLine.CFrame.LookVector) > 0
-    end
-    local function travelAlive(token)
-        return session.alive and autoEnabled and game.JobId == sessionStartJobId and travel.token == token
-    end
-    -- Desliza el root hasta dest; se detiene si el servidor lo devuelve a mitad.
-    local function glide(root, dest, speed, token)
-        local position, arrived = point(root.Position), false
-        while not arrived do
-            local dt = RunService.Heartbeat:Wait()
-            if not travelAlive(token) or not root.Parent then return false, "interrumpido" end
-            if support.EggTravelDistance(point(root.Position), position) > support.EggTravel.rewindTolerance then
-                return false, "revertido"
+        local function vector(value) return Vector3.new(value.x, value.y, value.z) end
+        local function travelBody()
+            local character = player.Character
+            local root = character and character:FindFirstChild("HumanoidRootPart")
+            local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+            if root and humanoid and humanoid.Health > 0 then return root, humanoid end
+            return nil
+        end
+        local separationLine, guardGeometry
+        local function pastLine(position)
+            if separationLine == nil then
+                local world = workspace:FindFirstChild("World")
+                local areas = world and world:FindFirstChild("Areas")
+                local line = areas and areas:FindFirstChild("SeparationLine")
+                separationLine = (line and line:IsA("BasePart")) and line or false
+                local ok, geometry = pcall(function()
+                    return require(game:GetService("ReplicatedStorage").Shared.Util.GuardAreaGeometry)
+                end)
+                guardGeometry = ok and geometry or false
             end
-            position, arrived = support.EggTravelStep(position, dest, speed, dt, support.EggTravel.maxStep)
-            root.AssemblyLinearVelocity = Vector3.zero
-            root.CFrame = CFrame.new(vector(position)) * root.CFrame.Rotation
+            if not separationLine then return true end
+            if guardGeometry then
+                local ok, past = pcall(guardGeometry.IsPastLine, separationLine, position)
+                if ok then return past == true end
+            end
+            return (position - separationLine.Position):Dot(separationLine.CFrame.LookVector) > 0
         end
-        return true
-    end
-    -- Sale de la base por la abertura, como un jugador: el camino evita los
-    -- muros y el cruce de la linea queda registrado por el servidor.
-    local function leaveBase(root, speed, token)
-        if pastLine(root.Position) or not separationLine then return true end
-        local goal = separationLine.Position + separationLine.CFrame.LookVector * 45
-        local path = PathfindingService:CreatePath({AgentRadius = 2, AgentHeight = 5, AgentCanJump = true})
-        local ok = pcall(function() path:ComputeAsync(root.Position, goal) end)
-        if not ok or path.Status ~= Enum.PathStatus.Success then return false, "sin camino de salida" end
-        for _, waypoint in ipairs(path:GetWaypoints()) do
-            local moved, why = glide(root, point(waypoint.Position + Vector3.new(0, 3, 0)), speed, token)
-            if not moved then return false, why end
+        local function travelAlive(token)
+            return session.alive and autoEnabled and game.JobId == sessionStartJobId and travel.token == token
         end
-        return pastLine(root.Position), "no cruzó la salida"
-    end
-    local function fieldEgg(uid)
-        local eggs = eggSearch.modules and eggSearch.modules.eggs
-        if not eggs then return nil end
-        local ok, record = pcall(eggs.ReadFieldEgg, uid)
-        return ok and record or nil
-    end
-    local function carrying()
-        local eggs = eggSearch.modules and eggSearch.modules.eggs
-        local ok, state = pcall(function() return eggs.ReadCarryState() end)
-        return ok and type(state) == "table" and state.IsCarrying == true
-    end
-    local function travelOnce(target, token)
-        local record = fieldEgg(target.uid)
-        if not record or record.State ~= "Slot" then return "gone" end
-        local root, humanoid = travelBody()
-        if not root then return "failed", "sin personaje" end
-        local exitSpeed, travelSpeed = support.EggTravelSpeeds(humanoid.WalkSpeed, 2 ^ travel.attempts)
-        travel.speed = travelSpeed
-        local left, why = leaveBase(root, exitSpeed, token)
-        if not left then return why == "revertido" and "rewound" or "failed", why end
-        local start = point(root.Position)
-        local bottom = record.BottomCFrame.Position
-        local dest = support.EggTravelBeside(point(bottom), start)
-        local moved, reason = glide(root, dest, travelSpeed, token)
-        if not moved then return reason == "revertido" and "rewound" or "failed", reason end
-        root.CFrame = CFrame.lookAt(vector(dest), Vector3.new(bottom.X, dest.y, bottom.Z))
-        travel.arrivedAt = os.clock()
-        -- El servidor puede revertir el trayecto varios segundos despues.
-        local deadline = os.clock() + TRAVEL_WATCH_SECONDS
-        while os.clock() < deadline do
-            task.wait(0.2)
-            if not travelAlive(token) then return "stopped" end
-            local current = fieldEgg(target.uid)
-            if not current or current.State ~= "Slot" or carrying() then return "arrived" end
-            root = travelBody()
+        -- Desliza el root hasta dest; se detiene si el servidor lo devuelve a mitad.
+        local function glide(root, dest, speed, token)
+            local position, arrived, first = point(root.Position), false, true
+            local began, frames, slow = os.clock(), 0, 0
+            local humanoid = root.Parent and root.Parent:FindFirstChildOfClass("Humanoid")
+            local function summary(label)
+                local elapsed = os.clock() - began
+                note(string.format("%s %.0f studs/s ws=%.0f %d frames (%d lentos) %.1f fps", label, speed,
+                    humanoid and humanoid.WalkSpeed or -1, frames, slow, frames / math.max(elapsed, 1e-3)))
+            end
+            while not arrived do
+                local dt = RunService.Heartbeat:Wait()
+                frames += 1
+                if not travelAlive(token) or not root.Parent then return false, "interrumpido" end
+                -- Mientras el cliente va lento (mapa cargando) no se avanza.
+                if not support.EggTravelSmoothFrame(dt) then slow += 1; continue end
+                -- El primer frame se sincroniza: otro tramo pudo mover el root justo antes.
+                if first then position, first = point(root.Position), false end
+                local actual = point(root.Position)
+                local deviation = support.EggTravelDistance(actual, position)
+                if deviation > support.EggTravel.rewindTolerance then
+                    summary("tramo cortado")
+                    note(string.format("desvio %.0f en %s (fijado %s)", deviation, where(actual), where(position)))
+                    return false, "revertido"
+                end
+                position, arrived = support.EggTravelStep(position, dest, speed, dt, support.EggTravel.maxStep)
+                root.AssemblyLinearVelocity = Vector3.zero
+                root.CFrame = CFrame.new(vector(position)) * root.CFrame.Rotation
+            end
+            summary("tramo")
+            return true
+        end
+        -- Sale de la base por la abertura, como un jugador: el camino evita los
+        -- muros y el cruce de la linea queda registrado por el servidor.
+        -- Cruces aprendidos de la abertura: el mismo mapa en todos los servidores.
+        local EXIT_FILE = "chilli_egg_travel_exit.json"
+        local exits = readJson(EXIT_FILE, {})
+        exits = type(exits) == "table" and exits or {}
+        local function learnExit(waypoints)
+            for index = 2, #waypoints do
+                local before, after = waypoints[index - 1].Position, waypoints[index].Position
+                if not pastLine(before) and pastLine(after) then
+                    local entry = {inside = point(before), outside = point(after)}
+                    for _, known in ipairs(exits) do
+                        if type(known) == "table" and type(known.inside) == "table" and type(known.inside.x) == "number"
+                            and support.EggTravelDistance(known.inside, entry.inside) < 15 then return end
+                    end
+                    table.insert(exits, entry)
+                    while #exits > 8 do table.remove(exits, 1) end
+                    writeJson(EXIT_FILE, exits)
+                    return
+                end
+            end
+        end
+        local function leaveBase(root, speed, token)
+            if pastLine(root.Position) or not separationLine then return true end
+            -- Recto por un cruce conocido; el camino calculado queda de respaldo
+            -- porque justo al llegar a un servidor puede tardar varios segundos.
+            local exit = support.EggTravelExit(exits, point(root.Position), point(separationLine.CFrame.LookVector))
+            if exit then
+                note("salida recta desde " .. where(root.Position))
+                local moved, why = glide(root, exit.inside, speed, token)
+                if moved then moved, why = glide(root, exit.outside, speed, token) end
+                if moved and pastLine(root.Position) then note("fuera " .. where(root.Position)); return true end
+                note("salida recta fallo: " .. tostring(why))
+                if why == "interrumpido" then return false, why end
+            end
+            note("salida por camino calculado")
+            local goal = separationLine.Position + separationLine.CFrame.LookVector * 45
+            local path = PathfindingService:CreatePath({AgentRadius = 2, AgentHeight = 5, AgentCanJump = true})
+            local ok = pcall(function() path:ComputeAsync(root.Position, goal) end)
+            if not ok or path.Status ~= Enum.PathStatus.Success then return false, "sin camino de salida" end
+            local waypoints = path:GetWaypoints()
+            learnExit(waypoints)
+            for _, waypoint in ipairs(waypoints) do
+                local moved, why = glide(root, point(waypoint.Position + Vector3.new(0, 3, 0)), speed, token)
+                if not moved then return false, why end
+            end
+            return pastLine(root.Position), "no cruzó la salida"
+        end
+        local function fieldEgg(uid)
+            local eggs = eggSearch.modules and eggSearch.modules.eggs
+            if not eggs then return nil end
+            local ok, record = pcall(eggs.ReadFieldEgg, uid)
+            return ok and record or nil
+        end
+        local function carrying()
+            local eggs = eggSearch.modules and eggSearch.modules.eggs
+            local ok, state = pcall(function() return eggs.ReadCarryState() end)
+            return ok and type(state) == "table" and state.IsCarrying == true
+        end
+        -- Antes del primer movimiento de la sesion: el cliente debe haber terminado
+        -- de cargar (racha de frames rapidos); lo movido antes se pierde.
+        local function waitClientReady(token)
+            if travel.clientReady then return travelAlive(token) end
+            local recent, deadline = {}, os.clock() + 30
+            while travelAlive(token) and os.clock() < deadline do
+                table.insert(recent, RunService.Heartbeat:Wait())
+                if #recent > support.EggTravel.readyFrames then table.remove(recent, 1) end
+                if support.EggTravel and support.EggTravelReady(recent) then
+                    travel.clientReady = true
+                    note("cliente listo")
+                    return true
+                end
+            end
+            if travelAlive(token) then travel.clientReady = true; note("cliente listo por tiempo") end
+            return travelAlive(token)
+        end
+        -- Derribado por un guardia (WalkSpeed 0): esperar a que se levante.
+        local function waitStanding(humanoid, token)
+            if humanoid.WalkSpeed > 0 then return true end
+            note("derribado: esperando")
+            local deadline = os.clock() + 10
+            while travelAlive(token) and humanoid.Parent and humanoid.WalkSpeed <= 0 and os.clock() < deadline do
+                task.wait(0.1)
+            end
+            return travelAlive(token) and humanoid.WalkSpeed > 0
+        end
+        -- Trayecto largo a altura de crucero; los cortos van directo.
+        local function fly(root, dest, speed, token)
+            for _, waypoint in ipairs(support.EggTravelRoute(point(root.Position), dest)) do
+                local moved, why = glide(root, waypoint, speed, token)
+                if not moved then return false, why end
+            end
+            return true
+        end
+        local function travelOnce(target, token)
+            local record = fieldEgg(target.uid)
+            if not record or record.State ~= "Slot" then return "gone" end
+            local root, humanoid = travelBody()
             if not root then return "failed", "sin personaje" end
-            local outcome = support.EggTravelOutcome(point(root.Position), dest, start)
-            if outcome == "rewound" then return "rewound", "revertido por el servidor" end
-            if outcome == "moved" then return "arrived" end
+            if not waitClientReady(token) then return "stopped" end
+            if not waitStanding(humanoid, token) then return "failed", "derribado" end
+            local exitSpeed, travelSpeed = support.EggTravelSpeeds(humanoid.WalkSpeed, 2 ^ travel.attempts)
+            travel.speed = travelSpeed
+            note(string.format("viaje a %s desde %s (intento %d)", tostring(target.name), where(root.Position), travel.attempts + 1))
+            local origin = point(root.Position)
+            -- Un desvio que vuelve al inicio o a la base es una reversion; si deja el
+            -- personaje en otro sitio lo movio otro (Chilli o el jugador): no se pelea.
+            local function deviated(why, anchor)
+                if why ~= "revertido" then return "failed", why end
+                local current = travelBody()
+                if not current then return "failed", "sin personaje" end
+                local now = point(current.Position)
+                if not pastLine(current.Position) or support.EggTravelDistance(now, origin) < 60
+                    or (anchor and support.EggTravelDistance(now, anchor) < 60) then
+                    return "rewound", why
+                end
+                note("movido por otro a " .. where(now))
+                return "moved", "movido por otro"
+            end
+            local left, why = leaveBase(root, exitSpeed, token)
+            if not left then return deviated(why) end
+            local start = point(root.Position)
+            local bottom = record.BottomCFrame.Position
+            local dest = support.EggTravelBeside(point(bottom), start)
+            local moved, reason = fly(root, dest, travelSpeed, token)
+            if not moved then return deviated(reason, start) end
+            root.CFrame = CFrame.lookAt(vector(dest), Vector3.new(bottom.X, dest.y, bottom.Z))
+            travel.arrivedAt = os.clock()
+            -- El servidor puede revertir el trayecto varios segundos despues.
+            local deadline = os.clock() + TRAVEL_WATCH_SECONDS
+            while os.clock() < deadline do
+                task.wait(0.2)
+                if not travelAlive(token) then return "stopped" end
+                local current = fieldEgg(target.uid)
+                if not current or current.State ~= "Slot" or carrying() then return "arrived" end
+                root = travelBody()
+                if not root then return "failed", "sin personaje" end
+                local outcome = support.EggTravelOutcome(point(root.Position), dest, start)
+                if outcome == "rewound" then return "rewound", "revertido por el servidor" end
+                if outcome == "moved" then return "arrived" end
+            end
+            return "arrived"
         end
-        return "arrived"
-    end
-    local function startTravel(target)
-        if not preferences.travel.enabled or not target or not target.uid or not target.key then return end
-        if travel.done[target.key] or (travel.state == "moving" and travel.key == target.key) then return end
-        travel.token = {}
-        local token = travel.token
-        travel.key, travel.name, travel.state, travel.attempts, travel.reason = target.key, target.name, "moving", 0, nil
-        travel.startedAt = os.clock()
-        task.spawn(function()
-            local result, reason
-            repeat
-                local ok, outcome, why = pcall(travelOnce, target, token)
-                if ok then result, reason = outcome, why else result, reason = "failed", tostring(outcome) end
-                if result == "rewound" then travel.attempts += 1 end
-            until result ~= "rewound" or travel.attempts >= TRAVEL_ATTEMPTS or not travelAlive(token)
-            if travel.token ~= token then return end
-            travel.state, travel.reason = result, reason
-            travel.seconds = travel.arrivedAt and travel.arrivedAt - travel.startedAt or nil
-            if result ~= "stopped" then travel.done[target.key] = true end
-            print(string.format("[EggSearch] TP %s %s | %s%s", tostring(target.name), result,
-                travel.seconds and string.format("%.2f s", travel.seconds) or "-",
-                reason and (" | " .. tostring(reason)) or ""))
-            -- La consola se pierde en cada teleport: los ultimos viajes quedan en
-            -- un archivo junto al reporte de busquedas.
-            local entries = readJson(TRAVEL_LOG_FILE, {})
-            entries = type(entries) == "table" and entries or {}
-            table.insert(entries, {at = os.time(), job = game.JobId, name = target.name, key = target.key,
-                area = target.area, result = result, reason = reason, attempts = travel.attempts,
-                seconds = travel.seconds, speed = travel.speed})
-            while #entries > TRAVEL_LOG_LIMIT do table.remove(entries, 1) end
-            writeJson(TRAVEL_LOG_FILE, entries)
-        end)
-    end
-    -- Antes de la barrera solo se usa un objetivo provisional; con match, el match.
-    local function maybeTravel(mode, match, info)
-        if mode == "match" then startTravel(match)
-        elseif mode == "loading" and info then startTravel(info.provisional) end
-    end
-    session.DisposeTravel = function() travel.token = nil end
+        local function startTravel(target)
+            if not preferences.travel.enabled or not target or not target.uid or not target.key then return end
+            if travel.done[target.key] or (travel.state == "moving" and travel.key == target.key) then return end
+            travel.token = {}
+            local token = travel.token
+            travel.key, travel.name, travel.state, travel.attempts, travel.reason = target.key, target.name, "moving", 0, nil
+            travel.startedAt, travel.arrivedAt, travel.seconds = os.clock(), nil, nil
+            task.spawn(function()
+                local result, reason
+                repeat
+                    local ok, outcome, why = pcall(travelOnce, target, token)
+                    if ok then result, reason = outcome, why else result, reason = "failed", tostring(outcome) end
+                    if result == "rewound" then travel.attempts += 1 end
+                until result ~= "rewound" or travel.attempts >= TRAVEL_ATTEMPTS or not travelAlive(token)
+                if travel.token ~= token then return end
+                travel.state, travel.reason = result, reason
+                travel.seconds = travel.arrivedAt and travel.arrivedAt - travel.startedAt or nil
+                if result ~= "stopped" then travel.done[target.key] = true end
+                print(string.format("[EggSearch] TP %s %s | %s%s", tostring(target.name), result,
+                    travel.seconds and string.format("%.2f s", travel.seconds) or "-",
+                    reason and (" | " .. tostring(reason)) or ""))
+                -- La consola se pierde en cada teleport: los ultimos viajes quedan en
+                -- un archivo junto al reporte de busquedas.
+                local entries = readJson(TRAVEL_LOG_FILE, {})
+                entries = type(entries) == "table" and entries or {}
+                table.insert(entries, {at = os.time(), job = game.JobId, name = target.name, key = target.key,
+                    area = target.area, result = result, reason = reason, attempts = travel.attempts,
+                    seconds = travel.seconds, speed = travel.speed, trace = table.clone(travel.trace)})
+                while #entries > TRAVEL_LOG_LIMIT do table.remove(entries, 1) end
+                writeJson(TRAVEL_LOG_FILE, entries)
+            end)
+        end
+        -- Antes de la barrera solo se usa un objetivo provisional; con match, el match.
+        local function maybeTravel(mode, match, info)
+            if mode == "match" then startTravel(match)
+            elseif mode == "loading" and info then startTravel(info.provisional) end
+        end
+        session.DisposeTravel = function() travel.token = nil end
+        return {state = travel, maybe = maybeTravel, cancel = function() travel.token = nil end}
+    end)()
     local function verifyMapBeforeHop(server)
         local match, info, _, rows = eggSearch.Scan(true)
         local cycle = eggSearch.CycleStatus()
@@ -1933,7 +2108,7 @@ do
         report("ReportHopCheck", mode, info, rows, game.JobId, server and server.id, os.time(), server)
         setSearchMode(mode)
         noteEggTarget(mode, match, info)
-        maybeTravel(mode, match, info)
+        eggTravel.maybe(mode, match, info)
         if mode == "match" then setBusy(false); showEggTarget(match, info) end
         return mode == "hop"
     end
@@ -1989,7 +2164,7 @@ do
                 nextValue.travel[key] = value
             end
             savePreferences(nextValue)
-            if not nextValue.travel.enabled then travel.token = nil end
+            if not nextValue.travel.enabled then eggTravel.cancel() end
             return support.Copy(nextValue.travel)
         end,
         Start = function()
@@ -2007,8 +2182,9 @@ do
                     match = support.Copy(eggSearch.lastScan.match), info = support.Copy(eggSearch.lastScan.info),
                     matches = support.Copy(eggSearch.lastScan.matches), revision = eggSearch.lastScan.revision },
                 stats = support.Copy(eggSearch.stats), teleport = session.attempt and session.attempt.state,
-                travel = {enabled = preferences.travel.enabled, state = travel.state, target = travel.name,
-                    attempts = travel.attempts, seconds = travel.seconds, speed = travel.speed, reason = travel.reason},
+                travel = {enabled = preferences.travel.enabled, state = eggTravel.state.state,
+                    target = eggTravel.state.name, attempts = eggTravel.state.attempts,
+                    seconds = eggTravel.state.seconds, speed = eggTravel.state.speed, reason = eggTravel.state.reason},
                 searchWindow = eggSearch.SearchWindow() }
         end,
     }
@@ -2577,7 +2753,7 @@ do
                     report("ReportDecision", mode, match, info, rows, cycle, game.JobId, os.time())
                     setSearchMode(mode)
                     noteEggTarget(mode, match, info)
-                    maybeTravel(mode, match, info)
+                    eggTravel.maybe(mode, match, info)
                     local revision = cycle and cycle.fieldRevision
                     local period = cycle and cycle.periodIndex
                     if mode ~= lastMode or revision ~= lastRevision or period ~= lastPeriod then
