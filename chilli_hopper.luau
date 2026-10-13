@@ -158,6 +158,25 @@ local function createMapEggSearch(readJson, writeJson, writeText)
     function search.SearchWindow()
         return copyInputs(remembered)
     end
+    -- Best egg of the last cycle that ended, for information only. It outlives
+    -- the window (which is cleared at the night) in its own file and never
+    -- takes part in a decision.
+    local PREVIOUS_FILE = "chilli_egg_search_previous.json"
+    local previous = readJson(PREVIOUS_FILE, {})
+    if type(previous) ~= "table" then previous = {} end
+    local function validBest(best)
+        return type(best) == "table" and type(best.key) == "string" and type(best.category) == "string"
+            and finite(best.income)
+    end
+    local function archive(window)
+        if type(window) ~= "table" or window.version ~= 2 or not validBest(window.best)
+            or not finite(window.periodIndex) then return end
+        if finite(previous.periodIndex) and previous.periodIndex > window.periodIndex then return end
+        local record = {version = 1, rarity = window.rarity, zones = copyInputs(window.zones),
+            periodIndex = window.periodIndex, best = copyInputs(window.best)}
+        local ok, saved = pcall(writeJson, PREVIOUS_FILE, record)
+        if ok and saved then previous = record end
+    end
 
     local incomeCache = {}
     local analysisKey, analysisResult
@@ -577,6 +596,25 @@ local function createMapEggSearch(readJson, writeJson, writeText)
             mutations = table.clone(top.mutations or {}), baseMutation = top.baseMutation,
             job = game.JobId, at = at}
     end
+    -- Best egg of the cycle that just ended, same rarity and zones, or nil.
+    -- Only the immediately preceding cycle counts (or the ending one during the
+    -- night); an older record would claim something false.
+    function search.BestPrevious(cycle)
+        if cycle == nil then cycle = search.CycleStatus() end
+        if not clockKnown(cycle) then return nil end
+        local wanted = string.lower(search.config.rarity)
+        local function adjacent(record)
+            return type(record) == "table" and record.rarity == wanted
+                and sameInputs(record.zones, search.config.zones) and validBest(record.best)
+                and finite(record.periodIndex)
+                and (record.periodIndex == cycle.periodIndex - 1
+                    or (cycle.night and record.periodIndex == cycle.periodIndex))
+        end
+        -- A window the night closed that was not archived yet (AUTO was off).
+        local record = remembered.version == 2 and adjacent(remembered) and remembered
+            or adjacent(previous) and previous or nil
+        return record and copyInputs(record.best) or nil
+    end
     -- Best in-scope egg seen so far in the current cycle (any server), or nil
     -- when there is none or the saved window does not belong to this cycle.
     function search.BestSeen(cycle)
@@ -612,6 +650,7 @@ local function createMapEggSearch(readJson, writeJson, writeText)
         if not valid and next(remembered) ~= nil then
             -- No clock means we cannot validate or expire the saved cycle yet.
             if not clockKnown(cycle) or cycle.running ~= true then return "loading" end
+            archive(remembered)
             if not saveWindow({}) then info.reason = "no se pudo cerrar la búsqueda del ciclo anterior"; return "loading" end
         end
         if not cycleReady(cycle) or not info.ready then return "loading" end
@@ -1738,7 +1777,10 @@ local function mountEggFilterPanel(context)
         gone = "MEJOR DEL CICLO · ya no está en este servidor",
         other = "MEJOR DEL CICLO · visto en otro servidor",
         seen = "MEJOR DEL CICLO · visto antes en este servidor",
+        previous = "ÚLTIMO DEL CICLO ANTERIOR · ya no existe",
     }
+    -- The previous cycle's egg is information only: muted, never gold.
+    local function bestColor(row) return row.best == "previous" and C.muted or C.gold end
     local function detail(row)
         access()
         local card = sheet("EggDetail", row.name, 120, row.best and 442 or 400)
@@ -1751,7 +1793,7 @@ local function mountEggFilterPanel(context)
         corner(verdict); stroke(verdict, row.match and C.green or C.border)
         text("Text", verdict, row.best and BEST_TEXT[row.best] or row.match and "Cumple todos los filtros"
             or "No cumple: " .. string.lower(row.reason),
-            14, 0, CONTENT - 64, 40, row.best and C.gold or row.match and C.green or C.white, 13, true)
+            14, 0, CONTENT - 64, 40, row.best and bestColor(row) or row.match and C.green or C.white, 13, true)
         local value = row.income and string.format("%.17g", row.income) .. "/s" or "No disponible"
         local facts = {
             {"Ingreso", row.income and number(row.income) .. "/s" or "No disponible"},
@@ -1806,13 +1848,13 @@ local function mountEggFilterPanel(context)
         entry.key = key; panel.stats.updated += 1
         entry.card.Name = "Card_" .. row.uid
         entry.card.BackgroundColor3 = row.match and C.success or C.card
-        entry.border.Color = row.best and C.gold or row.match and C.green or C.border
-        entry.border.Thickness = (row.match or row.best) and 1.5 or 1
+        entry.border.Color = row.best == "previous" and C.border or row.best and C.gold or row.match and C.green or C.border
+        entry.border.Thickness = (row.match or (row.best and row.best ~= "previous")) and 1.5 or 1
         entry.name.Text = row.name; entry.name.TextColor3 = C.white
         entry.income.Text = (row.income and number(row.income) or "?") .. "/s"
-        entry.income.TextColor3 = row.match and C.green or row.best and C.gold or C.white
+        entry.income.TextColor3 = row.match and C.green or row.best and bestColor(row) or C.white
         entry.weight.Text = row.best and BEST_TEXT[row.best] or string.format("x%.2f  ·  %s", row.scale or 1, row.weight)
-        entry.weight.TextColor3 = row.best and C.gold or C.muted
+        entry.weight.TextColor3 = row.best and bestColor(row) or C.muted
         entry.weight.Font = row.best and Enum.Font.GothamBold or Enum.Font.GothamMedium
         entry.tags.Text = string.format('<font color="%s"><b>%s</b></font>  ·  %s  ·  %s',
             hex(rarityColor(row.catalog and row.catalog.Rarity)), escape(row.rarity), escape(row.mutations), escape(zoneName(row.area)))
@@ -1900,22 +1942,25 @@ local function mountEggFilterPanel(context)
             end
         end
         -- The reminder joins "Cumplen" when the egg is not on this map anymore.
-        local remembered = bestSeen ~= nil and onlyMatches and not bestHere
-            and modules.assets.Directory[bestSeen.category] or nil
+        -- Without a best egg in this cycle, the last cycle's best is shown muted.
+        local previousBest = bestSeen == nil and onlyMatches and search.BestPrevious() or nil
+        local shown = (bestSeen ~= nil and not bestHere) and bestSeen or previousBest
+        local remembered = shown ~= nil and onlyMatches and modules.assets.Directory[shown.category] or nil
         if remembered then
             local uid = "best-seen"
             active[uid] = true
-            local egg = {AssetCategory = bestSeen.category, AssetScale = bestSeen.scale, AreaId = bestSeen.area,
-                BaseMutation = bestSeen.baseMutation, Mutations = bestSeen.mutations}
+            local egg = {AssetCategory = shown.category, AssetScale = shown.scale, AreaId = shown.area,
+                BaseMutation = shown.baseMutation, Mutations = shown.mutations}
             local row = metadata[uid]
-            local key = "best:" .. bestSeen.key
+            local key = (previousBest and "previous:" or "best:") .. shown.key
             if not row or row.key ~= key or row.labelModule ~= data.mutations then
-                row = describe(uid, key, egg, remembered, bestSeen.income)
+                row = describe(uid, key, egg, remembered, shown.income)
                 metadata[uid] = row
             end
-            local ok, reason = pcall(search.Explain, egg, remembered, bestSeen.income)
-            row.income, row.match, row.reason = bestSeen.income, false, ok and reason or "Datos de especie no disponibles"
-            row.best = bestSeen.job ~= game.JobId and "other" or snapshot.info.ready and "gone" or "seen"
+            local ok, reason = pcall(search.Explain, egg, remembered, shown.income)
+            row.income, row.match, row.reason = shown.income, false, ok and reason or "Datos de especie no disponibles"
+            row.best = previousBest and "previous" or shown.job ~= game.JobId and "other"
+                or snapshot.info.ready and "gone" or "seen"
             table.insert(rows, row); table.insert(fingerprints, row.uid .. row.key .. tostring(row.income) .. row.reason .. row.best)
         end
         for id in pairs(metadata) do if not active[id] then metadata[id] = nil end end
