@@ -516,8 +516,12 @@ local function mountEggFilterPanel(context)
         gone = "MEJOR DEL CICLO · ya no está en este servidor",
         other = "MEJOR DEL CICLO · visto en otro servidor",
         seen = "MEJOR DEL CICLO · visto antes en este servidor",
-        previous = "ÚLTIMO DEL CICLO ANTERIOR · ya no existe",
     }
+    local function bestText(row)
+        if row.best ~= "previous" then return BEST_TEXT[row.best] end
+        if (row.age or 1) <= 1 then return "ÚLTIMO DEL CICLO ANTERIOR · ya no existe" end
+        return string.format("ÚLTIMO VISTO HACE %d CICLOS · ya no existe", row.age)
+    end
     -- The previous cycle's egg is information only: muted, never gold.
     local function bestColor(row) return row.best == "previous" and C.muted or C.gold end
     local function detail(row)
@@ -530,7 +534,7 @@ local function mountEggFilterPanel(context)
         local verdict = make("Frame", "Verdict", card, { Position = UDim2.fromOffset(18, 74), Size = UDim2.fromOffset(CONTENT - 36, 40),
             BackgroundColor3 = row.match and C.success or C.card, BorderSizePixel = 0 })
         corner(verdict); stroke(verdict, row.match and C.green or C.border)
-        text("Text", verdict, row.best and BEST_TEXT[row.best] or row.match and "Cumple todos los filtros"
+        text("Text", verdict, row.best and bestText(row) or row.match and "Cumple todos los filtros"
             or "No cumple: " .. string.lower(row.reason),
             14, 0, CONTENT - 64, 40, row.best and bestColor(row) or row.match and C.green or C.white, 13, true)
         local value = row.income and string.format("%.17g", row.income) .. "/s" or "No disponible"
@@ -582,7 +586,7 @@ local function mountEggFilterPanel(context)
         access(); entry.row = row
         entry.card.LayoutOrder = index; entry.card.Position = UDim2.fromOffset(0, (index - 1) * (ROW_HEIGHT + ROW_GAP))
         local key = row.key .. tostring(row.match) .. row.reason .. row.mutations
-            .. tostring(row.weight) .. tostring(row.eggIcon) .. visual .. tostring(row.best)
+            .. tostring(row.weight) .. tostring(row.eggIcon) .. visual .. tostring(row.best) .. tostring(row.age)
         if entry.key == key and (visual ~= "models" or entry.viewport or not data.assetModels) then return end
         entry.key = key; panel.stats.updated += 1
         entry.card.Name = "Card_" .. row.uid
@@ -592,7 +596,7 @@ local function mountEggFilterPanel(context)
         entry.name.Text = row.name; entry.name.TextColor3 = C.white
         entry.income.Text = (row.income and number(row.income) or "?") .. "/s"
         entry.income.TextColor3 = row.match and C.green or row.best and bestColor(row) or C.white
-        entry.weight.Text = row.best and BEST_TEXT[row.best] or string.format("x%.2f  ·  %s", row.scale or 1, row.weight)
+        entry.weight.Text = row.best and bestText(row) or string.format("x%.2f  ·  %s", row.scale or 1, row.weight)
         entry.weight.TextColor3 = row.best and bestColor(row) or C.muted
         entry.weight.Font = row.best and Enum.Font.GothamBold or Enum.Font.GothamMedium
         entry.tags.Text = string.format('<font color="%s"><b>%s</b></font>  ·  %s  ·  %s',
@@ -681,8 +685,10 @@ local function mountEggFilterPanel(context)
             end
         end
         -- The reminder joins "Cumplen" when the egg is not on this map anymore.
-        -- Without a best egg in this cycle, the last cycle's best is shown muted.
-        local previousBest = bestSeen == nil and onlyMatches and search.BestPrevious() or nil
+        -- Without a best egg in this cycle, the last one seen in an earlier
+        -- cycle stays, muted, until a newer in-scope egg replaces it.
+        local previousBest, previousAge
+        if bestSeen == nil and onlyMatches then previousBest, previousAge = search.BestPrevious() end
         local shown = (bestSeen ~= nil and not bestHere) and bestSeen or previousBest
         local remembered = shown ~= nil and onlyMatches and modules.assets.Directory[shown.category] or nil
         if remembered then
@@ -698,9 +704,10 @@ local function mountEggFilterPanel(context)
             end
             local ok, reason = pcall(search.Explain, egg, remembered, shown.income)
             row.income, row.match, row.reason = shown.income, false, ok and reason or "Datos de especie no disponibles"
+            row.age = previousBest and previousAge or nil
             row.best = previousBest and "previous" or shown.job ~= game.JobId and "other"
                 or snapshot.info.ready and "gone" or "seen"
-            table.insert(rows, row); table.insert(fingerprints, row.uid .. row.key .. tostring(row.income) .. row.reason .. row.best)
+            table.insert(rows, row); table.insert(fingerprints, row.uid .. row.key .. tostring(row.income) .. row.reason .. row.best .. tostring(row.age))
         end
         for id in pairs(metadata) do if not active[id] then metadata[id] = nil end end
         local key = table.concat(fingerprints, "|")

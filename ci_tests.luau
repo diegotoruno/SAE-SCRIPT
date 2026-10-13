@@ -659,16 +659,25 @@ test("last cycle's best egg is kept for information and replaced by nothing it c
     -- Seeing an egg in the new cycle makes a current best; the old one never wins a decision.
     assert(decideCycle(finder, {egg("n", 5e9)}, 330) == "hop")
     assert(finder.BestSeen(cycle(331)).income == 5e9 and finder.BestPrevious(cycle(331)).income == 6e9)
-    -- Two cycles later it is no longer "the previous one".
-    assert(finder.BestPrevious(cycle(601)).income == 5e9, "the stale window of the newer cycle")
-    assert(finder.BestPrevious(cycle(901)) == nil)
+    -- It stays for any number of cycles and says how old it is, until a newer one replaces it.
+    local kept, age = finder.BestPrevious(cycle(601))
+    assert(kept.income == 5e9 and age == 1, "the stale window of the newer cycle")
+    local _, ages = finder.BestPrevious(cycle(901)); assert(ages == 2)
+    assert(decideCycle(finder, {}, 901) == "wait")
+    local archived, archivedAge = finder.BestPrevious(cycle(902))
+    assert(archived.income == 5e9 and archivedAge == 2 and files["chilli_egg_search_previous.json"].periodIndex == 1)
+    assert(finder.BestPrevious(cycle(100)) == nil, "never a cycle that has not ended")
+    assert(decideCycle(finder, {egg("fresh", 2e9)}, 910) == "hop")
+    assert(finder.BestSeen(cycle(911)).income == 2e9 and select(2, finder.BestPrevious(cycle(1201))) == 1)
+    assert(finder.BestPrevious(cycle(1201)).income == 2e9, "the newer cycle replaced it once it closed")
 end)
 test("last cycle's best egg follows rarity and zones and tolerates a missed night", function()
     local files, read, write = memoryStore(); local finder = cycleFactory(read, write)
     assert(decideCycle(finder, {egg("a", 6e9)}, 100) == "hop")
     -- AUTO was off over the night: the stale window itself is read, nothing archived yet.
     assert(finder.BestPrevious(cycle(301)).income == 6e9 and files["chilli_egg_search_previous.json"] == nil)
-    assert(finder.BestPrevious(cycle(601)) == nil, "a window two periods old is not the previous cycle")
+    local old, oldAge = finder.BestPrevious(cycle(601))
+    assert(old.income == 6e9 and oldAge == 2, "an old stale window is still the last one seen")
     assert(decideCycle(finder, {}, 301) == "wait")
     assert(finder.BestPrevious(cycle(302)).income == 6e9)
     -- The archive belongs to its rarity and zones: other scopes never see it.
