@@ -510,9 +510,16 @@ local function mountEggFilterPanel(context)
         ["Zona excluida"] = "Otra zona", ["Nombre distinto"] = "Otro nombre",
         ["Falta la mutación elegida"] = "Sin mutación", ["Ingreso inferior al mínimo"] = "Ingreso bajo",
     }
+    -- Best egg of the cycle: the explicit message says where it is now.
+    local BEST_TEXT = {
+        here = "MEJOR DEL CICLO · está en este servidor",
+        gone = "MEJOR DEL CICLO · ya no está en este servidor",
+        other = "MEJOR DEL CICLO · visto en otro servidor",
+        seen = "MEJOR DEL CICLO · visto antes en este servidor",
+    }
     local function detail(row)
         access()
-        local card = sheet("EggDetail", row.name, 120, 400)
+        local card = sheet("EggDetail", row.name, 120, row.best and 442 or 400)
         local tags = text("Tags", card, "", 18, 44, CONTENT - 36, 18, C.muted, 12)
         tags.RichText = true
         tags.Text = string.format('<font color="%s"><b>%s</b></font>  ·  %s', hex(rarityColor(row.catalog and row.catalog.Rarity)),
@@ -520,8 +527,9 @@ local function mountEggFilterPanel(context)
         local verdict = make("Frame", "Verdict", card, { Position = UDim2.fromOffset(18, 74), Size = UDim2.fromOffset(CONTENT - 36, 40),
             BackgroundColor3 = row.match and C.success or C.card, BorderSizePixel = 0 })
         corner(verdict); stroke(verdict, row.match and C.green or C.border)
-        text("Text", verdict, row.match and "Cumple todos los filtros" or "No cumple: " .. string.lower(row.reason),
-            14, 0, CONTENT - 64, 40, row.match and C.green or C.white, 13, true)
+        text("Text", verdict, row.best and BEST_TEXT[row.best] or row.match and "Cumple todos los filtros"
+            or "No cumple: " .. string.lower(row.reason),
+            14, 0, CONTENT - 64, 40, row.best and C.gold or row.match and C.green or C.white, 13, true)
         local value = row.income and string.format("%.17g", row.income) .. "/s" or "No disponible"
         local facts = {
             {"Ingreso", row.income and number(row.income) .. "/s" or "No disponible"},
@@ -531,6 +539,7 @@ local function mountEggFilterPanel(context)
             {"Mutaciones", row.mutations},
             {"Zona", zoneName(row.area)},
         }
+        if row.best then table.insert(facts, {"Filtros", row.match and "Cumple todos los filtros" or row.reason}) end
         for index, fact in ipairs(facts) do
             local y = 126 + (index - 1) * 42
             text("Label" .. index, card, fact[1], 18, y, 150, 42, C.muted, 12)
@@ -570,16 +579,19 @@ local function mountEggFilterPanel(context)
         access(); entry.row = row
         entry.card.LayoutOrder = index; entry.card.Position = UDim2.fromOffset(0, (index - 1) * (ROW_HEIGHT + ROW_GAP))
         local key = row.key .. tostring(row.match) .. row.reason .. row.mutations
-            .. tostring(row.weight) .. tostring(row.eggIcon) .. visual
+            .. tostring(row.weight) .. tostring(row.eggIcon) .. visual .. tostring(row.best)
         if entry.key == key and (visual ~= "models" or entry.viewport or not data.assetModels) then return end
         entry.key = key; panel.stats.updated += 1
         entry.card.Name = "Card_" .. row.uid
         entry.card.BackgroundColor3 = row.match and C.success or C.card
-        entry.border.Color = row.match and C.green or C.border; entry.border.Thickness = row.match and 1.5 or 1
+        entry.border.Color = row.best and C.gold or row.match and C.green or C.border
+        entry.border.Thickness = (row.match or row.best) and 1.5 or 1
         entry.name.Text = row.name; entry.name.TextColor3 = C.white
         entry.income.Text = (row.income and number(row.income) or "?") .. "/s"
-        entry.income.TextColor3 = row.match and C.green or C.white
-        entry.weight.Text = string.format("x%.2f  ·  %s", row.scale or 1, row.weight)
+        entry.income.TextColor3 = row.match and C.green or row.best and C.gold or C.white
+        entry.weight.Text = row.best and BEST_TEXT[row.best] or string.format("x%.2f  ·  %s", row.scale or 1, row.weight)
+        entry.weight.TextColor3 = row.best and C.gold or C.muted
+        entry.weight.Font = row.best and Enum.Font.GothamBold or Enum.Font.GothamMedium
         entry.tags.Text = string.format('<font color="%s"><b>%s</b></font>  ·  %s  ·  %s',
             hex(rarityColor(row.catalog and row.catalog.Rarity)), escape(row.rarity), escape(row.mutations), escape(zoneName(row.area)))
         entry.match.Text = row.match and "Cumple" or (SHORT_REASONS[row.reason] or "Sin datos")
@@ -627,40 +639,69 @@ local function mountEggFilterPanel(context)
         local modules = search.modules
         local rows, active, fingerprints = {}, {}, {tostring(sortBest), tostring(onlyMatches), search.RecordKey(search.config)}
         local total, matches = 0, 0
+        local function describe(uid, key, egg, catalog, income)
+            local rarity = catalog and catalog.Rarity
+            local rarityId = type(rarity) == "table" and rarity._id or rarity
+            local rank = modules.rarities.Rarities[rarityId]
+            local weightOk, weight = pcall(modules.records.WeightLabel, egg)
+            local iconOk, icon = pcall(modules.records.EggIcon, egg)
+            local labels, seen = {}, {}
+            local function mutation(id)
+                if not id or seen[id] then return end; seen[id] = true
+                local ok, label = pcall(function() return data.mutations and data.mutations.LabelOf(id) or id end)
+                table.insert(labels, ok and tostring(label) or tostring(id))
+            end
+            mutation(egg.BaseMutation); for _, id in ipairs(egg.Mutations or {}) do mutation(id) end
+            return {uid = uid, key = key, category = tostring(egg.AssetCategory or "Desconocida"), catalog = catalog,
+                name = tostring(catalog and catalog.DisplayName or egg.AssetCategory or "Desconocida"), rarity = tostring(rarityId or "Desconocida"),
+                rarityRank = rank and rank.Rank or 0, income = income, scale = egg.AssetScale,
+                weight = weightOk and weight or "peso no disponible", eggIcon = iconOk and icon or nil,
+                mutations = #labels > 0 and table.concat(labels, " + ") or "Sin mutaciones", area = egg.AreaId, labelModule = data.mutations}
+        end
+        -- Best in-scope egg of this cycle, kept by the detector across servers.
+        local bestSeen = search.BestSeen()
+        local bestHere = false
         for _, item in ipairs(snapshot.rows or {}) do
             active[item.uid] = true
             total += 1; if item.match then matches += 1 end
-            if not onlyMatches or item.match then
+            local here = bestSeen ~= nil and bestSeen.job == game.JobId and search.EggKey(item.egg) == bestSeen.key
+            if here then bestHere = true end
+            if not onlyMatches or item.match or here then
                 local row = metadata[item.uid]
                 if not row or row.key ~= item.key or row.labelModule ~= data.mutations then
-                    local egg, catalog = item.egg, item.catalog
-                    local rarity = catalog and catalog.Rarity
-                    local rarityId = type(rarity) == "table" and rarity._id or rarity
-                    local rank = modules.rarities.Rarities[rarityId]
-                    local weightOk, weight = pcall(modules.records.WeightLabel, egg)
-                    local iconOk, icon = pcall(modules.records.EggIcon, egg)
-                    local labels, seen = {}, {}
-                    local function mutation(id)
-                        if not id or seen[id] then return end; seen[id] = true
-                        local ok, label = pcall(function() return data.mutations and data.mutations.LabelOf(id) or id end)
-                        table.insert(labels, ok and tostring(label) or tostring(id))
-                    end
-                    mutation(egg.BaseMutation); for _, id in ipairs(egg.Mutations or {}) do mutation(id) end
-                    row = {uid = item.uid, key = item.key, category = tostring(egg.AssetCategory or "Desconocida"), catalog = catalog,
-                        name = tostring(catalog and catalog.DisplayName or egg.AssetCategory or "Desconocida"), rarity = tostring(rarityId or "Desconocida"),
-                        rarityRank = rank and rank.Rank or 0, income = item.income, scale = egg.AssetScale,
-                        weight = weightOk and weight or "peso no disponible", eggIcon = iconOk and icon or nil,
-                        mutations = #labels > 0 and table.concat(labels, " + ") or "Sin mutaciones", area = egg.AreaId, labelModule = data.mutations}
+                    row = describe(item.uid, item.key, item.egg, item.catalog, item.income)
                     metadata[item.uid] = row
                 end
                 row.income, row.match, row.reason = item.income, item.match, item.reason
-                table.insert(rows, row); table.insert(fingerprints, row.uid .. row.key .. tostring(row.income) .. tostring(row.match))
+                row.best = here and "here" or nil
+                table.insert(rows, row); table.insert(fingerprints, row.uid .. row.key .. tostring(row.income) .. tostring(row.match) .. tostring(row.best))
             end
+        end
+        -- The reminder joins "Cumplen" when the egg is not on this map anymore.
+        local remembered = bestSeen ~= nil and onlyMatches and not bestHere
+            and modules.assets.Directory[bestSeen.category] or nil
+        if remembered then
+            local uid = "best-seen"
+            active[uid] = true
+            local egg = {AssetCategory = bestSeen.category, AssetScale = bestSeen.scale, AreaId = bestSeen.area,
+                BaseMutation = bestSeen.baseMutation, Mutations = bestSeen.mutations}
+            local row = metadata[uid]
+            local key = "best:" .. bestSeen.key
+            if not row or row.key ~= key or row.labelModule ~= data.mutations then
+                row = describe(uid, key, egg, remembered, bestSeen.income)
+                metadata[uid] = row
+            end
+            local ok, reason = pcall(search.Explain, egg, remembered, bestSeen.income)
+            row.income, row.match, row.reason = bestSeen.income, false, ok and reason or "Datos de especie no disponibles"
+            row.best = bestSeen.job ~= game.JobId and "other" or snapshot.info.ready and "gone" or "seen"
+            table.insert(rows, row); table.insert(fingerprints, row.uid .. row.key .. tostring(row.income) .. row.reason .. row.best)
         end
         for id in pairs(metadata) do if not active[id] then metadata[id] = nil end end
         local key = table.concat(fingerprints, "|")
         if key ~= rowsKey then
             table.sort(rows, function(a,b)
+                -- The reminder is pinned first in "Cumplen".
+                if onlyMatches and (a.best ~= nil) ~= (b.best ~= nil) then return a.best ~= nil end
                 if sortBest and a.rarityRank ~= b.rarityRank then return a.rarityRank > b.rarityRank end
                 if sortBest and (a.income or 0) ~= (b.income or 0) then return (a.income or 0) > (b.income or 0) end
                 if a.category ~= b.category then return a.category < b.category end

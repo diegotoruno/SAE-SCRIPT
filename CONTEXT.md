@@ -107,6 +107,19 @@ guardados, muestra Todos/Cumplen con conteo, motivo corto en cada tarjeta y
 hojas modales con velo. Los mensajes del boton y del panel se reescriben en
 frases completas. Detector, filtros, AUTO, ciclo, teleports y API no cambian.
 
+## Mejor huevo del ciclo (2026-10-13)
+
+El usuario pidio un recordatorio permanente del mejor huevo visto en el ciclo,
+de la rareza minima seleccionada o superior, visible en la seccion Cumplen con
+un mensaje explicito. Es el de mayor ingreso exacto entre los spawns Slot de
+las zonas seleccionadas con rareza >= la minima, aunque no llegue al ingreso
+minimo ni coincida con nombre/mutacion (esos filtros deciden la coincidencia,
+no el recordatorio). Se guarda en la ventana version2 (`best`), asi que viaja
+entre servidores, solo mejora y termina con la noche o al cambiar rareza o
+zonas. Solo AUTO lo registra (Decide); no cambia ninguna decision de hop/match.
+En Cumplen aparece fijado arriba con el aviso MEJOR DEL CICLO y donde esta:
+en este servidor, ya no esta aqui u otro servidor.
+
 ## Chilli separado del hopper (2026-10-11)
 
 El usuario observa que la carga de Chilli incluida en el hopper a veces no
