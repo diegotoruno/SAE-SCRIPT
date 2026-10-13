@@ -594,24 +594,27 @@ local function createMapEggSearch(readJson, writeJson, writeText)
             mutations = table.clone(top.mutations or {}), baseMutation = top.baseMutation,
             job = game.JobId, at = at}
     end
-    -- Best egg of the cycle that just ended, same rarity and zones, or nil.
-    -- Only the immediately preceding cycle counts (or the ending one during the
-    -- night); an older record would claim something false.
+    -- Last best egg seen in a cycle that already ended, same rarity and zones,
+    -- and how many cycles ago it was (1 = the cycle before this one; 0 while the
+    -- night closes it). It stays until a newer in-scope egg replaces it, however
+    -- many cycles pass without one; the caller says how old it is.
     function search.BestPrevious(cycle)
         if cycle == nil then cycle = search.CycleStatus() end
         if not clockKnown(cycle) then return nil end
         local wanted = string.lower(search.config.rarity)
-        local function adjacent(record)
+        local function ended(record)
             return type(record) == "table" and record.rarity == wanted
                 and sameInputs(record.zones, search.config.zones) and validBest(record.best)
                 and finite(record.periodIndex)
-                and (record.periodIndex == cycle.periodIndex - 1
+                and (record.periodIndex < cycle.periodIndex
                     or (cycle.night and record.periodIndex == cycle.periodIndex))
         end
-        -- A window the night closed that was not archived yet (AUTO was off).
-        local record = remembered.version == 2 and adjacent(remembered) and remembered
-            or adjacent(previous) and previous or nil
-        return record and copyInputs(record.best) or nil
+        -- A window the night closed that was not archived yet (AUTO was off)
+        -- competes with the archive; the newer period wins.
+        local record = remembered.version == 2 and ended(remembered) and remembered or nil
+        if ended(previous) and (not record or previous.periodIndex > record.periodIndex) then record = previous end
+        if not record then return nil end
+        return copyInputs(record.best), cycle.periodIndex - record.periodIndex
     end
     -- Best in-scope egg seen so far in the current cycle (any server), or nil
     -- when there is none or the saved window does not belong to this cycle.

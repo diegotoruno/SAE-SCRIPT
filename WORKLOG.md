@@ -1,5 +1,12 @@
 # Estado del trabajo
 
+## 2026-10-13 - Ultimo visto persistente
+
+Rama codex/ultimo-visto-persistente sobre main 98acad7 (build-90). El ultimo
+mejor huevo de un ciclo terminado se queda hasta que aparezca otro del
+alcance, con su antiguedad en ciclos (antes solo duraba un ciclo). Build y 214
+regresiones correctos; card validada con el archivo real en Potassium.
+
 ## 2026-10-13 - Ultimo del ciclo anterior
 
 Rama codex/mejor-ciclo-anterior sobre main 5c5bde7 (build-88). Cuando el ciclo
