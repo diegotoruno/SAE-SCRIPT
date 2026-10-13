@@ -118,7 +118,11 @@ no el recordatorio). Se guarda en la ventana version2 (`best`), asi que viaja
 entre servidores, solo mejora y termina con la noche o al cambiar rareza o
 zonas. Solo AUTO lo registra (Decide); no cambia ninguna decision de hop/match.
 En Cumplen aparece fijado arriba con el aviso MEJOR DEL CICLO y donde esta:
-en este servidor, ya no esta aqui u otro servidor.
+en este servidor, ya no esta aqui u otro servidor. Mientras el ciclo nuevo no
+tenga ninguno, se muestra apagado el mejor del ciclo inmediatamente anterior
+(`ULTIMO DEL CICLO ANTERIOR · ya no existe`), solo informativo: mismo alcance
+de rareza y zonas, nunca cuenta en Cumplen N ni decide hop/match, y lo reemplaza
+cualquier mejor del ciclo nuevo.
 
 ## Chilli separado del hopper (2026-10-11)
 

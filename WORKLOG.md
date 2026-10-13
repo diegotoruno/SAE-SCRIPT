@@ -1,5 +1,12 @@
 # Estado del trabajo
 
+## 2026-10-13 - Ultimo del ciclo anterior
+
+Rama codex/mejor-ciclo-anterior sobre main 5c5bde7 (build-88). Cuando el ciclo
+nuevo no tiene mejor huevo, Cumplen muestra apagado el del ciclo anterior,
+solo informativo. Nuevo `chilli_egg_search_previous.json`. Build y 214
+regresiones correctos; card validada en Potassium. Ver TESTING.
+
 ## 2026-10-13 - Mejor huevo del ciclo
 
 Rama codex/mejor-visto-ciclo sobre main 1ccb115. El detector guarda en la

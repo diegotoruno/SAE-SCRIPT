@@ -640,6 +640,56 @@ test("best egg ends with the night, the next period and any scope change", funct
     files["chilli_egg_search_cycle.json"] = {version = 2, rarity = "divine", zones = {}, best = "corrupt"}
     assert(cycleFactory(read, write).BestSeen(cycle(105)) == nil)
 end)
+test("last cycle's best egg is kept for information and replaced by nothing it could decide", function()
+    local files, read, write = memoryStore(); local finder = cycleFactory(read, write)
+    assert(decideCycle(finder, {egg("a", 4e9), egg("b", 6e9)}, 100) == "hop")
+    assert(finder.BestPrevious(cycle(101)) == nil, "the running cycle is not the previous one")
+    -- Night of the same period: the ending cycle's best is offered and archived.
+    assert(finder.BestPrevious(cycle(295)).income == 6e9)
+    assert(decideCycle(finder, {}, 295) == "loading")
+    assert(files["chilli_egg_search_previous.json"].best.income == 6e9)
+    assert(next(files["chilli_egg_search_cycle.json"]) == nil and finder.BestSeen(cycle(295)) == nil)
+    -- The next cycle: nothing seen yet, so the previous one stays visible and decides nothing.
+    assert(decideCycle(finder, {}, 301) == "wait")
+    local previous = finder.BestPrevious(cycle(302))
+    assert(previous and previous.income == 6e9 and previous.key == "uid:b" and previous.name == "Divine Alpha")
+    previous.income = 1; assert(finder.BestPrevious(cycle(302)).income == 6e9)
+    -- It survives a reconnect to another server.
+    assert(cycleFactory(read, write).BestPrevious(cycle(320)).income == 6e9)
+    -- Seeing an egg in the new cycle makes a current best; the old one never wins a decision.
+    assert(decideCycle(finder, {egg("n", 5e9)}, 330) == "hop")
+    assert(finder.BestSeen(cycle(331)).income == 5e9 and finder.BestPrevious(cycle(331)).income == 6e9)
+    -- Two cycles later it is no longer "the previous one".
+    assert(finder.BestPrevious(cycle(601)).income == 5e9, "the stale window of the newer cycle")
+    assert(finder.BestPrevious(cycle(901)) == nil)
+end)
+test("last cycle's best egg follows rarity and zones and tolerates a missed night", function()
+    local files, read, write = memoryStore(); local finder = cycleFactory(read, write)
+    assert(decideCycle(finder, {egg("a", 6e9)}, 100) == "hop")
+    -- AUTO was off over the night: the stale window itself is read, nothing archived yet.
+    assert(finder.BestPrevious(cycle(301)).income == 6e9 and files["chilli_egg_search_previous.json"] == nil)
+    assert(finder.BestPrevious(cycle(601)) == nil, "a window two periods old is not the previous cycle")
+    assert(decideCycle(finder, {}, 301) == "wait")
+    assert(finder.BestPrevious(cycle(302)).income == 6e9)
+    -- The archive belongs to its rarity and zones: other scopes never see it.
+    finder.Configure({rarity = "Common"})
+    assert(finder.BestPrevious(cycle(302)) == nil, "different rarity")
+    finder.Configure({rarity = "Divine"})
+    assert(finder.BestPrevious(cycle(302)).income == 6e9)
+    finder.Configure({zones = {"Lake"}})
+    assert(finder.BestPrevious(cycle(302)) == nil, "different zones")
+    finder.Configure({zones = {}})
+    assert(finder.BestPrevious(cycle(302)).income == 6e9)
+    assert(finder.BestPrevious(false) == nil and finder.BestPrevious({}) == nil)
+    -- Changing the scope inside a running cycle closes it without keeping it as "previous".
+    local _, read2, write2 = memoryStore(); local scoped = cycleFactory(read2, write2)
+    assert(decideCycle(scoped, {egg("a", 6e9)}, 100) == "hop")
+    scoped.Configure({zones = {"Lake"}}); scoped.Configure({zones = {}})
+    assert(decideCycle(scoped, {}, 301) == "wait" and scoped.BestPrevious(cycle(302)) == nil)
+    files["chilli_egg_search_previous.json"] = {version = 1, rarity = "divine", zones = {}, periodIndex = 0, best = "corrupt"}
+    local broken = cycleFactory(read, write); broken.Decide(nil, {ready = false}, cycle(401))
+    assert(broken.BestPrevious(cycle(302)) == nil)
+end)
 test("absence alone cannot invent an active hunt", function()
     local _, read, write = memoryStore(); local finder = cycleFactory(read, write)
     assert(decideCycle(finder, {egg("a", 99e9, "divine", "Carried")}, 100) == "wait")
