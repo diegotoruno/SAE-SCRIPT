@@ -1677,19 +1677,41 @@ do
             task.wait(math.min(0.25, math.max(0, deadline - os.clock())))
         end
     end
-    local function finishEggMatch(match)
-        setAuto(false)
-        session.searchMode = "match"
-        match.jobId, match.placeId, match.at = game.JobId, game.PlaceId, os.time()
-        writeJson("chilli_egg_search_match.json", match)
-        setBusy(false)
+    -- AUTO stays on after a match and follows the capture of that egg. Each
+    -- outcome is announced once per target.
+    local function noteEggTarget(mode, match, info)
+        local tracked = info.tracked
+        local key = tracked and tracked.key
+        if not key then return end
+        if mode == "match" and match and match.key == key and session.alertedTarget ~= key then
+            session.alertedTarget = key
+            match.jobId, match.placeId, match.at = game.JobId, game.PlaceId, os.time()
+            writeJson("chilli_egg_search_match.json", match)
+            matchAlert("Egg " .. match.rarity .. " encontrado", string.format(
+                "%s · %s/s · %s. AUTO espera la captura.",
+                match.name, eggSearch.FormatMinimum(match.income), match.area or "mapa"))
+            print("[EggSearch] MATCH " .. HttpService:JSONEncode(match))
+        elseif info.capture == "capturado" and session.capturedTarget ~= key then
+            session.capturedTarget = key
+            if preferences.alerts.notification then
+                notify("Egg capturado", tostring(tracked.name) .. ". Espero aquí el nuevo ciclo con AUTO.", 10)
+            end
+            print("[EggSearch] CAPTURADO " .. tostring(tracked.name) .. " | job=" .. game.JobId)
+        elseif info.notCaptured and session.lostTarget ~= key then
+            session.lostTarget = key
+            if preferences.alerts.notification then
+                notify("Egg no capturado", tostring(tracked.name) .. ": " .. info.notCaptured .. ". Busco otro servidor.", 10)
+            end
+            print("[EggSearch] NO CAPTURADO " .. tostring(tracked.name) .. ": " .. info.notCaptured)
+        end
+    end
+    local function showEggTarget(match, info)
+        local target = match or info.tracked or {}
         setLabel("Encontrado")
-        setStatus(string.format("%s  ·  %s/s  ·  %s", match.name,
-            eggSearch.FormatMinimum(match.income), match.area or "mapa"), COLORS.green)
-        matchAlert("Egg " .. match.rarity .. " encontrado", string.format(
-            "%s · %s/s · %s. Objetivo encontrado; Chilli puede continuar.",
-            match.name, eggSearch.FormatMinimum(match.income), match.area or "mapa"))
-        print("[EggSearch] MATCH " .. HttpService:JSONEncode(match))
+        setStatus(string.format("%s  ·  %s", tostring(target.name or "Objetivo"), info.capture == "capturando"
+            and "capturando" or info.capture == "comprobando" and "comprobando la captura"
+            or info.capture == "lo lleva otro jugador" and "lo lleva otro jugador"
+            or info.capture == "en disputa" and "en disputa" or "esperando captura"), COLORS.green)
     end
     -- The report never blocks a decision: failures only lose a report entry.
     local function report(name, ...)
@@ -1702,8 +1724,9 @@ do
         local mode = eggSearch.Decide(match, info, cycle or false)
         if mode == "match" then report("ReportDecision", mode, match, info, rows, cycle, game.JobId, os.time()) end
         report("ReportHopCheck", mode, info, rows, game.JobId, server and server.id, os.time(), server)
-        if mode == "match" then finishEggMatch(match); return false end
         setSearchMode(mode)
+        noteEggTarget(mode, match, info)
+        if mode == "match" then setBusy(false); showEggTarget(match, info) end
         return mode == "hop"
     end
     hopperEnvironment.ChilliEggSearch = {
@@ -2332,10 +2355,7 @@ do
                     local mode = eggSearch.Decide(match, info, cycle or false)
                     report("ReportDecision", mode, match, info, rows, cycle, game.JobId, os.time())
                     setSearchMode(mode)
-                    if mode == "match" then
-                        finishEggMatch(match)
-                        return
-                    end
+                    noteEggTarget(mode, match, info)
                     local revision = cycle and cycle.fieldRevision
                     local period = cycle and cycle.periodIndex
                     if mode ~= lastMode or revision ~= lastRevision or period ~= lastPeriod then
@@ -2359,12 +2379,18 @@ do
                             local scope = #eggSearch.config.zones > 0 and " en tus zonas" or " en el mapa"
                             setLabel(remaining and string.format("Reset %d:%02d",
                                 math.floor(remaining / 60), remaining % 60) or "Esperando")
-                            setStatus((info.matchedHere and "Ya encontraste uno aquí en este ciclo"
+                            setStatus((info.capture == "capturado"
+                                and "Capturado: " .. tostring(info.tracked and info.tracked.name)
                                 or "Sin " .. eggSearch.config.rarity .. "+" .. scope) .. (cycle and not cycle.running
-                                and ". Ciclo en pausa" or ". Esperando la renovación"), COLORS.muted)
+                                and ". Ciclo en pausa" or ". Esperando la renovación"), info.capture == "capturado"
+                                and COLORS.green or COLORS.muted)
+                        elseif mode == "match" then
+                            showEggTarget(match, info)
                         else
                             setStatus(info.broken
                                 and "El juego no cargó bien en este servidor. Buscando otro"
+                                or info.notCaptured
+                                and "No se capturó (" .. info.notCaptured .. "). Buscando otro servidor"
                                 or info.continuingCycle
                                 and "Ya apareció en este ciclo, pero aquí no está. Buscando otro servidor"
                                 or string.format("%d %s+ aquí, ninguno cumple los filtros. Buscando otro servidor",

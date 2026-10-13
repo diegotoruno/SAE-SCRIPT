@@ -1,14 +1,17 @@
 # Decisiones de producto e implementacion
 
-## Un match termina la busqueda del ciclo en ese servidor (2026-10-12)
+## Tras un match, AUTO sigue y comprueba la captura (2026-10-12)
 
-Pedido del usuario: tras encontrar uno que cumpla, esperar la noche en el
-servidor actual. Se liga al JobId del match y no a todo el ciclo: un rejoin
-al mismo servidor sigue esperando, pero si el usuario se va a otro servidor
-y enciende AUTO, la observacion del ciclo sigue valiendo ahi. El match sigue
-apagando AUTO (flujo acordado, paso 5); lo nuevo aplica cuando se vuelve a
-encender. No reintroduce "esperar siempre en el mismo servidor": solo cubre
-el servidor donde ya hubo match y solo hasta la noche siguiente.
+Pedido del usuario: capturado, esperar en ese servidor el nuevo ciclo con
+AUTO (puede aparecer otro Eternal); no capturado, buscar otro servidor.
+Reemplaza "apagar AUTO" del paso 5. La captura se comprueba con datos del
+juego, no con Chilli: el huevo en los huevos del jugador. Se leen el estado
+del objetivo en el campo y `ReadOwnedEggs` solo para eso (excepcion acotada a
+"solo spawns Slot"; nunca son candidatos). Especie+semilla porque el Uid
+cambia al capturar. 90 s sin captura: las capturas reales tardaron 7 y 43 s
+con el guardia en medio; mientras el jugador lo lleva no se corta. Si no se
+pueden leer los duenos, nunca se declara perdido: solo cuenta el tiempo. La
+captura se guarda: si despues sale de la base, se sigue esperando la noche.
 
 ## Vigente = la pasada mas reciente no lo contradice (2026-10-12)
 

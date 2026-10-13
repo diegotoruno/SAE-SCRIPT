@@ -73,7 +73,7 @@ La rareza seleccionada es un minimo inclusivo segun el Rank del juego: Eternal a
 - Sin huevos de la rareza minima o superiores en las zonas elegidas ni una observacion vigente de esas zonas en el ciclo, espera la siguiente renovacion en el servidor actual. Un huevo de una zona excluida no inicia hop.
 - Con huevos de la rareza minima o superiores en las zonas elegidas que no cumplan ingreso, nombre o mutacion, hace hop y vuelve a escanear al llegar; una observacion vigente de la misma rareza y zonas permite continuar aunque falten en el destino. Cambiar zonas o rareza cierra esa memoria.
 - Si el juego no cargo bien en el servidor (modulos del juego con error, por ejemplo porque otro script del autoexec los cargo demasiado pronto), AUTO salta a otro; tras mas de tres seguidos en 10 minutos se queda esperando.
-- Con cualquier huevo que cumpla, se queda en el servidor y apaga AUTO. Chilli, si lo tienes cargado aparte, continua con su configuracion. Si vuelves a encender AUTO en ese servidor, espera ahi hasta la siguiente noche aunque ya lo hayas recogido.
+- Con cualquier huevo que cumpla, se queda en el servidor con AUTO activo, avisa y comprueba si lo capturas (Chilli, si lo tienes cargado aparte, continua con su configuracion). Si aparece en tus huevos, espera ahi el nuevo ciclo con AUTO por si sale otro. Si lo entrega otro jugador, desaparece o no se captura en 90 s (salvo mientras lo llevas), busca otro servidor.
 - Si se renuevan los huevos durante la busqueda, espera los nuevos datos y repite la decision.
 
 El ingreso previsto incluye escala y mutaciones; excluye bonos personales y boosts temporales. Los filtros y el estado de AUTO se guardan en el workspace del executor.

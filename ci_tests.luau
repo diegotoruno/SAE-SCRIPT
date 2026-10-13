@@ -666,35 +666,99 @@ test("cycle tolerance stays within one second", function()
     assert(cycleFactory(read, write).Decide(nil, {ready = true, rarityCount = 0},
         cycle(110, {nextReset = 301.5})) == "wait")
 end)
-test("a match ends the cycle's hunt in its server until the next night", function()
-    -- Real hunt 2026-10-12: match, egg claimed, AUTO turned back on, then 8
-    -- hops on the cycle's observation until the night.
-    local _, read, write, _, writes = memoryStore(); local finder = cycleFactory(read, write)
+local function seeded(uid, rate, seed, state, carrier)
+    local record = egg(uid, rate, "divine", state); record.AssetColorSeed, record.CarrierUserId = seed, carrier
+    return record
+end
+-- owners: {[userId] = {seed, ...}} as EggState.ReadOwnedEggs lists them.
+local function decideCapture(finder, records, owners, at)
+    local owned = {}
+    for id, seeds in pairs(owners) do
+        local list = {}
+        for index, seed in ipairs(seeds) do list["owned" .. index] = {AssetCategory = "divine", AssetColorSeed = seed} end
+        table.insert(owned, {OwnerUserId = id, Records = list})
+    end
+    finder.modules.eggs = {ReadOwnedEggs = function() return owned end}
+    local match, info = finder.Evaluate(records, catalog, function(e) return e.rate end)
+    info.ready = info.errors == 0
+    info.field, info.mine, info.others = finder.CaptureInputs(records)
+    return finder.Decide(match, info, cycle(at)), info
+end
+test("a captured target ends the hunt in its server: AUTO waits there for the next night", function()
+    -- Real 2026-10-12: a Skeleton Horse match was claimed 7 s later (new Uid
+    -- in the player's eggs, same species and color seed); 8 hops followed.
+    local _, read, write, _, writes = memoryStore(); local finder = cycleFactory(read, write); finder.userId = 1
     fakeGame.JobId = "first"
-    assert(decideCycle(finder, {egg("low", 6e9)}, 100) == "hop")
+    assert(decideCapture(finder, {seeded("low", 6e9, 5)}, {}, 100) == "hop")
     fakeGame.JobId = "found"
-    assert(decideCycle(finder, {egg("best", 8e9)}, 120) == "match")
+    local mode, info = decideCapture(finder, {seeded("best", 8e9, 77)}, {}, 120)
+    assert(mode == "match" and info.capture == "esperando captura" and info.tracked.key == "divine#77")
     local written = writes()
-    assert(decideCycle(finder, {egg("best", 8e9)}, 121) == "match" and writes() == written,
-        "polling the same match does not rewrite the window")
-    assert(finder.SearchWindow().matchedJob == "found" and finder.SearchWindow().seenAt == 100)
-    local mode, info = decideCycle(finder, {egg("best", 8e9, "divine", "Carried")}, 130)
-    assert(mode == "wait" and info.matchedHere and info.searchUntil == 290 and not info.continuingCycle)
-    assert(decideCycle(finder, {egg("other", 6e9)}, 140) == "wait", "insufficient eggs here do not restart it")
-    assert(decideCycle(cycleFactory(read, write), {}, 150) == "wait", "a rejoin into that server keeps waiting")
+    assert(decideCapture(finder, {seeded("best", 8e9, 77)}, {}, 121) == "match" and writes() == written,
+        "polling the same target does not rewrite the window")
+    mode, info = decideCapture(finder, {seeded("best", 8e9, 77, "Carried", 1)}, {}, 125)
+    assert(mode == "match" and info.capture == "capturando")
+    mode, info = decideCapture(finder, {}, {[1] = {77}}, 127)
+    assert(mode == "wait" and info.capture == "capturado" and info.searchUntil == 290)
+    assert(finder.SearchWindow().matched.captured and finder.SearchWindow().seenAt == 100)
+    -- Latched: insufficient eggs here, the egg gone from the base, a rejoin.
+    assert(decideCapture(finder, {seeded("other", 6e9, 6)}, {}, 140) == "wait")
+    assert(decideCapture(cycleFactory(read, write), {}, {}, 150) == "wait")
     fakeGame.JobId = "elsewhere"
-    mode, info = decideCycle(finder, {}, 160)
-    assert(mode == "hop" and info.continuingCycle and not info.matchedHere, "another server keeps the hunt")
+    mode, info = decideCapture(finder, {}, {}, 160)
+    assert(mode == "hop" and info.continuingCycle, "another server keeps the cycle's hunt")
     fakeGame.JobId = "found"
-    assert(decideCycle(finder, {egg("next", 6e9)}, 301) == "hop", "the next night repeats the flow")
-    assert(finder.SearchWindow().matchedJob == nil and finder.SearchWindow().periodIndex == 1)
-    -- A first-server match with no earlier hop also ends the hunt there.
-    local _, read2, write2 = memoryStore(); local fresh = cycleFactory(read2, write2)
-    assert(decideCycle(fresh, {egg("best", 8e9), egg("other", 6e9)}, 100) == "match")
-    assert(decideCycle(fresh, {egg("other", 6e9)}, 110) == "wait")
+    assert(decideCapture(finder, {seeded("next", 6e9, 9)}, {}, 301) == "hop", "the next night repeats the flow")
+    assert(finder.SearchWindow().matched == nil)
+    fakeGame.JobId = "job-a"
+end)
+test("a target that is not captured sends AUTO to look for another one", function()
+    local _, read, write = memoryStore(); local finder = cycleFactory(read, write); finder.userId = 1
+    fakeGame.JobId = "found"
+    assert(decideCapture(finder, {seeded("best", 8e9, 77)}, {}, 100) == "match")
+    local mode, info = decideCapture(finder, {seeded("best", 8e9, 77, "Carried", 2)}, {}, 105)
+    assert(mode == "match" and info.capture == "lo lleva otro jugador")
+    -- Delivered to another base: gone from the field and in someone else's eggs.
+    mode, info = decideCapture(finder, {}, {[2] = {77}}, 110)
+    assert(mode == "match" and info.capture == "comprobando", "replication grace")
+    mode, info = decideCapture(finder, {}, {[2] = {77}}, 113)
+    assert(mode == "hop" and info.notCaptured == "lo tomó otro jugador" and info.searchUntil == 290)
+    -- Dropped and returned by the guard: same target and timer. Never
+    -- captured: AUTO leaves after the wait, except while this player carries it.
+    local _, read2, write2 = memoryStore(); local back = cycleFactory(read2, write2); back.userId = 1
+    assert(decideCapture(back, {seeded("best", 8e9, 77)}, {}, 100) == "match")
+    assert(decideCapture(back, {seeded("best", 8e9, 77, "Dropped")}, {}, 105) == "match")
+    assert(decideCapture(back, {seeded("best", 8e9, 77, "GuardCarried")}, {}, 106) == "match")
+    assert(decideCapture(back, {seeded("best", 8e9, 77)}, {}, 189) == "match")
+    assert(decideCapture(back, {seeded("best", 8e9, 77, "Carried", 1)}, {}, 195) == "match")
+    mode, info = decideCapture(back, {seeded("best", 8e9, 77)}, {}, 196)
+    assert(mode == "hop" and info.notCaptured == "no se capturó en 90 s")
+    -- A better target restarts the wait; unknown owners never declare it lost.
+    local _, read3, write3 = memoryStore(); local better = cycleFactory(read3, write3); better.userId = 1
+    assert(decideCapture(better, {seeded("best", 8e9, 77)}, {}, 100) == "match")
+    mode, info = decideCapture(better, {seeded("best", 8e9, 77), seeded("top", 9e9, 88)}, {}, 110)
+    assert(mode == "match" and info.tracked.key == "divine#88")
+    assert(decideCapture(better, {seeded("best", 8e9, 77), seeded("top", 9e9, 88)}, {}, 195) == "match")
+    better.modules.eggs = {ReadOwnedEggs = function() error("sin datos") end}
+    local function blindDecide(at)
+        local none, blind = better.Evaluate({}, catalog, function(e) return e.rate end)
+        blind.ready = true
+        blind.field, blind.mine, blind.others = better.CaptureInputs({})
+        return better.Decide(none, blind, cycle(at)), blind
+    end
+    mode, info = blindDecide(196)
+    assert(info.mine == nil and mode == "match", "unknown owners never declare it lost")
+    assert(blindDecide(200) == "hop", "the timeout still applies")
+    -- Raised filters: the target stays on the map but is no longer one.
+    local _, read4, write4 = memoryStore(); local raised = cycleFactory(read4, write4); raised.userId = 1
+    assert(decideCapture(raised, {seeded("best", 8e9, 77)}, {}, 100) == "match")
+    raised.Configure({minIncome = 9e9})
+    mode, info = decideCapture(raised, {seeded("best", 8e9, 77)}, {}, 101)
+    assert(mode == "hop" and info.tracked == nil and info.notCaptured == nil)
+    raised.Configure({minIncome = 7e9})
     -- A window that cannot be saved never hides the match.
-    local _, read3, write3, fail = memoryStore(); local unsaved = cycleFactory(read3, write3)
-    fail(true); assert(decideCycle(unsaved, {egg("best", 8e9)}, 100) == "match")
+    local _, read5, write5, fail = memoryStore(); local unsaved = cycleFactory(read5, write5)
+    fail(true); assert(decideCapture(unsaved, {seeded("best", 8e9, 77)}, {}, 100) == "match")
     fakeGame.JobId = "job-a"
 end)
 local function reportRow(uid, rate, category, area, matched)
@@ -725,10 +789,11 @@ test("hunt report starts only with an in-scope rarity egg and follows it across 
     second.ReportDecision("hop", nil, continuing, {}, cycle(130), "j2", 1030)
     local third = cycleFactory(read, write)
     local found = third.Evaluate({egg("winner", 8e9)}, catalog, function(e) return e.rate end)
-    third.ReportDecision("match", found, readyInfo(1), {reportRow("winner", 8e9, "divine", "Forest", true)}, cycle(160), "j3", 1060)
+    local target = readyInfo(1); target.tracked, target.capture = {key = found.key, name = found.name}, "esperando captura"
+    third.ReportDecision("match", found, target, {reportRow("winner", 8e9, "divine", "Forest", true)}, cycle(160), "j3", 1060)
     hunt = third.HuntReport().hunts[1]
     assert(hunt.servers == 3 and hunt.visits[2].continuingCycle and #hunt.visits[2].candidates == 0)
-    assert(hunt.outcome == "match" and hunt.found.uid == "winner" and hunt.found.job == "j3")
+    assert(not hunt.outcome and hunt.found.uid == "winner" and hunt.found.job == "j3" and hunt.found.capture == "pendiente")
 end)
 test("hunt report ignores excluded zones and closes at night or when AUTO stops", function()
     local _, read, write = memoryStore(); local finder = cycleFactory(read, write)
@@ -780,25 +845,42 @@ test("hunt report records rejected hops, destination listing age and server relo
     visit = again.HuntReport().hunts[1].visits[1]
     assert(#visit.failedHops == 10 and visit.failedHops[10].target == "f12" and visit.failedHops[1].listedAge == nil)
 end)
-test("hunt report after a match: no duplicate or waiting hunt, resumed hops recorded", function()
+test("hunt report follows each target until it is captured or lost", function()
     local _, read, write = memoryStore(); local finder = cycleFactory(read, write)
-    local found = finder.Evaluate({egg("winner", 8e9)}, catalog, function(e) return e.rate end)
-    local winner = {reportRow("winner", 8e9, "divine", "Forest", true)}
-    finder.ReportDecision("match", found, readyInfo(1), winner, cycle(100), "j1", 1000)
-    -- AUTO back on before claiming it: the same match is not a second hunt.
-    cycleFactory(read, write).ReportDecision("match", found, readyInfo(1), winner, cycle(110), "j1", 1010)
-    -- Claimed, insufficient ones left: waiting here never opens a hunt.
-    finder.ReportDecision("wait", nil, readyInfo(1), {reportRow("other", 6e9)}, cycle(120), "j1", 1020)
-    assert(#finder.HuntReport().hunts == 1 and finder.HuntReport().hunts[1].outcome == "match")
-    -- Hops on the cycle's observation from another server are reported;
-    -- other hops with nothing in scope (broken server) still are not.
-    finder.ReportDecision("hop", nil, readyInfo(0), {}, cycle(125), "j3", 1025)
+    local function target(info, key, name, capture, lost)
+        info.tracked, info.capture, info.notCaptured = {key = key, name = name}, capture, lost
+        return info
+    end
+    local found = finder.Evaluate({seeded("winner", 8e9, 77)}, catalog, function(e) return e.rate end)
+    finder.ReportDecision("match", found, target(readyInfo(1), "divine#77", found.name, "esperando captura"),
+        {reportRow("winner", 8e9, "divine", "Forest", true)}, cycle(100), "j1", 1000)
+    local hunt = finder.HuntReport().hunts[1]
+    assert(not hunt.outcome and hunt.found.capture == "pendiente" and hunt.matches[1].key == "divine#77")
+    -- Lost: the hunt goes on in the next server.
+    finder.ReportDecision("hop", nil, target(readyInfo(0), "divine#77", found.name, nil, "lo tomó otro jugador"),
+        {}, cycle(110), "j1", 1010)
+    finder.ReportDecision("hop", nil, readyInfo(1), {reportRow("low", 6e9)}, cycle(130), "j2", 1030)
+    hunt = finder.HuntReport().hunts[1]
+    assert(not hunt.outcome and hunt.matches[1].capture == "lo tomó otro jugador" and hunt.servers == 2)
+    assert(hunt.visits[1].capture == "lo tomó otro jugador")
+    -- Captured in the third server: the hunt ends; waiting there opens no other.
+    local second = finder.Evaluate({seeded("second", 9e9, 88)}, catalog, function(e) return e.rate end)
+    finder.ReportDecision("match", second, target(readyInfo(1), "divine#88", second.name, "esperando captura"),
+        {reportRow("second", 9e9, "divine", "Forest", true)}, cycle(150), "j3", 1050)
+    finder.ReportDecision("wait", nil, target(readyInfo(0), "divine#88", second.name, "capturado"), {}, cycle(160), "j3", 1057)
+    finder.ReportDecision("wait", nil, target(readyInfo(1), "divine#88", second.name, "capturado"),
+        {reportRow("other", 6e9)}, cycle(170), "j3", 1070)
+    local hunts = finder.HuntReport().hunts
+    assert(#hunts == 1 and hunts[1].outcome == "capturado" and hunts[1].found.key == "divine#88" and #hunts[1].matches == 2)
+    assert(hunts[1].found.capture == "capturado" and hunts[1].found.captureSeconds == 7)
+    -- Hops with nothing in scope resume a hunt only on the cycle's
+    -- observation (AUTO off and on), not for a broken server.
+    finder.ReportDecision("hop", nil, readyInfo(0), {}, cycle(175), "j4", 1075)
     assert(#finder.HuntReport().hunts == 1)
     local continuing = readyInfo(0); continuing.continuingCycle = true
-    finder.ReportDecision("hop", nil, continuing, {}, cycle(130), "j2", 1030)
-    local hunts = finder.HuntReport().hunts
-    assert(#hunts == 2 and hunts[2].resumed and hunts[2].first == nil and hunts[2].startJob == "j2")
-    assert(hunts[2].servers == 1 and hunts[2].visits[1].continuingCycle)
+    finder.ReportDecision("hop", nil, continuing, {}, cycle(180), "j5", 1080)
+    hunts = finder.HuntReport().hunts
+    assert(#hunts == 2 and hunts[2].resumed and hunts[2].first == nil and hunts[2].startJob == "j5")
 end)
 test("hunt report never records a loading decision", function()
     local files, read, write = memoryStore(); local finder = cycleFactory(read, write)
@@ -2147,7 +2229,9 @@ test("zone change invalidates a cached match and Explain agrees", function()
     loadClock = 0; assert(scan() == "loading")
     loadClock = 10; assert(scan() == "match")
     record.AreaId = "Forest"
-    assert(scan() == "wait")
+    -- The match was this cycle's observation in scope: it is no longer a
+    -- target here, so the hunt goes on elsewhere.
+    assert(scan() == "hop")
     assert(finder.Explain(record, state.catalog.divine, record.rate) == "Zona excluida")
     finder.Configure({zones = {"Forest"}})
     assert(scan() == "match")

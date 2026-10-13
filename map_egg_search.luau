@@ -130,6 +130,11 @@ local function createMapEggSearch(readJson, writeJson)
     -- (Workspace.AreaEggCycleAnchorAt), so times saved in the origin server
     -- never equal the destination's exactly. The period index must match.
     local CLOCK_TOLERANCE_SECONDS = 1
+    -- After a match AUTO waits for the capture. Real captures took 7 and 43 s
+    -- (guard alerts in between); a claimed egg leaves the field in the same
+    -- frame its owner's records get it, the grace covers replication order.
+    local CAPTURE_TIMEOUT_SECONDS, CAPTURE_GRACE_SECONDS = 90, 3
+    search.CAPTURE_TIMEOUT_SECONDS = CAPTURE_TIMEOUT_SECONDS
     local function near(a, b)
         return finite(a) and finite(b) and math.abs(a - b) <= CLOCK_TOLERANCE_SECONDS
     end
@@ -414,6 +419,40 @@ local function createMapEggSearch(readJson, writeJson)
         return true
     end
 
+    -- Identity that survives a capture: the claimed egg gets a new Uid in its
+    -- owner's records but keeps its species and color seed.
+    local function eggKey(egg)
+        if egg.AssetColorSeed == nil then return "uid:" .. tostring(egg.Uid) end
+        return tostring(egg.AssetCategory) .. "#" .. tostring(egg.AssetColorSeed)
+    end
+    search.EggKey = eggKey
+    local function localUserId()
+        local ok, id = pcall(function() return game:GetService("Players").LocalPlayer.UserId end)
+        return ok and id or nil
+    end
+    -- Only to follow the target after a match, never as search candidates:
+    -- the field state of every record (Carried keeps CarrierUserId) and the
+    -- eggs each owner holds. Owners are nil when they cannot be read.
+    function search.CaptureInputs(records)
+        local me = search.userId or localUserId()
+        local field = {}
+        for _, egg in pairs(records) do
+            field[eggKey(egg)] = {state = egg.State,
+                carriedByMe = egg.State == "Carried" and me ~= nil and egg.CarrierUserId == me}
+        end
+        local eggs = search.modules and search.modules.eggs
+        local ok, owned = pcall(function() return eggs.ReadOwnedEggs() end)
+        if not ok or type(owned) ~= "table" or me == nil then return field, nil, nil end
+        local mine, others = {}, {}
+        for _, entry in pairs(owned) do
+            if type(entry) == "table" and type(entry.Records) == "table" then
+                local set = entry.OwnerUserId == me and mine or others
+                for _, egg in pairs(entry.Records) do set[eggKey(egg)] = true end
+            end
+        end
+        return field, mine, others
+    end
+
     -- Funcion pura: tambien permite verificar los filtros sin teleports.
     function search.Evaluate(records, directory, incomeFor, filters, rarities)
         filters = normalize(filters or search.config)
@@ -470,7 +509,7 @@ local function createMapEggSearch(readJson, writeJson)
                         elseif income >= filters.minIncome then
                             local position = egg.BoundsCFrame and egg.BoundsCFrame.Position
                             table.insert(found, {
-                                uid = egg.Uid, category = egg.AssetCategory,
+                                uid = egg.Uid, key = eggKey(egg), category = egg.AssetCategory,
                                 name = name, rarity = tier, income = income,
                                 area = egg.AreaId, nest = egg.NestId, scale = egg.AssetScale,
                                 mutations = table.clone(egg.Mutations or {}),
@@ -516,9 +555,11 @@ local function createMapEggSearch(readJson, writeJson)
         if type(saved) == "table" and next(saved) ~= nil then pcall(writeJson, BROKEN_FILE, {}) end
     end
 
+    -- First time (this session) the tracked target was seen off the field.
+    local absentSince = {}
     -- La misma decision se usa al entrar, despues de un reset y antes de saltar.
     function search.Decide(match, info, cycle)
-        info.matchedHere = nil
+        info.tracked, info.capture, info.notCaptured = nil, nil, nil
         if search.disposed then info.reason = "sesión terminada"; return "loading" end
         if search.broken then
             -- No map data exists here: leave without touching the cycle memory.
@@ -557,21 +598,63 @@ local function createMapEggSearch(readJson, writeJson)
                 nextReset = cycle.nextReset, periodSeconds = cycle.periodSeconds, nightSeconds = cycle.nightSeconds,
                 untilTime = cycle.nextReset - cycle.nightSeconds, seenAt = cycle.serverTime}
         end
-        if match then
-            -- The hunt of this cycle ends in this server: AUTO turned back on
-            -- here (egg claimed, or others still insufficient) waits for the
-            -- next night instead of hopping on. A failed save keeps the match.
-            if not (valid and remembered.matchedJob == game.JobId) then
-                local window = valid and table.clone(remembered) or newWindow()
-                window.matchedJob = game.JobId
-                saveWindow(window)
-            end
-            return "match"
+        -- After a match AUTO stays on and follows that egg in this server.
+        -- Captured (now in this player's eggs): the cycle's hunt ends here and
+        -- AUTO waits for the next night, when another one may appear. Taken
+        -- by someone else, gone, or not captured in time: look elsewhere.
+        local field, mine = info.field, info.mine
+        local tracked = valid and type(remembered.matched) == "table"
+            and remembered.matched.job == game.JobId and remembered.matched or nil
+        if tracked and not tracked.captured and mine and mine[tracked.key] then
+            local window = table.clone(remembered)
+            window.matched = table.clone(tracked)
+            window.matched.captured, window.matched.capturedAt = true, cycle.serverTime
+            if not saveWindow(window) then info.reason = "no se pudo guardar la captura"; return "loading" end
+            tracked = remembered.matched
         end
-        if valid and remembered.matchedJob == game.JobId then
-            info.matchedHere, info.searchUntil = true, remembered.untilTime
+        if tracked and tracked.captured then
+            info.tracked, info.capture, info.searchUntil = tracked, "capturado", remembered.untilTime
             return "wait"
         end
+        if match and not (tracked and tracked.key == match.key) then
+            -- The first target, or a better one, starts its own wait. A failed
+            -- save never hides the match; the next poll retries it.
+            local window = valid and table.clone(remembered) or newWindow()
+            window.matched = {job = game.JobId, key = match.key, name = match.name, at = cycle.serverTime}
+            if saveWindow(window) then valid = true end
+            tracked = window.matched
+        end
+        local egg = tracked and field and field[tracked.key]
+        if egg and egg.state == "Slot" and not (match and match.key == tracked.key) then
+            tracked = nil -- still on the map but no longer a target (filters changed)
+        end
+        if tracked then
+            info.tracked, info.searchUntil = tracked, valid and remembered.untilTime or nil
+            local now = cycle.serverTime
+            if egg and egg.carriedByMe then
+                absentSince[tracked.key] = nil
+                info.capture = "capturando"; return "match"
+            end
+            if not egg and field and mine then
+                absentSince[tracked.key] = absentSince[tracked.key] or now
+                if now - absentSince[tracked.key] < CAPTURE_GRACE_SECONDS then
+                    info.capture = "comprobando"; return "match"
+                end
+                info.notCaptured = info.others and info.others[tracked.key] and "lo tomó otro jugador"
+                    or "ya no está en el mapa"
+                return valid and "hop" or "loading"
+            end
+            absentSince[tracked.key] = nil
+            if now - tracked.at >= CAPTURE_TIMEOUT_SECONDS then
+                info.notCaptured = string.format("no se capturó en %d s", CAPTURE_TIMEOUT_SECONDS)
+                return valid and "hop" or "loading"
+            end
+            -- Dropped/GuardCarried can still come back to its nest.
+            info.capture = egg and egg.state == "Carried" and "lo lleva otro jugador"
+                or egg and egg.state ~= "Slot" and "en disputa" or "esperando captura"
+            return "match"
+        end
+        if match then return "match" end
         if (info.rarityCount or 0) > 0 and not valid then
             if not saveWindow(newWindow()) then info.reason = "no se pudo guardar la búsqueda para continuar al reconectar"; return "loading" end
             valid = true
@@ -585,7 +668,7 @@ local function createMapEggSearch(readJson, writeJson)
     -- egg. Records what was seen, how the snapshot was proven loaded before
     -- each decision, the fresh check before every teleport and the outcome.
     local REPORT_FILE = "chilli_egg_hunt_report.json"
-    local REPORT_HUNTS, REPORT_VISITS, REPORT_CANDIDATES, REPORT_FAILURES = 30, 120, 10, 10
+    local REPORT_HUNTS, REPORT_VISITS, REPORT_CANDIDATES, REPORT_FAILURES, REPORT_MATCHES = 30, 120, 10, 10, 10
     local report = readJson(REPORT_FILE, {})
     -- Jobs this session already reported: a known job seen for the first
     -- time here means the server was loaded again (rejoin or re-execution).
@@ -633,13 +716,9 @@ local function createMapEggSearch(readJson, writeJson)
         end
         local candidates = search.HuntCandidates(rows)
         if not hunt then
-            -- The same match seen again (AUTO turned back on before claiming
-            -- it) is not a new hunt, and waiting never starts one. Hops with
-            -- nothing here resume this cycle's hunt (after a match elsewhere
-            -- or AUTO turned off and on), so they are reported too.
-            local last = report.hunts[#report.hunts]
-            if mode == "match" and match and last and last.found
-                and last.found.uid == match.uid and last.found.job == job then return end
+            -- Waiting never starts a hunt (a capture already closed it). Hops
+            -- with nothing here resume this cycle's hunt (AUTO turned off and
+            -- on), so they are reported too.
             local resumed = #candidates == 0 and mode == "hop" and info.continuingCycle == true
             if mode == "wait" or (#candidates == 0 and not resumed) then return end
             hunt = {startedAt = at, period = cycle.periodIndex, rarity = scope.rarity, zones = scope.zones,
@@ -664,12 +743,13 @@ local function createMapEggSearch(readJson, writeJson)
             visit.reloads, reloaded = (visit.reloads or 0) + 1, true
         end
         reportedJobs[job] = true
-        if not reloaded and visit.mode == mode and visit.candidateCount == #candidates and sameInputs(visit.candidates,
-            table.move(candidates, 1, math.min(#candidates, REPORT_CANDIDATES), 1, {})) then
+        local capture = info.notCaptured or info.capture
+        if not reloaded and visit.mode == mode and visit.capture == capture and visit.candidateCount == #candidates
+            and sameInputs(visit.candidates, table.move(candidates, 1, math.min(#candidates, REPORT_CANDIDATES), 1, {})) then
             return
         end
         local stats = search.stats
-        visit.mode, visit.decidedAt = mode, at
+        visit.mode, visit.decidedAt, visit.capture = mode, at, capture
         visit.spawns, visit.rarityCount = info.count, info.rarityCount
         visit.continuingCycle = info.continuingCycle == true
         visit.load = {readyBy = stats.readyBy, readySeconds = stats.readySeconds, settleSeconds = stats.settleSeconds,
@@ -677,11 +757,29 @@ local function createMapEggSearch(readJson, writeJson)
         -- The highest incomes are kept; a low minimum rarity can list dozens.
         visit.candidateCount = #candidates
         visit.candidates = table.move(candidates, 1, math.min(#candidates, REPORT_CANDIDATES), 1, {})
-        if mode == "match" and match then
-            hunt.found = {name = match.name, rarity = match.rarity, income = match.income, area = match.area,
-                nest = match.nest, uid = match.uid, job = job}
-            closeHunt(hunt, "match", at)
+        -- Each target and what happened to it; the hunt goes on after one
+        -- that was not captured and ends when one is.
+        local tracked = info.tracked
+        if tracked then
+            hunt.matches = hunt.matches or {}
+            local entry
+            for _, item in ipairs(hunt.matches) do
+                if item.job == job and item.key == tracked.key then entry = item end
+            end
+            if not entry and mode == "match" and match and match.key == tracked.key then
+                entry = {key = tracked.key, job = job, at = at, name = match.name, rarity = match.rarity,
+                    income = match.income, area = match.area, nest = match.nest, uid = match.uid, capture = "pendiente"}
+                if #hunt.matches >= REPORT_MATCHES then table.remove(hunt.matches, 1) end
+                table.insert(hunt.matches, entry)
+                hunt.found = entry
+            end
+            if entry and info.capture == "capturado" then
+                entry.capture, entry.captureSeconds = "capturado", at - entry.at
+            elseif entry and info.notCaptured then
+                entry.capture = info.notCaptured
+            end
         end
+        if info.capture == "capturado" then closeHunt(hunt, "capturado", at) end
         saveReport()
     end
     local function currentVisit(job)
@@ -916,6 +1014,9 @@ local function createMapEggSearch(readJson, writeJson)
             end
             details = table.clone(details)
             details.cycle = snapshotCycle
+            if best or (type(remembered.matched) == "table" and remembered.matched.job == game.JobId) then
+                details.field, details.mine, details.others = search.CaptureInputs(snapshot.Records)
+            end
             if not details.ready then
                 clearSnapshotLoad()
             elseif not snapshotReady(snapshot.Records, modules.assets.Directory, snapshotCycle) then

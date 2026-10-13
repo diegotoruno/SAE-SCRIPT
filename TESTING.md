@@ -1,22 +1,28 @@
 # Pruebas y validacion
 
-## 2026-10-12 - Esperar la noche tras un match
+## 2026-10-12 - Captura tras un match
 
-Evidencia real (reporte, log de Roblox y server_hop_button_ui.json): match a
-las 22:55:59 UTC en 27feac9b, AUTO de false a true a las 22:57:14 y 8 saltos
-cada ~20 s hasta d206d0a5 a las 22:59:37, sin entradas en el reporte.
-Build, siete compilaciones y 206 regresiones (dos nuevas): match tras hops y
-match en el primer servidor guardan matchedJob sin reescribir en sondeos;
-recogido o con insuficientes espera (matchedHere, hasta la noche); rejoin al
-mismo servidor espera; otro servidor del ciclo hace hop; la noche siguiente
-repite el flujo; un guardado fallido no oculta el match. Reporte: el mismo
-match no abre otra busqueda, wait no abre, hop de broken sin candidatos no
-abre y hop con continuingCycle abre una `resumed`. Cinco mutaciones fallan
-donde se espera. Potassium: instancia aislada (memoria en RAM, JobId real
-d206d0a5) sobre el mapa real con filtro temporal Common+/minimo 1: match ->
-matchedJob guardado; minimo imposible con 65 en alcance -> wait matchedHere
-hasta la noche; JobId simulado de otro servidor -> hop; de vuelta -> wait.
-Archivos del usuario sin tocar.
+Evidencia real: match 22:55:59 UTC, AUTO de false a true 22:57:14 y 8 saltos
+sin reporte. Log de Roblox: "Area egg claim" 7 s y 43 s despues de los dos
+matches del dia, ambos huevos en `ReadOwnedEggs` del usuario con otro Uid y
+la misma especie, semilla y escala. Senales observadas en vivo: Carried con
+CarrierUserId, Dropped, GuardCarried y vuelta a Slot; entrega de otro jugador
+con FieldGone y su registro (misma semilla) en el mismo frame, 11 s despues.
+Build, siete compilaciones y 207 regresiones (tres nuevas, dos del PR
+anterior reemplazadas; una existente ajustada: el match es observacion del
+ciclo y un objetivo que sale del alcance sigue con hop): captura propia
+guarda y espera hasta la noche (rejoin, insuficientes, sale de la base),
+otro servidor hace hop, la noche repite; lo lleva otro -> espera, entregado a
+otro -> 3 s de gracia y hop; Dropped/GuardCarried/Slot mantiene objetivo y
+tiempo; 90 s -> hop salvo cargandolo; objetivo mejor reinicia; duenos
+ilegibles nunca lo dan por perdido; filtros subidos lo ignoran; guardado
+fallido no oculta el match; reporte con matches/capture y cierre capturado.
+Ocho mutaciones fallan donde se espera. Potassium, instancia aislada en RAM
+sobre datos reales (57 en campo, 4 propios, 80 de otros): Peacock real ->
+match esperando captura; Skeleton Horse propio -> wait capturado (guardado);
+Lamb de otro -> comprobando y a los 3.5 s hop "lo tomo otro jugador";
+objetivo real de hace 100 s -> hop "no se capturo en 90 s". Bundle candidato
+en la sesion del usuario: carga ok, AUTO activo en wait, filtros intactos.
 
 ## 2026-10-12 - Pool sin servidores que dejaron la lista
 

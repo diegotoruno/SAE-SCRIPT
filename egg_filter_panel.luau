@@ -769,7 +769,7 @@ local function mountEggFilterPanel(context)
         sound.Activated:Connect(function() access(); if result(function() api.ConfigureAlerts({sound = not settings.sound}) end) then panel.OpenOptions() end end)
         local test = button("TestAlert", card, "Probar alerta", 18, 452, 226, 38)
         test.Activated:Connect(function() access(); result(api.TestAlert) end)
-        paragraph("AlertHint", card, "Al encontrar un objetivo se avisa y AUTO se detiene.", 252, 452, 226, 38, C.muted, 11).TextYAlignment = Enum.TextYAlignment.Center
+        paragraph("AlertHint", card, "Al encontrar un objetivo se avisa; AUTO espera la captura.", 252, 452, 226, 38, C.muted, 11).TextYAlignment = Enum.TextYAlignment.Center
         if type(api.OpenServerAccount) == "function" then
             caption(card, "SERVIDORES", 506)
             local account = button("ServerAccount", card, "Cuenta y Best Ping", 18, 528, CONTENT - 36, 40)
@@ -936,18 +936,24 @@ local function mountEggFilterPanel(context)
             local scope = #config.zones > 0 and "tus zonas" or "el mapa"
             local titles = { wait = "Esperando " .. config.rarity .. "+", hop = "Buscando otro servidor", loading = "Leyendo el mapa",
                 match = "Objetivo encontrado", stopped = "Búsqueda detenida" }
+            -- The panel's own map scans replace lastScan, so the target of this
+            -- server comes from the saved cycle.
+            local window = status.searchWindow
+            local target = window and type(window.matched) == "table" and window.matched.job == status.jobId
+                and window.matched or nil
+            local captured = target and target.captured == true
+            if status.mode == "wait" and captured then titles.wait = "Capturado" end
             stateTitle.Text = titles[status.mode] or "Revisando el mapa"
-            stateTitle.TextColor3 = status.mode == "match" and C.green or C.white
-            stateDot.BackgroundColor3 = status.mode == "match" and C.green or status.mode == "hop" and C.gold or status.active and C.cyan or C.muted
+            stateTitle.TextColor3 = (status.mode == "match" or captured) and C.green or C.white
+            stateDot.BackgroundColor3 = (status.mode == "match" or captured) and C.green or status.mode == "hop" and C.gold or status.active and C.cyan or C.muted
             local details = {
-                -- The panel's own map scans replace lastScan, so also read the saved cycle.
-                wait = (info.matchedHere or status.searchWindow and status.searchWindow.matchedJob == status.jobId)
-                    and "Ya encontraste uno aquí en este ciclo. Se revisa al renovarse."
+                wait = captured and "AUTO sigue activo y espera aquí el nuevo ciclo."
                     or string.format("Ninguno en %s. Se revisa al renovarse.", scope),
-                hop = info.continuingCycle and "Ya apareció en este ciclo; aquí no está. Sigo buscando."
+                hop = target and not captured and "No se capturó; busco otro servidor."
+                    or info.continuingCycle and "Ya apareció en este ciclo; aquí no está. Sigo buscando."
                     or string.format("%d %s+ en %s, ninguno cumple los filtros.", info.rarityCount or 0, config.rarity, scope),
                 loading = sentence(info.reason or "esperando datos del mapa") .. ".",
-                match = "AUTO se detuvo. Revisa la lista de los que cumplen.",
+                match = "AUTO sigue activo y espera la captura.",
                 stopped = "Pulsa AUTO para buscar " .. summary .. ".",
             }
             stateDetail.Text = details[status.mode] or string.format("%d huevos en el mapa  ·  %d %s+ en %s", info.count or 0, info.rarityCount or 0, config.rarity, scope)

@@ -1,21 +1,35 @@
 # Arquitectura
 
-## Match cierra el ciclo en su servidor (2026-10-12)
+## Captura del objetivo tras un match (2026-10-12)
 
-En `Decide`, un `match` guarda la ventana del ciclo (la vigente o una nueva)
-con `matchedJob = game.JobId`, sin reescribirla en cada sondeo; si el guardado
-falla, el match se mantiene. Sin match y con ventana valida cuyo
-`matchedJob` es el JobId actual, devuelve `wait` con `info.matchedHere` y
-`searchUntil` antes de evaluar insuficientes; la ventana expira con la noche
-como siempre. Otro JobId del mismo ciclo sigue con `hop`. El runtime y el
-panel (tambien via `searchWindow.matchedJob == jobId`) muestran "Ya
-encontraste uno aqui en este ciclo".
+Identidad que sobrevive a la captura: `EggKey` = especie#`AssetColorSeed`
+(el Uid cambia). `Evaluate` la agrega a cada coincidencia como `key`. Con un
+match o un objetivo guardado en este JobId, `Scan` agrega
+`CaptureInputs(records)`: `field[key] = {state, carriedByMe}` de todos los
+registros del campo, y `mine`/`others` con las keys de `ReadOwnedEggs()`
+(nil si no se pueden leer). Solo siguen al objetivo; los candidatos siguen
+siendo `Slot`.
 
-Reporte: sin busqueda abierta, el mismo match (uid y JobId del ultimo
-`found`) no abre otra y `wait` nunca abre una; un `hop` con `continuingCycle`
-sin candidatos abre una busqueda `resumed` (sin `first`), para que los hops
-que continuan el ciclo tras un match en otro servidor o AUTO apagado y
-encendido queden registrados.
+`Decide` guarda en la ventana del ciclo `matched = {job, key, name, at}` (la
+vigente o una nueva; sin reescribir en sondeos; un guardado fallido no oculta
+el match) y un objetivo mejor lo reemplaza. Para el objetivo de este JobId:
+en `mine` -> guarda `captured` y devuelve `wait` (`info.capture =
+"capturado"`, hasta la noche, aunque luego deje de estar); llevado por el
+jugador -> `match` sin limite; fuera del campo con duenos conocidos -> 3 s de
+gracia y luego `hop` (`info.notCaptured` "lo tomo otro jugador" si esta en
+`others`, si no "ya no esta en el mapa"); 90 s sin capturar
+(`CAPTURE_TIMEOUT_SECONDS`) -> `hop`; si no, `match` ("esperando captura",
+"lo lleva otro jugador" o "en disputa"). Un objetivo en `Slot` que ya no
+coincide (filtros) se ignora. Otro JobId sigue el flujo normal del ciclo.
+
+Runtime: el match ya no apaga AUTO; `noteEggTarget` avisa una vez por
+objetivo (match, capturado, no capturado) y `showEggTarget` muestra el
+estado; el vigilante sigue sondeando. El panel lee `searchWindow.matched`.
+Reporte: la busqueda sigue abierta tras el match; `hunt.matches` (10 max)
+guarda cada objetivo con `capture` (pendiente, capturado con
+`captureSeconds`, o el motivo) y `hunt.found` el ultimo; cierra con
+`capturado`. `visit.capture` registra el estado. `wait` no abre busquedas;
+un `hop` con `continuingCycle` sin candidatos abre una `resumed`.
 
 ## Reserva sin servidores que dejaron la lista (2026-10-12)
 
@@ -221,7 +235,7 @@ No se mantiene el bundle manualmente. `dist/` es generado y esta ignorado por Gi
 
 `Decide(match, info, cycle)` devuelve `match`, `loading`, `hop` o `wait`. Ademas de la presencia local, conserva una observacion de la rareza seleccionada para continuar cuando falta en otro servidor. `Scan()` obtiene snapshot y calcula datos con los modulos reales, evitando noche y snapshots pendientes. Un fallo de datos espera; si el ciclo cambia durante el scan se descarta esa lectura.
 
-`chilli_egg_search_cycle.json` guarda version2, rareza, zones normalizadas, periodIndex, nextReset, periodSeconds, nightSeconds, seenAt, untilTime y, tras un match, matchedJob. La ventana termina al empezar la noche siguiente (`nextReset - nightSeconds`). Cambio de rareza o conjunto de zonas cierra la memoria antes de aplicar la configuracion; si falla ese guardado, no aplica el nuevo filtro. Periodo/overrides distintos, datos futuros/corruptos o expiracion tambien la invalidan. La version1 global se descarta porque no demuestra presencia en las zonas actuales. Un reloj desconocido/pausado espera; cambiar minimo/nombre/mutacion conserva la observacion de la misma rareza y zonas. El guardado usa la persistencia verificada existente y no se repite en cada poll. `GetStatus().searchWindow` devuelve una copia profunda de lo guardado; su existencia no demuestra vigencia ni presencia actual.
+`chilli_egg_search_cycle.json` guarda version2, rareza, zones normalizadas, periodIndex, nextReset, periodSeconds, nightSeconds, seenAt, untilTime y, tras un match, `matched` (job, key, name, at, captured, capturedAt). La ventana termina al empezar la noche siguiente (`nextReset - nightSeconds`). Cambio de rareza o conjunto de zonas cierra la memoria antes de aplicar la configuracion; si falla ese guardado, no aplica el nuevo filtro. Periodo/overrides distintos, datos futuros/corruptos o expiracion tambien la invalidan. La version1 global se descarta porque no demuestra presencia en las zonas actuales. Un reloj desconocido/pausado espera; cambiar minimo/nombre/mutacion conserva la observacion de la misma rareza y zonas. El guardado usa la persistencia verificada existente y no se repite en cada poll. `GetStatus().searchWindow` devuelve una copia profunda de lo guardado; su existencia no demuestra vigencia ni presencia actual.
 
 La cache de analisis incorpora el ciclo para no trasladar decisiones entre periodos sin senal de renovacion. La informacion de scan incluye el reloj capturado antes de leer los records; Decide rechaza un snapshot del periodo anterior. El panel distingue busqueda vigente sin rareza local de espera inicial.
 
