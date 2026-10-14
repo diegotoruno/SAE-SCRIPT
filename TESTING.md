@@ -1,5 +1,11 @@
 # Pruebas y validacion
 
+## 2026-10-14 - Destino fallido al volver al origen
+
+Build, compilaciones y 217 regresiones (una nueva: reconexion al origen
+devuelve el destino fallido; sin destino, vacio o igual al actual no marca
+nada) y diez Python. Pendiente en Potassium: observar una reconexion real.
+
 ## 2026-10-14 - Vuelta al hopper en un solo archivo
 
 `hopper_runtime.luau`, `build.py`, `ci_tools.py` y `AGENTS.md` son

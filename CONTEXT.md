@@ -1,5 +1,14 @@
 # Contexto del proyecto
 
+## Destino fallido al volver al origen (2026-10-14)
+
+El usuario pidio evitar repetir servidores. Tras la noche cada servidor tiene
+huevos nuevos, asi que repetir entre ciclos es valido (se descarto excluir
+24 h, PR #39 cerrado). La repeticion real fue en un test de saltos manuales:
+`4da6f5e2` cargo dos veces seguidas porque Roblox devolvio el cliente al
+origen en vez del destino. El hopper ya lo reconocia como reconexion, pero no
+marcaba el destino; ahora lo marca como visitado para no reintentarlo.
+
 ## Historial de mejores por ciclo (2026-10-14)
 
 El usuario eligio, de las opciones visuales, un historial de los mejores
