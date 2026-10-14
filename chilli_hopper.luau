@@ -2494,6 +2494,13 @@ local function createFinderSupport()
             and type(connectionId) == "string" and state.originConnection ~= connectionId then return "reconnected" end
         return "blocked"
     end
+    -- Roblox can send the client back to the origin instead of the target
+    -- (test 2026-10-14: 4da6f5e2 loaded twice in a row). That target failed;
+    -- returns it so it is not tried again.
+    function support.FailedTarget(state, job)
+        if type(state) ~= "table" or type(state.target) ~= "string" or state.target == "" then return nil end
+        return state.target ~= job and state.target or nil
+    end
     function support.AutoHopAllowed(state, job, now, busy, blocked, freshSeconds)
         if busy or blocked then return false end
         if type(state) ~= "table" or state.pending ~= true then return true end
@@ -4902,6 +4909,8 @@ do
             return
         end
         if disposition == "reconnected" then
+            local failedTarget = support.FailedTarget(state, game.JobId)
+            if failedTarget then markVisited(failedTarget) end
             while session.alive do
                 local _, info = eggSearch.Scan(true)
                 local cycle = eggSearch.CycleStatus()
