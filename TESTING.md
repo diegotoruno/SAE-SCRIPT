@@ -9,6 +9,12 @@ ni entradas: estado pendiente con origen = JobId actual, conexion de origen
 distinta y destino ficticio; al reejecutar el bundle se detecto la
 reconexion, el destino quedo en visitados a los 4 s y el estado se cerro con
 `reconnected`. El ID ficticio se retiro despues.
+Despues de publicar build-102, cinco hops reales con `ChilliEggSearch.Hop()`
+(sin entradas simuladas), AUTO activo: c3595469 -> 0ce7c008 -> aba9111f ->
+66037c2b -> e4663a45 -> 5c7e5db9. Los cinco llegaron al destino elegido en
+10-11 s, sin repeticiones; cada destino quedo en visitados y el estado se
+cerro sin pendiente. Ninguno volvio al origen: ese caso depende de Roblox y no
+se pudo provocar.
 
 ## 2026-10-14 - Vuelta al hopper en un solo archivo
 
