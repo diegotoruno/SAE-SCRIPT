@@ -7,8 +7,8 @@ Rama codex/separar-hopper-runtime sobre main 62dfde3. `hopper_runtime.luau`
 `server_pool.luau` (lista, Best Ping y pool), `account_panel.luau`
 (formulario de cuenta), `hop_button.luau` (tarjeta del boton) y el runtime
 (983 lineas: sesion, AUTO, saltos, llegada y API). Sin cambios de decisiones,
-textos, archivos ni API. Ver TESTING. Prueba en Potassium y publicacion
-pendientes de decision del usuario.
+textos, archivos ni API. Montaje real en Potassium correcto (ver TESTING);
+el usuario pidio abrir el PR.
 
 ## 2026-10-13 - Ultimo visto persistente
 
