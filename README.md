@@ -40,13 +40,17 @@ El punto de entrada de `main` carga el script validado de la rama `stable`. Los 
 
 **CUENTA / BEST PING** permite pegar una cookie propia desde Delta o Potassium. Guardado opcional local sin cifrado, consulta directa a Roblox y opcion de borrar/desconectar. El boton fijo permite reabrir el formulario si se cierra; **CUENTA · GUARDADA** confirma la escritura y verificacion local. Configuracion, APIs y limites de prueba: [BEST_PING.md](BEST_PING.md). Todos usan el cargador de `main` mostrado arriba, tambien en autoexec; CI publica la misma version validada para todos. La cuenta, cookie y filtros siguen siendo propios de cada dispositivo. Los cargadores antiguos fijados a un SHA o a una rama de prueba deben sustituirse por el de `main`.
 
-El codigo mantenido esta en tres archivos:
+El codigo mantenido esta en estos modulos:
 
 - `map_egg_search.luau`: filtros, lecturas del mapa y decisiones del detector.
 - `egg_filter_panel.luau`: panel, imagenes, modelos y controles.
-- `hopper_runtime.luau`: Server Hop, cuenta/Best Ping y API publica. No carga Chilli.
+- `server_support.luau`: helpers testables del hopper (almacenamiento, paginas, Best Ping, teleport, escalas).
+- `server_pool.luau`: lista de servidores, conexion Best Ping/cookie y pool precargado.
+- `account_panel.luau`: formulario Cuenta / Best Ping.
+- `hop_button.luau`: tarjeta del boton Server Hop (AUTO, plegado, estado, arrastre y tamano).
+- `hopper_runtime.luau`: sesion, ciclo AUTO, saltos, llegada y API publica. No carga Chilli.
 
-`build.py` integra los tres en `dist/chilli_hopper.luau`. No edites el `chilli_hopper.luau` de la raiz ni la rama `stable`: son puntos de distribucion.
+`build.py` los integra en `dist/chilli_hopper.luau`. No edites el `chilli_hopper.luau` de la raiz ni la rama `stable`: son puntos de distribucion.
 
 Para mejorar el script, crea una rama `codex/descripcion`, modifica los modulos y abre un pull request hacia `main`. GitHub Actions compila los modulos y el archivo integrado con Luau 0.741, ejecuta las pruebas de regresion y guarda el artefacto. Un pull request solo valida; un cambio aprobado en `main` valida y publica automaticamente en `stable`, con una release identificada por numero de ejecucion y commit. Si falla una prueba, `stable` conserva la version anterior. Una ejecucion antigua no reemplaza un commit nuevo de `main`.
 

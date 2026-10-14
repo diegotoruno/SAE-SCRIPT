@@ -1,5 +1,26 @@
 # Pruebas y validacion
 
+## 2026-10-14 - Hopper separado en modulos
+
+Refactor sin cambio de comportamiento. Build, doce compilaciones (los cuatro
+modulos nuevos) y las mismas 214 regresiones; las de soporte cargan ahora
+`server_support.luau` con `require` en vez de la copia extraida. Tests Python
+correctos. `luau-analyze` 0.741 sobre el bundle antes y despues: mismos
+globals desconocidos (solo APIs de Roblox/executor; uno mas de `game` por el
+`GetService` del pool) y los mismos avisos, asi que ninguna variable quedo
+sin resolver al mover codigo entre closures.
+
+Potassium, cliente real en Steal An Egg con AUTO activo (Eternal >= 15B,
+cuenta guardada, BestLatency/DeviceCookie): bundle candidato montado sobre la
+sesion anterior sin errores. Una sola GUI ServerHopButton; tarjeta plegada con
+escala guardada 0.96, AUTO/ON, firma y asa; boton de cuenta "Cuenta: guardada"
+y formulario cerrado; ServerAccountStatus configured/remembered; GetStatus con
+AUTO activo, modo wait y reserva restaurada de 24 (2 de 1/7, 22 de 2/7); el
+refresco del pool volvio a llenar 24 candidatos. Renovacion natural del ciclo
+5973242 -> 5973243: loading durante la noche, snapshot completo de 65 spawns y
+wait en el mismo servidor, sin avisos. Sin entradas simuladas ni conexiones de
+GUI disparadas; no hubo salto en la prueba.
+
 ## 2026-10-13 - Reporte legible
 
 Build, ocho compilaciones y 208 regresiones (una nueva: el texto se reescribe
