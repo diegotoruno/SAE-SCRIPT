@@ -1,5 +1,15 @@
 # Estado del trabajo
 
+## 2026-10-14 - Hopper separado en modulos
+
+Rama codex/separar-hopper-runtime sobre main 62dfde3. `hopper_runtime.luau`
+(2677 lineas) se divide en `server_support.luau` (helpers testables),
+`server_pool.luau` (lista, Best Ping y pool), `account_panel.luau`
+(formulario de cuenta), `hop_button.luau` (tarjeta del boton) y el runtime
+(983 lineas: sesion, AUTO, saltos, llegada y API). Sin cambios de decisiones,
+textos, archivos ni API. Ver TESTING. Prueba en Potassium y publicacion
+pendientes de decision del usuario.
+
 ## 2026-10-13 - Ultimo visto persistente
 
 Rama codex/ultimo-visto-persistente sobre main 98acad7 (build-90). El ultimo

@@ -1,4 +1,4 @@
-"""Build a single executor script from the three maintained Luau sources."""
+"""Build a single executor script from the maintained Luau sources."""
 import hashlib
 import json
 import os
@@ -7,7 +7,11 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent
 OUT = ROOT / "dist"
 MODULES = [("map_egg_search.luau", "createMapEggSearch"),
-           ("egg_filter_panel.luau", "mountEggFilterPanel")]
+           ("egg_filter_panel.luau", "mountEggFilterPanel"),
+           ("server_support.luau", "createFinderSupport"),
+           ("server_pool.luau", "createServerPool"),
+           ("account_panel.luau", "mountAccountPanel"),
+           ("hop_button.luau", "mountHopButton")]
 
 
 def build():

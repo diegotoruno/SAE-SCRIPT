@@ -196,7 +196,7 @@ test("unwritable filters do not silently apply", function()
     assert(not pcall(failed.Configure, {minIncome = 8e9}))
     assert(failed.config.minIncome == 7e9)
 end)
-local support = require("./.tools/runtime_support")()
+local support = require("./server_support")()
 test("same snapshot shares income reads; fresh hop scan recalculates", function()
     search.modules.eggs.ReadFieldEggs = function() return {Records = records} end
     records = {egg("cache", 8e9)}; rateCalls = 0

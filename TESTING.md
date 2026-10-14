@@ -1,5 +1,16 @@
 # Pruebas y validacion
 
+## 2026-10-14 - Hopper separado en modulos
+
+Refactor sin cambio de comportamiento. Build, doce compilaciones (los cuatro
+modulos nuevos) y las mismas 214 regresiones; las de soporte cargan ahora
+`server_support.luau` con `require` en vez de la copia extraida. Tests Python
+correctos. `luau-analyze` 0.741 sobre el bundle antes y despues: mismos
+globals desconocidos (solo APIs de Roblox/executor; uno mas de `game` por el
+`GetService` del pool) y los mismos avisos, asi que ninguna variable quedo
+sin resolver al mover codigo entre closures. Pendiente en Potassium: montar
+el bundle candidato y comprobar tarjeta, formulario de cuenta, pool y AUTO.
+
 ## 2026-10-13 - Reporte legible
 
 Build, ocho compilaciones y 208 regresiones (una nueva: el texto se reescribe
