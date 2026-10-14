@@ -158,24 +158,50 @@ local function createMapEggSearch(readJson, writeJson, writeText)
     function search.SearchWindow()
         return copyInputs(remembered)
     end
-    -- Best egg of the last cycle that ended, for information only. It outlives
-    -- the window (which is cleared at the night) in its own file and never
-    -- takes part in a decision.
+    -- Best egg of each cycle that ended, for information only. It outlives
+    -- the window (which is cleared at the night) in its own file, newest
+    -- first, and never takes part in a decision. Each record keeps its rarity
+    -- and zones; readers only see the records of the current scope.
     local PREVIOUS_FILE = "chilli_egg_search_previous.json"
+    local HISTORY_LIMIT = 30
     local previous = readJson(PREVIOUS_FILE, {})
     if type(previous) ~= "table" then previous = {} end
+    -- Version 1 kept a single record; it becomes the first history entry.
+    if previous.version ~= 2 then
+        previous = {version = 2, history = previous.version == 1 and {previous} or {}}
+    elseif type(previous.history) ~= "table" then previous.history = {} end
     local function validBest(best)
         return type(best) == "table" and type(best.key) == "string" and type(best.category) == "string"
             and finite(best.income)
     end
+    local function sameScope(a, b)
+        return type(a) == "table" and type(b) == "table" and a.rarity == b.rarity and sameInputs(a.zones, b.zones)
+    end
     local function archive(window)
         if type(window) ~= "table" or window.version ~= 2 or not validBest(window.best)
             or not finite(window.periodIndex) then return end
-        if finite(previous.periodIndex) and previous.periodIndex > window.periodIndex then return end
-        local record = {version = 1, rarity = window.rarity, zones = copyInputs(window.zones),
+        local record = {rarity = window.rarity, zones = copyInputs(window.zones),
             periodIndex = window.periodIndex, best = copyInputs(window.best)}
-        local ok, saved = pcall(writeJson, PREVIOUS_FILE, record)
-        if ok and saved then previous = record end
+        local history = {}
+        for _, item in ipairs(previous.history) do
+            -- One record per cycle and scope: the better egg of the two stays.
+            if type(item) == "table" and item.periodIndex == record.periodIndex and sameScope(item, record) then
+                if validBest(item.best) and item.best.income >= record.best.income then return end
+            else
+                table.insert(history, item)
+            end
+        end
+        local at = #history + 1
+        for index, item in ipairs(history) do
+            if not (type(item) == "table" and finite(item.periodIndex)) or item.periodIndex < record.periodIndex then
+                at = index; break
+            end
+        end
+        table.insert(history, at, record)
+        while #history > HISTORY_LIMIT do table.remove(history) end
+        local value = {version = 2, history = history}
+        local ok, saved = pcall(writeJson, PREVIOUS_FILE, value)
+        if ok and saved then previous = value end
     end
 
     local incomeCache = {}
@@ -596,27 +622,52 @@ local function createMapEggSearch(readJson, writeJson, writeText)
             mutations = table.clone(top.mutations or {}), baseMutation = top.baseMutation,
             job = game.JobId, at = at}
     end
-    -- Last best egg seen in a cycle that already ended, same rarity and zones,
-    -- and how many cycles ago it was (1 = the cycle before this one; 0 while the
-    -- night closes it). It stays until a newer in-scope egg replaces it, however
-    -- many cycles pass without one; the caller says how old it is.
-    function search.BestPrevious(cycle)
+    -- Best eggs of the cycles that already ended, same rarity and zones,
+    -- newest first: {best, age, periodIndex}, age = how many cycles ago (1 =
+    -- the cycle before this one; 0 while the night closes it). Cycles without
+    -- an in-scope egg have no entry, so ages can skip numbers.
+    function search.BestHistory(cycle, limit)
         if cycle == nil then cycle = search.CycleStatus() end
-        if not clockKnown(cycle) then return nil end
-        local wanted = string.lower(search.config.rarity)
+        if not clockKnown(cycle) then return {} end
+        local wanted = {rarity = string.lower(search.config.rarity), zones = search.config.zones}
         local function ended(record)
-            return type(record) == "table" and record.rarity == wanted
-                and sameInputs(record.zones, search.config.zones) and validBest(record.best)
+            return type(record) == "table" and sameScope(record, wanted) and validBest(record.best)
                 and finite(record.periodIndex)
                 and (record.periodIndex < cycle.periodIndex
                     or (cycle.night and record.periodIndex == cycle.periodIndex))
         end
+        local records = {}
+        for _, record in ipairs(previous.history) do
+            if ended(record) then table.insert(records, record) end
+        end
         -- A window the night closed that was not archived yet (AUTO was off)
-        -- competes with the archive; the newer period wins.
-        local record = remembered.version == 2 and ended(remembered) and remembered or nil
-        if ended(previous) and (not record or previous.periodIndex > record.periodIndex) then record = previous end
-        if not record then return nil end
-        return copyInputs(record.best), cycle.periodIndex - record.periodIndex
+        -- joins the archive; the better egg of the same cycle stays.
+        if remembered.version == 2 and ended(remembered) then
+            local merged = false
+            for index, record in ipairs(records) do
+                if record.periodIndex == remembered.periodIndex then
+                    if remembered.best.income > record.best.income then records[index] = remembered end
+                    merged = true; break
+                end
+            end
+            if not merged then table.insert(records, remembered) end
+        end
+        table.sort(records, function(a, b) return a.periodIndex > b.periodIndex end)
+        local list = {}
+        for index = 1, math.min(#records, limit or #records) do
+            local record = records[index]
+            list[index] = {best = copyInputs(record.best), age = cycle.periodIndex - record.periodIndex,
+                periodIndex = record.periodIndex}
+        end
+        return list
+    end
+    -- Last best egg seen in a cycle that already ended, and how many cycles
+    -- ago. It stays until a newer in-scope egg replaces it, however many
+    -- cycles pass without one; the caller says how old it is.
+    function search.BestPrevious(cycle)
+        local last = search.BestHistory(cycle, 1)[1]
+        if not last then return nil end
+        return last.best, last.age
     end
     -- Best in-scope egg seen so far in the current cycle (any server), or nil
     -- when there is none or the saved window does not belong to this cycle.
@@ -1788,9 +1839,63 @@ local function mountEggFilterPanel(context)
     end
     -- The previous cycle's egg is information only: muted, never gold.
     local function bestColor(row) return row.best == "previous" and C.muted or C.gold end
+    -- Best egg of this cycle and of the last ended ones, same rarity and zones,
+    -- to see what really appears before choosing the minimum. Information only.
+    local HISTORY_CYCLES = 5
+    local function ageText(age)
+        if age <= 0 then return "Ciclo que termina" end
+        if age == 1 then return "Ciclo anterior" end
+        return string.format("Hace %d ciclos", age)
+    end
+    local function bestHistory()
+        access()
+        local card = sheet("BestHistory", "Mejores de ciclos anteriores", 90, 560)
+        paragraph("Hint", card, string.format("El mejor huevo %s+ de cada ciclo en tus zonas, aunque no llegue al mínimo. "
+            .. "Un ciclo sin ninguno no aparece.", search.config.rarity), 18, 44, CONTENT - 36, 32, C.muted, 11)
+        local cycles = {}
+        local current = search.BestSeen()
+        if current then table.insert(cycles, {best = current, label = "Este ciclo"}) end
+        for _, item in ipairs(search.BestHistory(nil, HISTORY_CYCLES)) do
+            table.insert(cycles, {best = item.best, label = ageText(item.age)})
+        end
+        local list = listFrame(card, 84, 412)
+        local minimum = search.config.minIncome
+        for index, item in ipairs(cycles) do
+            local best = item.best
+            local catalog = search.modules and search.modules.assets.Directory[best.category]
+            local labels, ids = {}, table.clone(best.mutations or {})
+            if best.baseMutation then table.insert(ids, 1, best.baseMutation) end
+            for _, id in ipairs(ids) do
+                local ok, label = pcall(function() return data.mutations and data.mutations.LabelOf(id) or id end)
+                label = ok and tostring(label) or tostring(id)
+                if not table.find(labels, label) then table.insert(labels, label) end
+            end
+            local row = make("Frame", "Cycle_" .. index, list, {Size = UDim2.new(1, -2, 0, 58), LayoutOrder = index,
+                BackgroundColor3 = C.card, BorderSizePixel = 0})
+            corner(row); stroke(row, index == 1 and current and C.gold or C.border).Transparency = 0.45
+            text("When", row, item.label, 14, 8, 0, 14, index == 1 and current and C.gold or C.muted, 10, true).Size = UDim2.new(1, -150, 0, 14)
+            text("Name", row, tostring(best.name or best.category), 14, 22, 0, 18, C.white, 14, true).Size = UDim2.new(1, -150, 0, 18)
+            local tags = text("Tags", row, "", 14, 40, 0, 14, C.muted, 10)
+            tags.Size = UDim2.new(1, -150, 0, 14); tags.RichText = true
+            tags.Text = string.format('<font color="%s"><b>%s</b></font>  ·  %s%s',
+                hex(rarityColor(catalog and catalog.Rarity)), escape(best.rarity or "?"), escape(zoneName(best.area)),
+                #labels > 0 and "  ·  " .. escape(table.concat(labels, " + ")) or "")
+            local reaches = best.income >= minimum
+            local income = text("Income", row, number(best.income) .. "/s", 0, 10, 124, 22, reaches and C.green or C.white, 16, true)
+            income.Position = UDim2.new(1, -138, 0, 10); income.TextXAlignment = Enum.TextXAlignment.Right
+            local verdict = text("Minimum", row, reaches and "llega al mínimo" or "bajo el mínimo", 0, 34, 124, 14, C.muted, 10)
+            verdict.Position = UDim2.new(1, -138, 0, 34); verdict.TextXAlignment = Enum.TextXAlignment.Right
+        end
+        if #cycles == 0 then
+            paragraph("Empty", list, "Todavía no hay ciclos con un huevo de tu rareza en tus zonas. Se registran con AUTO activo.",
+                4, 12, 440, 40, C.muted, 12)
+        end
+        paragraph("Minimum", card, "Ingreso mínimo guardado: " .. search.FormatMinimum(minimum) .. "/s", 18, 508, CONTENT - 36, 32, C.muted, 11)
+    end
+    panel.OpenBestHistory = bestHistory
     local function detail(row)
         access()
-        local card = sheet("EggDetail", row.name, 120, row.best and 442 or 400)
+        local card = sheet("EggDetail", row.name, 120, row.best and 486 or 400)
         local tags = text("Tags", card, "", 18, 44, CONTENT - 36, 18, C.muted, 12)
         tags.RichText = true
         tags.Text = string.format('<font color="%s"><b>%s</b></font>  ·  %s', hex(rarityColor(row.catalog and row.catalog.Rarity)),
@@ -1819,6 +1924,10 @@ local function mountEggFilterPanel(context)
                 make("Frame", "Divider" .. index, card, { Position = UDim2.fromOffset(18, y + 41), Size = UDim2.fromOffset(CONTENT - 36, 1),
                     BackgroundColor3 = C.border, BackgroundTransparency = 0.5, BorderSizePixel = 0 })
             end
+        end
+        if row.best then
+            local history = button("BestHistory", card, "Ver mejores de los últimos ciclos", 18, 432, CONTENT - 36, 40)
+            history.Activated:Connect(function() access(); bestHistory() end)
         end
     end
     local function createCard(row)
@@ -4523,6 +4632,7 @@ do
         end,
         CycleStatus = function() return eggSearch.CycleStatus() end,
         HuntReport = function() return eggSearch.HuntReport() end,
+        BestHistory = function(limit) return eggSearch.BestHistory(nil, limit) end,
         RarityOptions = function() return eggSearch.RarityOptions() end,
         ZoneOptions = function() return eggSearch.ZoneOptions() end,
         Presets = function()
