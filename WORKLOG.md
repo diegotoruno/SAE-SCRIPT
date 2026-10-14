@@ -1,5 +1,10 @@
 # Estado del trabajo
 
+## 2026-10-14 - Destino fallido al volver al origen
+
+Rama codex/marcar-destino-reconexion. Al volver al origen se marca el destino
+como visitado. PR #39 (excluir 24 h) cerrado sin fusionar. Ver CONTEXT.
+
 ## 2026-10-14 - Vuelta al hopper en un solo archivo
 
 Rama codex/revertir-modulos sobre main 88c627e (build-96). A pedido del

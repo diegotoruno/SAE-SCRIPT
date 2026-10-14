@@ -241,6 +241,13 @@ test("store verifies writes, copies values and recovers backup", function()
     io.write = function(path, raw) if path:find("tmp", 1, true) then error("disk full") end; disk[path] = raw end
     assert(not store.Write("config", {value = 9})); assert(store.Read("config").value == 8)
 end)
+test("reconnection to the origin returns the failed target to mark as visited", function()
+    local state = {pending = true, target = "target", origin = "origin", originConnection = "old"}
+    assert(support.TeleportDisposition(state, "origin", "new") == "reconnected")
+    assert(support.FailedTarget(state, "origin") == "target")
+    assert(support.FailedTarget({target = "origin"}, "origin") == nil)
+    assert(support.FailedTarget({target = ""}, "origin") == nil and support.FailedTarget(nil, "origin") == nil)
+end)
 test("visited history expires and stays bounded", function()
     local result = support.PruneVisited({expired = 1, recent = 95, newer = 99, future = 101, invalid = "bad"}, 100, 10, 1)
     assert(result.newer == 99 and result.expired == nil and result.recent == nil and result.future == nil)
