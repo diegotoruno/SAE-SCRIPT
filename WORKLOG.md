@@ -1,5 +1,10 @@
 # Estado del trabajo
 
+## 2026-10-14 - Sin repetir servidores entre ciclos
+
+Rama codex/no-repetir-servidores. Visitados excluidos 24 h (antes 1 h),
+maximo 900. Ver CONTEXT y TESTING.
+
 ## 2026-10-14 - Vuelta al hopper en un solo archivo
 
 Rama codex/revertir-modulos sobre main 88c627e (build-96). A pedido del

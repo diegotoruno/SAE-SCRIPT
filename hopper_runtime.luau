@@ -53,6 +53,12 @@ local function createFinderSupport()
         local result = {}; for i = 1, math.min(#entries, limit or 500) do result[entries[i].id] = entries[i].at end
         return result
     end
+    -- Un ciclo del juego dura 2 h y la reserva cercana de 1-2/7 es pequena
+    -- (39 de 553 filas, 2026-10-14): con 1 h cada ciclo volvia a los mismos
+    -- servidores. 24 h cubre doce ciclos; el limite queda bajo el maximo de
+    -- 1000 exclusiones que acepta best_ping_bridge.py (mas el actual).
+    support.VISITED_MAX_AGE = 24 * 60 * 60
+    support.VISITED_LIMIT = 900
     -- Shared read-only PruneVisited view. It only changes when the file is
     -- rewritten (Invalidate), a kept entry ages out or a future entry starts.
     function support.RecentVisited(read, maxAge, limit)
@@ -171,8 +177,8 @@ local function createFinderSupport()
                 or not at or now - at < -5 or now - at > 180
                 or tonumber(row.maxPlayers) ~= 7 then return nil, "datos Best Ping vencidos o invalidos" end
             previousRank = rank
-            local seenAt = tonumber(visited[row.id])
-            if row.id ~= current and (not seenAt or now - seenAt > 3600) then
+            -- visited is already the pruned recent view.
+            if row.id ~= current and not visited[row.id] then
                 table.insert(accepted, row)
             end
         end
@@ -774,7 +780,7 @@ local function montarHopper()
 --  termina: al llegar mide jugadores y ping reales y los muestra (<=2 jugadores
 --  y <=120 ms = si). Aunque salga no, se queda ahi: puede que el servidor te
 --  guste igualmente. Si no te gusta, vuelve a pulsar y arranca otro intento
---  (el actual y los visitados en la ultima hora se descartan).
+--  (el actual y los visitados en las ultimas 24 h se descartan).
 --
 --  Rapidez: un pool de candidatos (7 plazas, sin visitados) se refresca solo
 --  en segundo plano cada 45 s. El clic no consulta nada: usa el pool y sale al
@@ -786,7 +792,7 @@ local function montarHopper()
 --  de pisar un teleport que podria estar en camino.
 --
 --  Reglas de seleccion y medicion:
---    * servidores de 7 plazas; se descarta el actual y los visitados en 1 h
+--    * servidores de 7 plazas; se descarta el actual y los visitados en 24 h
 --    * ocupacion ascendente 1/7 -> 2/7 -> ... -> 6/7; dentro de cada grupo
 --      se conserva FPS sano y ping ANUNCIADO descendente como heuristica previa.
 --      Las observaciones anteriores no prueban el ping de cada usuario.
@@ -843,7 +849,8 @@ do
     local DEVICE_GATE_FILE = "sae_best_ping_device_gate.json"
     local NATIVE_REQUEST_FILE = "sae_best_ping_request.json"
     local NATIVE_RESPONSE_FILE = "sae_best_ping_response.json"
-    local VISITED_MAX_AGE = 60 * 60
+    local VISITED_MAX_AGE = support.VISITED_MAX_AGE
+    local VISITED_LIMIT = support.VISITED_LIMIT
     local POOL_REFRESH_SECONDS = 45   -- cada cuanto se refresca el pool
     local POOL_SIZE = 8               -- candidatos guardados en el pool
     local BALANCED_RESERVE_SIZE = 24  -- 1/7 first; 2/7 ready when the quick primary reserve is empty
@@ -885,7 +892,7 @@ do
         decode = function(raw) return HttpService:JSONDecode(raw) end})
     local function readJson(path, fallback) return store.Read(path, fallback) end
     -- Read-only pruned view; writers of VISITED_FILE must call Invalidate.
-    local recentVisited = support.RecentVisited(function() return readJson(VISITED_FILE, {}) end, VISITED_MAX_AGE)
+    local recentVisited = support.RecentVisited(function() return readJson(VISITED_FILE, {}) end, VISITED_MAX_AGE, VISITED_LIMIT)
     local connectionConfig = readJson(CONNECTION_FILE, {})
     local serverOrder = connectionConfig.mode == "BestLatency" and "BestLatency" or "LegacyPing"
     local nativeStatus = nil
@@ -2089,7 +2096,7 @@ do
     end
 
     -- Lee el pool guardado (sin HTTP) y filtra lo que ya no sirve: visitados
-    -- en la ultima hora y el servidor actual. Si el pool es viejo, se ignora.
+    -- en las ultimas 24 h y el servidor actual. Si el pool es viejo, se ignora.
     local function loadPool()
         local data = readJson(POOL_FILE, nil)
         if type(data) ~= "table" or type(data.servers) ~= "table" then
@@ -2114,15 +2121,13 @@ do
             return nil
         end
 
-        local visited = readJson(VISITED_FILE, {})
-        local now = os.time()
+        local visited = recentVisited.Get(os.time())
         local pool = {}
         for _, server in ipairs(data.servers) do
             local id = type(server) == "table" and server.id or nil
             if type(server) ~= "table" or tonumber(server.playing) ~= occupancy then return nil end
             if type(id) == "string" and id ~= game.JobId then
-                local seenAt = tonumber(visited[id]) or 0
-                if now - seenAt > VISITED_MAX_AGE then
+                if not visited[id] then
                     table.insert(pool, {
                         id = id,
                         playing = tonumber(server.playing),
@@ -2138,7 +2143,7 @@ do
     -- Several IDs share one verified write of the history file.
     local function markVisited(...)
         local now = os.time()
-        local visited = support.PruneVisited(readJson(VISITED_FILE, {}), now, VISITED_MAX_AGE)
+        local visited = support.PruneVisited(readJson(VISITED_FILE, {}), now, VISITED_MAX_AGE, VISITED_LIMIT)
         for _, jobId in ipairs({...}) do visited[jobId] = now end
         writeJson(VISITED_FILE, visited)
         recentVisited.Invalidate()
@@ -2572,7 +2577,7 @@ do
         if game.JobId ~= "" then
             visited[game.JobId] = now
         end
-        writeJson(VISITED_FILE, support.PruneVisited(visited, now, VISITED_MAX_AGE))
+        writeJson(VISITED_FILE, support.PruneVisited(visited, now, VISITED_MAX_AGE, VISITED_LIMIT))
         recentVisited.Invalidate()
 
         writeJson(STATE_FILE, {

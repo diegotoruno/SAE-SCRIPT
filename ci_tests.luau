@@ -245,6 +245,19 @@ test("visited history expires and stays bounded", function()
     local result = support.PruneVisited({expired = 1, recent = 95, newer = 99, future = 101, invalid = "bad"}, 100, 10, 1)
     assert(result.newer == 99 and result.expired == nil and result.recent == nil and result.future == nil)
 end)
+test("visited servers stay excluded in the next egg cycle", function()
+    -- Real report 2026-10-14: 43f5a542 hopped at 02:31 and again at 04:33.
+    local now = 10000
+    local visited = support.PruneVisited({previousCycle = now - 2 * 3600, lastDay = now - 23 * 3600,
+        tooOld = now - support.VISITED_MAX_AGE}, now, support.VISITED_MAX_AGE, support.VISITED_LIMIT)
+    assert(visited.previousCycle and visited.lastDay and visited.tooOld == nil)
+    local rows = {{id = "previousCycle", playing = 2, observedAt = now - 5, nativeRank = 1},
+        {id = "fresh", playing = 2, observedAt = now - 5, nativeRank = 2}}
+    local pool = support.BalancedReserve(rows, now, "current", visited, 24)
+    assert(#pool == 1 and pool[1].id == "fresh")
+    -- The bridge rejects more than 1000 exclusions; the current JobId is added.
+    assert(support.VISITED_LIMIT + 1 <= 1000)
+end)
 test("paging finds candidates beyond visited first page and deduplicates", function()
     local calls = 0
     local result = support.Pages(function(cursor)
@@ -425,6 +438,11 @@ test("ascending occupancy evidence permits higher groups with native partial pag
     assert(support.NativePool(data, "new-hop", 1000, "current", {}) == nil)
     data.lowestOccupancy = 2; data.occupancyCheckedAt = 900
     assert(support.NativePool(data, "new-hop", 1000, "current", {}) == nil)
+end)
+test("native connection keeps servers of the previous egg cycle excluded", function()
+    local data = nativeResponse({nativeRow("previousCycle", 1, 1), nativeRow("fresh", 1, 2)}, false)
+    local pool = support.NativePool(data, "new-hop", 1000, "current", {previousCycle = 1000 - 2 * 3600})
+    assert(#pool == 1 and pool[1].id == "fresh")
 end)
 test("immediate teleport exception fails without waiting", function()
     local attempt, fake = fakeAttempt({send = function() error("immediate failure") end})

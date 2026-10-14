@@ -1,5 +1,12 @@
 # Pruebas y validacion
 
+## 2026-10-14 - Sin repetir servidores entre ciclos
+
+Build, siete compilaciones, 218 regresiones (dos nuevas: un servidor visitado
+2 h antes sigue excluido en BalancedReserve y NativePool; limite bajo las 1000
+exclusiones del bridge) y diez Python. Pendiente en Potassium: ciclo real con
+AUTO para confirmar que no se repite ningun JobId del ciclo anterior.
+
 ## 2026-10-14 - Vuelta al hopper en un solo archivo
 
 `hopper_runtime.luau`, `build.py`, `ci_tools.py` y `AGENTS.md` son

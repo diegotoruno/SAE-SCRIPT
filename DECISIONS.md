@@ -1,5 +1,12 @@
 # Decisiones de producto e implementacion
 
+## Visitados durante 24 h (2026-10-14)
+
+Pedido del usuario: no repetir servidores aunque cueste ping u ocupacion. Con
+1 h el ciclo siguiente (2 h) volvia a los mismos servidores cercanos. 24 h,
+maximo 900 IDs para no pasar el limite de 1000 exclusiones de
+`best_ping_bridge.py`. Todos los filtros usan la misma vista podada.
+
 ## Cargador de Chilli como archivo aparte (2026-10-13)
 
 Excepcion acotada a "Chilli separado del hopper": el hopper sigue sin cargar

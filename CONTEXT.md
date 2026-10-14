@@ -1,5 +1,15 @@
 # Contexto del proyecto
 
+## Sin repetir servidores entre ciclos (2026-10-14)
+
+El usuario pide evitar al maximo repetir servidores. Reporte real: 43f5a542
+se visito a las 02:31 y otra vez a las 04:33. El ciclo dura 2 h y los
+visitados solo se excluian 1 h; con Best Ping la reserva cercana de 1-2/7 es
+pequena (39 de 553 filas), asi que cada ciclo volvia a los mismos. Ahora se
+excluyen 24 h (doce ciclos), maximo 900 IDs. Al agotarse la reserva cercana
+se pagina mas lejos o se pasa a 3..6/7 con la prueba existente: puede subir
+el ping o la ocupacion. Seleccion, AUTO y detector no cambian.
+
 ## Historial de mejores por ciclo (2026-10-14)
 
 El usuario eligio, de las opciones visuales, un historial de los mejores
