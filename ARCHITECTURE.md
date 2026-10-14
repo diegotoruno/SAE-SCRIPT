@@ -124,9 +124,8 @@ El prefetch solo lee el pool en el modo que lo usa.
 
 ## Hopper sin cargador de Chilli (2026-10-11)
 
-`hopper_runtime.luau` contiene `montarHopper` (el soporte testable, el pool,
-el formulario de cuenta y la tarjeta del boton viven en sus propios modulos
-desde 2026-10-14); el arranque es `pcall(montarHopper)`. No hay `cargarChilli`, ni lectura de
+`hopper_runtime.luau` solo contiene el soporte testable y `montarHopper`; el
+arranque es `pcall(montarHopper)`. No hay `cargarChilli`, ni lectura de
 `chilli_client.json`/`steal_an_egg_scout_state.json` para diferir Chilli, ni
 `__CHILLI_UI_JOB`/`__CHILLI_LOADED_JOB_ID`. El primer refresco del pool ya no
 espera una ScreenGui "Chilli" en gethui. Chilli es una dependencia externa del
@@ -228,11 +227,7 @@ El proceso mantiene el cursor nativo entre hops. Al no tener candidatos 1/7, una
 | --- | --- |
 | `map_egg_search.luau` | Factory `createMapEggSearch`: configuracion, evaluacion pura, ciclo, snapshot y decisiones. |
 | `egg_filter_panel.luau` | Factory `mountEggFilterPanel`: UI, catalogo, tarjetas del mapa y recursos visuales. |
-| `server_support.luau` | Factory `createFinderSupport`: helpers puros del hopper (Store, paginas, pool nativo, cookie, transporte, intento de teleport, escalas). Las regresiones la cargan con `require`. |
-| `server_pool.luau` | Factory `createServerPool`: lista publica, Best Ping (cookie del dispositivo o bridge del PC), pool precargado y su refresco. Guarda el estado de conexion; la cookie no sale de su closure. |
-| `account_panel.luau` | `mountAccountPanel`: formulario Cuenta / Best Ping; usa solo los metodos del pool. |
-| `hop_button.luau` | `mountHopButton`: tarjeta del boton Server Hop, plegado, arrastre, asa de tamano y `server_hop_button_ui.json`. Solo dibuja. |
-| `hopper_runtime.luau` | Sesion, persistencia del salto, teleport, llegada, ciclo AUTO, alertas y API publica `ChilliEggSearch`. |
+| `hopper_runtime.luau` | Chilli, persistencia del hopper, pool de servidores, teleport, ciclo AUTO y API publica. |
 | `build.py` | Integra las factories en closures y anade el runtime; produce `dist/`. |
 | `ci_tests.luau` | Regresiones del detector con snapshots simulados. |
 | `ci_tools.py` | CLI oficial Luau fijado, SHA256 de descarga, compilacion y ejecucion de regresiones. |
@@ -320,18 +315,7 @@ AUTO calcula ingresos de la rareza minima y todos los rangos superiores, tambien
 
 El panel conserva metadatos por UID y crea solo las tarjetas de la ventana visible con margen. Actualiza instancias existentes; los modelos pertenecen a esas tarjetas y se destruyen al salir de la ventana o cerrar el panel. Mutaciones y modelos cargan por separado con reintentos; sus fallos no impiden usar imagenes. `PanelStatus().stats` y `GetStatus().stats` permiten observar creaciones, actualizaciones, analisis e ingresos calculados.
 
-El soporte del runtime es el modulo `server_support.luau`. `ci_tests.luau` lo carga con `require("./server_support")` para ejecutar casos de almacenamiento, paginacion y teleport con dependencias simuladas, sin ejecutar Roblox ni Chilli.
-
-## Modulos del hopper (2026-10-14)
-
-`montarHopper` crea la sesion y conecta los modulos en este orden:
-
-1. `createServerPool` antes de la GUI: restaura la cookie del dispositivo y el cursor Best Ping. Recibe la sesion como funcion porque se crea despues.
-2. `mountHopButton` monta la tarjeta. AUTO, `busy` y las decisiones siguen en el runtime; la tarjeta recibe `isAuto` y expone `SetLabel`, `SetStatus`, `SetBusy`, `PaintAuto`, `Save` y `DraggedRecently`.
-3. `mountAccountPanel` despues de crear `ChilliEggSearch`: agrega `OpenServerAccount`, `CloseServerAccount` y `ServerAccountStatus`. Conecta, recuerda u olvida la cookie solo con `pool.Verify/Remember/Connected/Forget`.
-4. `mountEggFilterPanel`, `pool.RestoreReserve()` y, al final, `pool.StartRefresher(isBusy)`.
-
-`session.Destroy` llama a `pool.Destroy()`, que invalida la generacion de credencial y borra la cookie de memoria.
+El soporte del runtime esta entre los marcadores `BEGIN/END TESTABLE SUPPORT` de `hopper_runtime.luau`. `ci_tools.py` extrae esas mismas funciones a `.tools/runtime_support.luau` para ejecutar casos de almacenamiento, paginacion y teleport con dependencias simuladas, sin ejecutar Roblox ni Chilli.
 
 Los guardados verifican un temporal y el archivo final y conservan la version anterior valida en `.bak`. La lectura recupera esa copia si el principal es invalido y conserva una cache en memoria; sus consumidores reciben copias. No se promete rename atomico: se usan readfile/writefile del executor. Si no se puede guardar el estado pendiente, no se envia el teleport. El historial elimina entradas vencidas y limita a 500 las anteriores al nuevo registro.
 

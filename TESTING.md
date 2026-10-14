@@ -1,5 +1,15 @@
 # Pruebas y validacion
 
+## 2026-10-14 - Vuelta al hopper en un solo archivo
+
+`hopper_runtime.luau`, `build.py`, `ci_tools.py` y `AGENTS.md` son
+identicos a main 62dfde3 salvo la linea `BestHistory` de la API. Build, ocho
+compilaciones y 216 regresiones (incluidas las dos del historial); las de
+soporte vuelven a extraer `BEGIN/END TESTABLE SUPPORT` del runtime. Potassium,
+cliente real con AUTO activo: montaje sin errores, una sola GUI, "Cuenta:
+guardada", BestLatency/DeviceCookie con reserva de 20 y `BestHistory(5)` con
+el registro guardado. Sin entradas simuladas.
+
 ## 2026-10-14 - Historial de mejores por ciclo
 
 Build, doce compilaciones y 216 regresiones (dos nuevas: historial por
