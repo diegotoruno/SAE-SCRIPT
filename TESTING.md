@@ -4,7 +4,11 @@
 
 Build, compilaciones y 217 regresiones (una nueva: reconexion al origen
 devuelve el destino fallido; sin destino, vacio o igual al actual no marca
-nada) y diez Python. Pendiente en Potassium: observar una reconexion real.
+nada) y diez Python. Potassium, cliente real con AUTO activo, sin teleports
+ni entradas: estado pendiente con origen = JobId actual, conexion de origen
+distinta y destino ficticio; al reejecutar el bundle se detecto la
+reconexion, el destino quedo en visitados a los 4 s y el estado se cerro con
+`reconnected`. El ID ficticio se retiro despues.
 
 ## 2026-10-14 - Vuelta al hopper en un solo archivo
 
