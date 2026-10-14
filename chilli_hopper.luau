@@ -2298,7 +2298,7 @@ end
 
 return mountEggFilterPanel
 end)()
--- BEGIN TESTABLE SUPPORT
+local createFinderSupport = (function()
 -- Dependency injection keeps storage, paging and teleport failures testable without Roblox.
 local function createFinderSupport()
     local support = {}
@@ -3037,159 +3037,39 @@ local function createFinderSupport()
     end
     return support
 end
--- END TESTABLE SUPPORT
-
--- ============================================================================
---  SERVER HOP + EGG FINDER  -  independiente de Chilli
--- ----------------------------------------------------------------------------
---  Este script ya NO carga Chilli Hub. Chilli se instala aparte en el autoexec
---  con su propia linea; este bundle solo monta el boton de Server Hop y el
---  buscador de huevos, y no espera ni depende de la UI de Chilli.
---
---  INSTALACION EN OTRO PC:
---    1. Carga este fichero desde el autoexec de tu executor. Es imprescindible:
---       el script debe re-ejecutarse en cada servidor al que llegas.
---
---  PORTABILIDAD: no hay rutas absolutas. readfile/writefile/isfile usan el
---  workspace del executor, que se crea solo en cada PC. Ficheros de estado:
---    server_hop_button_state.json / _visited.json / _pool.json / _ui.json
---
---  AUTO busca spawns Divine >= 7B/s en el mapa; se detiene al encontrar match.
---  Filtros persistentes: chilli_egg_search_config.json; API: ChilliEggSearch.
---  AUTO: sin Divine espera la renovacion en este servidor; con Divine que no
---  cumpla el minimo hace hop y vuelve a escanear al entrar. Durante el reset
---  espera el snapshot nuevo y repite la decision. Con match se queda y apaga
---  AUTO. El boton principal sigue siendo un salto manual. El estado se guarda en
---  server_hop_button_ui.json, asi que sobrevive a los saltos.
--- ============================================================================
-
-local function montarHopper()
--- ============================================================================
---  SERVER HOP  -  un clic: intenta entrar en UN servidor y se para
--- ----------------------------------------------------------------------------
---  Pulsas el boton UNA vez. El script consulta la lista publica, elige
---  candidatos de 7 plazas y lanza el teleport. Si la API falla (respuesta vacia,
---  JSON invalido, HTTP...) o Roblox rechaza el teleport, NO se rinde: espera y
---  vuelve a intentarlo hasta conseguir entrar. En cuanto entra, la busqueda
---  termina: al llegar mide jugadores y ping reales y los muestra (<=2 jugadores
---  y <=120 ms = si). Aunque salga no, se queda ahi: puede que el servidor te
---  guste igualmente. Si no te gusta, vuelve a pulsar y arranca otro intento
---  (el actual y los visitados en la ultima hora se descartan).
---
---  Rapidez: un pool de candidatos (7 plazas, sin visitados) se refresca solo
---  en segundo plano cada 45 s. El clic no consulta nada: usa el pool y sale al
---  instante; solo si el pool no sirve se consulta la lista en vivo.
---
---  Seguridad anti-rebote: solo se lanza un teleport nuevo si el anterior fue
---  rechazado explicitamente (GameFull, throttle...) o si ya cambiaste de
---  JobId. Si no hay senal alguna en ~1 min, se para y se pide otro clic en vez
---  de pisar un teleport que podria estar en camino.
---
---  Reglas de seleccion y medicion:
---    * servidores de 7 plazas; se descarta el actual y los visitados en 1 h
---    * ocupacion ascendente 1/7 -> 2/7 -> ... -> 6/7; dentro de cada grupo
---      se conserva FPS sano y ping ANUNCIADO descendente como heuristica previa.
---      Las observaciones anteriores no prueban el ping de cada usuario.
---      BestLatency nativo de v2 requiere autenticacion y sigue en pruebas.
---    * al llegar se mide de verdad: jugadores reales y ping real (10 s de
---      asentamiento + mediana de 8 muestras, para no confundir el arranque ni
---      los picos con la conexion real)
---    * no se usa queue_on_teleport (duplica instancias y corrompe el estado)
---
---  Vive en autoexec a proposito: asi se re-ejecuta en cada servidor al que
---  llegas, y eso es justo lo que permite medir el ping real tras el salto.
--- ============================================================================
-
-do
-    local Players = game:GetService("Players")
+return createFinderSupport
+end)()
+local createServerPool = (function()
+-- Server list, Best Ping connection and the preloaded pool of the Server Hop.
+-- The connection state (order, transport, credential generation) lives here;
+-- the account form and the runtime only reach it through these methods.
+local function createServerPool(context)
     local HttpService = game:GetService("HttpService")
-    local TeleportService = game:GetService("TeleportService")
-    local TweenService = game:GetService("TweenService")
-    local UserInputService = game:GetService("UserInputService")
-    local Stats = game:GetService("Stats")
-    local StarterGui = game:GetService("StarterGui")
-    local CoreGui = game:GetService("CoreGui")
-
-    -- ---------------------------------------------------------------- arranque
-    -- Antes de cualquier uso de LocalPlayer (cuenta, cookie, archivos por
-    -- UserId): el autoexec puede ejecutar esto antes de que exista.
-    if not game:IsLoaded() then
-        game.Loaded:Wait()
-    end
-
-    local player = Players.LocalPlayer
-    while not player do
-        Players:GetPropertyChangedSignal("LocalPlayer"):Wait()
-        player = Players.LocalPlayer
-    end
-
-    -- Potassium restaura las capabilities de UI al fijar la identidad en el
-    -- hilo que toca CoreGui. Los callbacks creados con task.spawn la necesitan.
-    local function uiAccess()
-        if type(setthreadidentity) == "function" then setthreadidentity(8) end
-    end
-
-    local PLACE_ID = 107778070777162
+    local support, readJson, writeJson = context.support, context.readJson, context.writeJson
+    local recentVisited, sessionStartJobId = context.recentVisited, context.sessionStartJobId
+    local PLACE_ID = context.placeId
+    local VISITED_FILE, VISITED_MAX_AGE = context.visitedFile, context.visitedMaxAge
     local EXPECTED_CAPACITY = 7
-    local IDEAL_PING = 120
-    local IDEAL_PLAYERS = 2
-    local STATE_FILE = "server_hop_button_state.json"
-    local VISITED_FILE = "server_hop_button_visited.json"
-    local SCOUT_STATE_FILE = "steal_an_egg_scout_state.json"
-    local UI_FILE = "server_hop_button_ui.json"
     local POOL_FILE = "server_hop_button_pool.json"
     local SERVER_SELECTION_POLICY = "occupancy-groups-v2"
     local CONNECTION_FILE = "server_hop_button_connection.json"
     local DEVICE_GATE_FILE = "sae_best_ping_device_gate.json"
     local NATIVE_REQUEST_FILE = "sae_best_ping_request.json"
     local NATIVE_RESPONSE_FILE = "sae_best_ping_response.json"
-    local VISITED_MAX_AGE = 60 * 60
     local POOL_REFRESH_SECONDS = 45   -- cada cuanto se refresca el pool
     local POOL_SIZE = 8               -- candidatos guardados en el pool
     local BALANCED_RESERVE_SIZE = 24  -- 1/7 first; 2/7 ready when the quick primary reserve is empty
     local POOL_MAX_AGE = 180          -- pool mas viejo que esto se ignora
-    local PING_SETTLE_SECONDS = 10
-    local PING_SAMPLE_INTERVAL = 1
-    local PING_SAMPLE_COUNT = 8
-    local ARRIVE_STABILIZE_SECONDS = 4
-    local RETRY_DELAY_SECONDS = 15   -- espera entre reintentos del salto
     local HTTP_RETRIES = 2           -- intentos por consulta de la lista
-    local TELEPORT_CONFIRM_SECONDS = 25  -- margen para que arranque el teleport
-    local TELEPORT_HARD_WAIT_SECONDS = 35 -- espera extra si no hay senal alguna
-    local PENDING_FRESH_SECONDS = 60      -- espera inicial; unconfirmed requiere clic manual
     local MIN_API_INTERVAL = 2.0          -- pausa entre consultas a la API
     local API_429_COOLDOWN_SECONDS = 30   -- castigo tras un HTTP 429
-    local AUTO_POLL_SECONDS = 0.5
 
-    -- Misma paleta grafito/champan del Egg Finder; el rojo queda solo en la accion.
-    local COLORS = {
-        surface = Color3.fromRGB(20, 24, 30),
-        raised = Color3.fromRGB(30, 36, 44),
-        border = Color3.fromRGB(56, 65, 77),
-        action = Color3.fromRGB(192, 57, 66),
-        actionBorder = Color3.fromRGB(232, 120, 126),
-        text = Color3.fromRGB(239, 243, 247),
-        muted = Color3.fromRGB(170, 183, 197),
-        gold = Color3.fromRGB(224, 197, 149),
-        green = Color3.fromRGB(147, 215, 191),
-        onGreen = Color3.fromRGB(15, 35, 29),
-        amber = Color3.fromRGB(242, 190, 122),
-    }
-
-    -- ---------------------------------------------------------------- utilidades
-    local session
-    local support = createFinderSupport()
-    local store = support.Store({read = function(path) return readfile(path) end,
-        write = function(path, raw) writefile(path, raw) end,
-        encode = function(value) return HttpService:JSONEncode(value) end,
-        decode = function(raw) return HttpService:JSONDecode(raw) end})
-    local function readJson(path, fallback) return store.Read(path, fallback) end
-    -- Read-only pruned view; writers of VISITED_FILE must call Invalidate.
-    local recentVisited = support.RecentVisited(function() return readJson(VISITED_FILE, {}) end, VISITED_MAX_AGE)
+    -- The session table is created after the pool; read it when it is used.
+    local function current() return context.session() end
+    local pool = {}
     local connectionConfig = readJson(CONNECTION_FILE, {})
     local serverOrder = connectionConfig.mode == "BestLatency" and "BestLatency" or "LegacyPing"
     local nativeStatus = nil
-    local reserveStatus
     local nativeRequestBusy = false
     local deviceCookie = support.DeviceCookie({
         read = function(path) return readfile(path) end,
@@ -3203,75 +3083,10 @@ do
             assert(readfile(path) == "")
             if type(delfile) == "function" then delfile(path) end
         end,
-    }, Players.LocalPlayer.UserId)
+    }, context.userId)
     if connectionConfig.transport == "DeviceCookie" then deviceCookie.Restore() end
     local credentialGeneration, deviceFatal = 0, nil
     local deviceNative
-    local function writeJson(path, value)
-        if session and not session.alive then return false end
-        local ok = store.Write(path, value)
-        if not ok then warn("[EggFinder] No se pudo guardar " .. path) end
-        return ok
-    end
-    -- Plain text for people (the readable hunt report); failures stay silent.
-    local function writeText(path, text)
-        if session and not session.alive then return false end
-        return (pcall(writefile, path, text))
-    end
-
-    local function notify(title, text, duration)
-        pcall(function()
-            StarterGui:SetCore("SendNotification", {
-                Title = title,
-                Text = text,
-                Duration = duration or 6,
-            })
-        end)
-    end
-
-    local function medianOf(values)
-        if #values == 0 then
-            return nil
-        end
-        local sorted = {}
-        for index = 1, #values do
-            sorted[index] = values[index]
-        end
-        table.sort(sorted)
-        return math.floor(sorted[math.ceil(#sorted / 2)] + 0.5)
-    end
-
-    local function readPingValue()
-        local ok, value = pcall(function()
-            local network = Stats.Network and Stats.Network.ServerStatsItem
-            local item = network and network["Data Ping"]
-            return item and item:GetValue() or nil
-        end)
-        if ok and type(value) == "number" and value > 0 then
-            return value
-        end
-        return nil
-    end
-
-    -- Igual que en el hopper: se descarta el arranque y se decide con la mediana.
-    local function measurePing()
-        local series = {}
-        local settleUntil = os.clock() + PING_SETTLE_SECONDS
-        while os.clock() < settleUntil do
-            readPingValue()
-            if session and not session.alive then return nil end
-            task.wait(PING_SAMPLE_INTERVAL)
-        end
-        for _ = 1, PING_SAMPLE_COUNT do
-            local value = readPingValue()
-            if value then
-                table.insert(series, math.floor(value + 0.5))
-            end
-            if session and not session.alive then return nil end
-            task.wait(PING_SAMPLE_INTERVAL)
-        end
-        return medianOf(series), series
-    end
 
     -- Consulta la lista publica con el mismo criterio de errores del
     -- server_hopper de referencia: distingue HTTP no-200, respuesta vacia y
@@ -3310,6 +3125,7 @@ do
                 decode = function(raw) return HttpService:JSONDecode(raw) end,
                 encode = function(value) return HttpService:UrlEncode(value) end}, orderBy, cursor, secret)
         end, function()
+            local session = current()
             return session.alive and generation == credentialGeneration and (candidate ~= nil or not session.accountConnecting)
                 and (not continuing or continuing())
         end, progress)
@@ -3319,7 +3135,7 @@ do
         return result, reason, status
     end
     local reportNativeProgress, saveNativePool
-    local DEVICE_STREAM_FILE = "server_hop_button_native_" .. tostring(Players.LocalPlayer.UserId) .. ".json"
+    local DEVICE_STREAM_FILE = "server_hop_button_native_" .. tostring(context.userId) .. ".json"
     local function publishNativeProgress(state)
         nativeStatus = state
         if reportNativeProgress then reportNativeProgress(state) end
@@ -3330,14 +3146,14 @@ do
             reservePolicy = "Balanced",
             save = function(state) writeJson(DEVICE_STREAM_FILE, state) end,
             progress = publishNativeProgress,
-            publish = function(pool) if saveNativePool and session.alive then saveNativePool(pool) end end,
+            publish = function(value) if saveNativePool and current().alive then saveNativePool(value) end end,
             fetch = function(orderBy, cursor, continuing)
                 return deviceFetch(orderBy, cursor, nil, function(waitState)
                     local state = support.Copy(nativeStatus or {})
                     state.wait = waitState; publishNativeProgress(state)
                 end, continuing)
             end,
-            alive = function() return session and session.alive and not session.accountConnecting end})
+            alive = function() local session = current(); return session and session.alive and not session.accountConnecting end})
         if seed then deviceNative.Seed(seed)
         else deviceNative.Restore(readJson(DEVICE_STREAM_FILE, {})) end
     end
@@ -3350,6 +3166,7 @@ do
         if cursor then url ..= "&cursor=" .. HttpService:UrlEncode(cursor) end
         local requestFunction = type(request) == "function" and request or nil
         local lastError = "respuesta desconocida"
+        local session = current()
 
         for attempt = 1, HTTP_RETRIES do
             -- Espaciado minimo entre consultas y castigo si Roblox ya respondio
@@ -3434,102 +3251,444 @@ do
         return nil, lastError
     end
 
-    local function autoTestRunning()
-        local state = readJson(SCOUT_STATE_FILE, nil)
-        return type(state) == "table" and state.active == true
+    -- ---------------------------------------------------------------- el pool
+    local function pickCandidates(continuing, wanted)
+        local session = current()
+        local visited = recentVisited.Get(os.time())
+        local now = os.time()
+        if serverOrder == "BestLatency" then
+            if connectionConfig.transport == "DeviceCookie" then
+                if session.accountConnecting then return nil, "conectando la cuenta; espera la comprobacion" end
+                if nativeRequestBusy then return nil, "consulta Best Ping en curso" end
+                nativeRequestBusy = true
+                local generation = credentialGeneration
+                local ok, pool, reason = pcall(deviceNative.Pick, game.JobId, visited, continuing, wanted)
+                nativeRequestBusy = false
+                if not session.alive or generation ~= credentialGeneration then return nil, "conexion cancelada" end
+                if not ok then pool, reason = nil, "No se pudo leer Best Ping en este dispositivo." end
+                nativeStatus = nativeStatus or {}
+                nativeStatus.state, nativeStatus.error, nativeStatus.wait = pool and "ready" or "waiting", reason, nil
+                if pool then nativeStatus.occupancy = pool[1].playing end
+                return pool, reason
+            end
+            if nativeRequestBusy then return nil, "consulta Best Ping en curso" end
+            nativeRequestBusy = true
+            local excluded = {game.JobId}
+            for id in pairs(visited) do table.insert(excluded, id) end
+            local requestId = HttpService:GenerateGUID(false)
+            local ok = pcall(function()
+                writefile(NATIVE_REQUEST_FILE, HttpService:JSONEncode({placeId = PLACE_ID,
+                    requestId = requestId, requestedAt = now, excluded = excluded}))
+            end)
+            if not ok then nativeRequestBusy = false; return nil, "no se pudo solicitar Best Ping al PC" end
+            local deadline = os.clock() + 3
+            repeat
+                local decoded, data = pcall(function()
+                    return HttpService:JSONDecode(readfile(NATIVE_RESPONSE_FILE))
+                end)
+                if decoded and type(data) == "table" and data.requestId == requestId then
+                    local pool, reason = support.NativePool(data, requestId, os.time(), game.JobId, visited)
+                    nativeStatus = {state = data.state, pages = data.pages, complete = data.complete,
+                        occupancy = data.occupancy, error = reason}
+                    nativeRequestBusy = false
+                    return pool, reason
+                end
+                task.wait(0.1)
+            until not session.alive or game.JobId ~= sessionStartJobId or os.clock() >= deadline
+            nativeRequestBusy = false
+            return nil, "esperando proceso Best Ping del PC"
+        end
+        local servers, fetchError = support.Pages(fetchServers, function(server)
+            return type(server.id) == "string" and server.id ~= game.JobId
+                and tonumber(server.maxPlayers) == EXPECTED_CAPACITY
+                and tonumber(server.playing) ~= nil and tonumber(server.playing) >= 1
+                and tonumber(server.playing) < EXPECTED_CAPACITY
+                and tonumber(server.playing) == math.floor(tonumber(server.playing))
+                and now - (tonumber(visited[server.id]) or 0) > VISITED_MAX_AGE
+        end, function() return session.alive and game.JobId == sessionStartJobId end, POOL_SIZE, 5)
+        if not servers then return nil, fetchError end
+        -- fetchServers uses Occupancy Asc: the earliest eligible records prove
+        -- the lowest available group, even when later pages remain unread.
+        local pool = support.OccupancyGroup(servers, "LegacyPing", true)
+
+        if #pool == 0 then
+            return nil, "no quedan servidores nuevos (se probaron todos hace poco)"
+        end
+
+        -- Ocupacion 1 -> 2 -> ... -> 6 antes de FPS/ping. BestLatency sigue en pruebas:
+        -- la peticion v2 sin sesion web devuelve Guest users are not allowed.
+        return pool
     end
 
-    -- Servidor en el que nacio esta ejecucion del script. En cuanto game.JobId
-    -- deje de coincidir, estamos en otro servidor y NINGUN camino de esta
-    -- instancia debe lanzar otro teleport (evita el doble salto observado).
-    local sessionStartJobId = game.JobId
-
-    local playerGui = player:WaitForChild("PlayerGui", 30)
-    if not playerGui then
-        playerGui = player:FindFirstChildOfClass("PlayerGui")
+    -- Guarda los mejores candidatos del momento para que el clic no tenga que
+    -- consultar nada. Se refresca en segundo plano cada POOL_REFRESH_SECONDS.
+    local function savePool(pool)
+        if not pool or #pool == 0 then
+            return
+        end
+        local balanced = serverOrder == "BestLatency" and connectionConfig.transport == "DeviceCookie"
+        local group = balanced and support.BalancedReserve(pool, os.time(), game.JobId,
+            recentVisited.Get(os.time()), BALANCED_RESERVE_SIZE)
+            or support.OccupancyGroup(pool, serverOrder, true)
+        if #group == 0 then return end
+        local trimmed = {}
+        for index = 1, math.min(#group, balanced and BALANCED_RESERVE_SIZE or POOL_SIZE) do
+            trimmed[index] = group[index]
+        end
+        writeJson(POOL_FILE, {
+            selectionPolicy = SERVER_SELECTION_POLICY,
+            orderBy = serverOrder,
+            transport = connectionConfig.transport or "LocalBridge",
+            owner = context.userId,
+            reservePolicy = balanced and "balanced-1-2-v1" or nil,
+            occupancy = group[1].playing,
+            updatedAt = os.time(),
+            servers = trimmed,
+        })
     end
+    saveNativePool = savePool
 
-    -- ---------------------------------------------------------------- la UI
-    local function guiParent()
-        if type(gethui) == "function" then
-            local ok, result = pcall(gethui)
-            if ok and result then
-                return result
+    -- Lee el pool guardado (sin HTTP) y filtra lo que ya no sirve: visitados
+    -- en la ultima hora y el servidor actual. Si el pool es viejo, se ignora.
+    local function loadPool()
+        local data = readJson(POOL_FILE, nil)
+        if type(data) ~= "table" or type(data.servers) ~= "table" then
+            return nil
+        end
+        if data.selectionPolicy ~= SERVER_SELECTION_POLICY then return nil end
+        if data.orderBy ~= serverOrder then return nil end
+        if serverOrder == "BestLatency" then
+            if data.owner ~= context.userId then return nil end
+            if connectionConfig.transport == "DeviceCookie" and (deviceFatal or not deviceCookie.Status().configured) then return nil end
+            return support.PreloadedNativePool(data, os.time(), game.JobId,
+                recentVisited.Get(os.time()),
+                connectionConfig.transport or "LocalBridge", connectionConfig.transport == "DeviceCookie")
+        end
+        local occupancy = tonumber(data.occupancy)
+        if not occupancy or occupancy < 1 or occupancy >= EXPECTED_CAPACITY
+            or occupancy ~= math.floor(occupancy) then return nil end
+        -- Before another hop in groups 2..6, query again: a lower-occupancy
+        -- server may have become available since this cache was created.
+        if occupancy > 1 then return nil end
+        if os.time() - (tonumber(data.updatedAt) or 0) > POOL_MAX_AGE then
+            return nil
+        end
+
+        local visited = readJson(VISITED_FILE, {})
+        local now = os.time()
+        local pool = {}
+        for _, server in ipairs(data.servers) do
+            local id = type(server) == "table" and server.id or nil
+            if type(server) ~= "table" or tonumber(server.playing) ~= occupancy then return nil end
+            if type(id) == "string" and id ~= game.JobId then
+                local seenAt = tonumber(visited[id]) or 0
+                if now - seenAt > VISITED_MAX_AGE then
+                    table.insert(pool, {
+                        id = id,
+                        playing = tonumber(server.playing),
+                        ping = tonumber(server.ping) or -1,
+                        fps = tonumber(server.fps) or 0,
+                    })
+                end
             end
         end
-        local ok = pcall(function()
-            return CoreGui.Name
-        end)
-        if ok then
-            return CoreGui
+        return support.RankServers(pool, "LegacyPing")
+    end
+
+    local function reserveStatus()
+        local pool = loadPool()
+        local primary, backup = 0, 0
+        for _, row in ipairs(pool or {}) do
+            if row.playing == 1 then primary += 1 elseif row.playing == 2 then backup += 1 end
         end
-        return playerGui
+        return {count = pool and #pool or 0, occupancy = pool and pool[1].playing or nil,
+            primary = primary, backup = backup, capacity = connectionConfig.transport == "DeviceCookie" and BALANCED_RESERVE_SIZE or POOL_SIZE}
     end
 
-    local parent = guiParent()
-    if not parent then
-        return
+    pool.Pick = pickCandidates
+    pool.Save = savePool
+    pool.Load = loadPool
+    function pool.Order() return serverOrder end
+    function pool.Connection() return connectionConfig end
+    function pool.OnProgress(callback) reportNativeProgress = callback end
+    function pool.Status()
+        return {orderBy = serverOrder, transport = connectionConfig.transport or "LocalBridge",
+            credential = deviceCookie.Status(), request = deviceTransport.State(), native = support.Copy(nativeStatus),
+            reserve = reserveStatus()}
+    end
+    -- A saved device reserve is usable at once, without another query.
+    function pool.RestoreReserve()
+        if connectionConfig.transport == "DeviceCookie" then
+            local restored = deviceNative.Reserve(game.JobId,
+                recentVisited.Get(os.time()))
+            if restored then savePool(restored) end
+        end
     end
 
-    local hopperEnvironment = getgenv and getgenv() or _G
-    -- A script rerun keeps this ID; a new client environment gets a new one.
-    hopperEnvironment.__CHILLI_CONNECTION_ID = hopperEnvironment.__CHILLI_CONNECTION_ID or HttpService:GenerateGUID(false)
-    local connectionId = hopperEnvironment.__CHILLI_CONNECTION_ID
-    local oldSession = hopperEnvironment.__CHILLI_HOPPER_SESSION
-    if oldSession and type(oldSession.Destroy) == "function" then oldSession.Destroy() end
-    session = { alive = true, autoGeneration = 0, connections = {} }
-    local function connect(signal, callback)
-        local connection = signal:Connect(function(...)
-            if not session.alive then return end
-            uiAccess(); callback(...)
+    -- Account form: the cookie itself never leaves this closure.
+    pool.ExecutorRequest = executorRequest
+    function pool.CredentialStatus() return deviceCookie.Status() end
+    function pool.TransportState() return deviceTransport.State() end
+    function pool.Generation() return credentialGeneration end
+    function pool.CancelCredential() credentialGeneration += 1 end
+    function pool.Verify(candidate, progress) return deviceFetch("BestLatency", nil, candidate, progress) end
+    function pool.Remember(candidate, persist)
+        local ok, reason = deviceCookie.Set(candidate, persist)
+        if ok then
+            connectionConfig = {mode = "BestLatency", transport = "DeviceCookie"}
+            ok = writeJson(CONNECTION_FILE, connectionConfig)
+            if not ok then reason = "No se pudo guardar el modo de conexion. Reintenta." end
+        end
+        return ok, reason
+    end
+    function pool.Connected(page)
+        credentialGeneration += 1; deviceFatal = nil; serverOrder = "BestLatency"
+        writeJson(POOL_FILE, {servers = {}}); resetDeviceNative(page, true)
+    end
+    function pool.MarkConnected() nativeStatus = {state = "connected"} end
+    function pool.Forget()
+        local removed = deviceCookie.Forget()
+        deviceFatal = nil; writeJson(POOL_FILE, {servers = {}}); resetDeviceNative(nil, true)
+        -- Leave the selected transport enabled: an absent cookie waits;
+        -- it must not silently resume legacy or the owner's PC bridge.
+        connectionConfig = {mode = "BestLatency", transport = "DeviceCookie"}
+        serverOrder = "BestLatency"; writeJson(CONNECTION_FILE, connectionConfig)
+        return removed
+    end
+    function pool.Destroy() credentialGeneration += 1; deviceCookie.Destroy() end
+
+    -- Pool precargado: se refresca solo en segundo plano para que al pulsar el
+    -- boton no haya que consultar nada; despues va cada POOL_REFRESH_SECONDS. No
+    -- refresca mientras hay un salto en curso.
+    function pool.StartRefresher(isBusy)
+        task.spawn(function()
+            local session = current()
+            while session.alive and game.JobId == sessionStartJobId do
+                if game.PlaceId == PLACE_ID and not isBusy() then
+                    local ok, err = pcall(function()
+                        local balanced = serverOrder == "BestLatency" and connectionConfig.transport == "DeviceCookie"
+                        if balanced then
+                            local visited = recentVisited.Get(os.time())
+                            if not deviceNative.NeedsRefill(game.JobId, visited) then return end
+                        elseif serverOrder == "BestLatency" then
+                            local reserve = loadPool()
+                            if reserve and #reserve >= POOL_SIZE then return end
+                        end
+                        local pool = pickCandidates(function()
+                            return session.alive and not isBusy() and game.JobId == sessionStartJobId
+                        end, balanced and BALANCED_RESERVE_SIZE or POOL_SIZE)
+                        if pool and session.alive and game.JobId == sessionStartJobId then
+                            savePool(pool)
+                            print(string.format(
+                                "[ServerHopButton] Pool refrescado: %d candidatos",
+                                #pool
+                            ))
+                        end
+                    end)
+                    if not ok and type(warn) == "function" then
+                        warn("[ServerHopButton] Pool no refrescado: " .. tostring(err))
+                    end
+                end
+                task.wait(serverOrder == "BestLatency" and 5 or POOL_REFRESH_SECONDS)
+            end
         end)
-        table.insert(session.connections, connection)
-        return connection
     end
-    local function disconnectSession()
-        for _, connection in ipairs(session.connections) do pcall(function() connection:Disconnect() end) end
-        table.clear(session.connections)
+    return pool
+end
+return createServerPool
+end)()
+local mountAccountPanel = (function()
+-- Formulario Cuenta / Best Ping. La cookie pasa del campo al pool en una sola
+-- llamada; nunca se expone en GetStatus, logs, Chilli, el estado del teleport
+-- ni en las solicitudes al companion.
+local function mountAccountPanel(context)
+    local session, screenGui, support, COLORS = context.session, context.screenGui, context.support, context.colors
+    local connect, uiAccess, pool, api = context.connect, context.uiAccess, context.pool, context.api
+    local setAuto = context.setAuto
+    local surface = Color3.fromRGB(20, 24, 30)
+    local fieldColor = Color3.fromRGB(30, 36, 44)
+    local foreground = Color3.fromRGB(239, 243, 247)
+    local secondary = Color3.fromRGB(170, 183, 197)
+    local accent = Color3.fromRGB(224, 197, 149)
+    local function rounded(object)
+        local corner = Instance.new("UICorner"); corner.CornerRadius = UDim.new(0, 12); corner.Parent = object
     end
-    hopperEnvironment.__CHILLI_HOPPER_SESSION = session
-    local previous = parent:FindFirstChild("ServerHopButton")
-    if previous then
-        previous:Destroy()
+    local function text(parentObject, name, content, y, height, size, color)
+        local item = Instance.new("TextLabel")
+        item.Name = name; item.BackgroundTransparency = 1; item.Text = content
+        item.Position = UDim2.fromOffset(20, y); item.Size = UDim2.new(1, -40, 0, height)
+        item.Font = Enum.Font.GothamMedium; item.TextSize = size; item.TextColor3 = color or foreground
+        item.TextXAlignment = Enum.TextXAlignment.Left; item.TextYAlignment = Enum.TextYAlignment.Top
+        item.TextWrapped = true; item.Parent = parentObject
+        return item
     end
-
-    local screenGui = Instance.new("ScreenGui")
-    screenGui.Name = "ServerHopButton"
-    screenGui.ResetOnSpawn = false
-    screenGui.IgnoreGuiInset = true
-    screenGui.DisplayOrder = 500
-    screenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-    screenGui.Parent = parent
-    screenGui.Destroying:Connect(function()
-        session.alive = false
-        disconnectSession()
-        if session.DisposeSearch then session.DisposeSearch() end
-        if session.DisposePanel then session.DisposePanel() end
-        if session.attempt then session.attempt.Cancel() end
-        credentialGeneration += 1; deviceCookie.Destroy()
-        if session.DisposeAccount then session.DisposeAccount() end
+    local function action(parentObject, name, content, y, color)
+        local item = Instance.new("TextButton")
+        item.Name = name; item.Text = content; item.Position = UDim2.fromOffset(20, y)
+        item.Size = UDim2.new(1, -40, 0, 44); item.BackgroundColor3 = color or fieldColor
+        item.BorderSizePixel = 0; item.Font = Enum.Font.GothamBold; item.TextSize = 14
+        item.TextColor3 = color and surface or foreground; item.Parent = parentObject; rounded(item)
+        return item
+    end
+    local function outlined(object)
+        local stroke = Instance.new("UIStroke"); stroke.Color = COLORS.border
+        stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border; stroke.Parent = object
+    end
+    local entry = action(screenGui, "ServerAccount", "Cuenta y Best Ping", 0)
+    entry.AnchorPoint = Vector2.new(0, 1); entry.BackgroundColor3 = surface; entry.TextSize = 12
+    entry.Position = UDim2.new(0, 18, 1, -18); entry.Size = UDim2.fromOffset(184, 36); entry.ZIndex = 90
+    outlined(entry)
+    local panel = Instance.new("Frame")
+    panel.Name = "ServerAccountPanel"; panel.AnchorPoint = Vector2.new(0.5, 0.5)
+    panel.Position = UDim2.fromScale(0.5, 0.5); panel.Size = UDim2.fromOffset(440, 462)
+    panel.BackgroundColor3 = surface; panel.BorderSizePixel = 0; panel.Visible = false
+    panel.ZIndex = 30; panel.Parent = screenGui; rounded(panel); outlined(panel)
+    local scale = Instance.new("UIScale"); scale.Parent = panel
+    text(panel, "Title", "Tu cuenta para Best Ping", 20, 30, 22)
+    text(panel, "Privacy", "Este dispositivo consulta Roblox. El autor del script no recibe tu cookie.", 58, 40, 13, secondary)
+    text(panel, "CookieLabel", ".ROBLOSECURITY", 112, 20, 13)
+    local input = Instance.new("TextBox")
+    input.Name = "CookieInput"; input.Position = UDim2.fromOffset(20, 138)
+    input.Size = UDim2.new(1, -40, 0, 48); input.BackgroundColor3 = fieldColor
+    input.BorderSizePixel = 0; input.Text = ""; input.PlaceholderText = ""
+    input.ClearTextOnFocus = false; input.MultiLine = false; input.TextTransparency = 1
+    input.TextSize = 16; input.Font = Enum.Font.GothamMedium; input.Parent = panel; rounded(input)
+    local mask = text(input, "MaskedValue", "Toca aqui y pega la cookie completa", 14, 24, 13, secondary)
+    mask.Position = UDim2.fromOffset(14, 14); mask.Size = UDim2.new(1, -28, 0, 24)
+    text(panel, "StorageHelp", "Guardar permite continuar entre saltos. Se guarda solo aqui, sin cifrado; otros scripts del executor podrian leerla.", 198, 54, 13, secondary)
+    local message = text(panel, "ConnectionMessage", "", 258, 40, 13, secondary)
+    local save = action(panel, "SaveAndAuto", "Guardar y usar AUTO", 304, accent)
+    local once = action(panel, "SessionOnly", "Solo esta sesion", 356)
+    local forget = action(panel, "ForgetCookie", "Borrar cookie y desconectar", 408)
+    local close = Instance.new("TextButton")
+    close.Name = "Close"; close.Text = "Cerrar"; close.Font = Enum.Font.GothamMedium
+    close.TextSize = 12; close.TextColor3 = secondary; close.BackgroundTransparency = 1
+    close.Size = UDim2.fromOffset(64, 44); close.Position = UDim2.new(1, -74, 0, 5); close.Parent = panel
+    local draft, updating, connecting = nil, false, false
+    local function savedMessage(state)
+        return state.remembered and "Cookie guardada en este dispositivo. Puedes cerrar esta ventana."
+            or "Cookie activa solo en esta sesion; no se guardo."
+    end
+    local function updateEntry()
+        uiAccess()
+        local state = pool.CredentialStatus()
+        entry.Text = connecting and "Cuenta: comprobando"
+            or state.configured and (state.remembered and "Cuenta: guardada" or "Cuenta: solo esta sesión")
+            or "Cuenta y Best Ping"
+    end
+    local function fit()
+        uiAccess()
+        local camera = workspace.CurrentCamera
+        local viewport = camera and camera.ViewportSize or Vector2.new(800, 600)
+        scale.Scale = math.min(1, (viewport.X - 32) / 440, (viewport.Y - 40) / 462)
+    end
+    local function show()
+        if not session.alive then return end
+        uiAccess(); fit(); panel.Visible = true; entry.Visible = false
+        local state = pool.CredentialStatus()
+        message.Text = connecting and support.DeviceWaitMessage(pool.TransportState())
+            or state.configured and savedMessage(state)
+            or "Pega tu cookie para conectar tu propia cuenta."
+    end
+    local function hide()
+        uiAccess(); input:ReleaseFocus(); panel.Visible = false; entry.Visible = true; input.Text = ""; draft = nil
+        mask.Text = "Toca aqui y pega la cookie completa"
+    end
+    connect(entry.Activated, show)
+    connect(close.Activated, hide)
+    connect(input:GetPropertyChangedSignal("Text"), function()
+        if updating or input.Text == "" then return end
+        draft = support.NormalizeCookie(input.Text)
+        updating = true; input.Text = ""; updating = false
+        mask.Text = draft and "Cookie recibida (oculta)" or "Pega solo la cookie completa"
     end)
-    function session.Destroy()
-        session.alive = false
-        session.autoGeneration += 1
-        disconnectSession()
-        if session.DisposeSearch then session.DisposeSearch() end
-        if session.DisposePanel then session.DisposePanel() end
-        if session.attempt then session.attempt.Cancel() end
-        credentialGeneration += 1; deviceCookie.Destroy()
-        if session.DisposeAccount then session.DisposeAccount() end
-        if session.alertSound then session.alertSound:Destroy() end
-        if screenGui.Parent then screenGui:Destroy() end
+    local camera = workspace.CurrentCamera
+    if camera then connect(camera:GetPropertyChangedSignal("ViewportSize"), fit) end
+    local function activate(persist)
+        if connecting then return end
+        if not draft then message.Text = "Pega la cookie completa antes de conectar."; return end
+        if not pool.ExecutorRequest() then message.Text = "Este executor no ofrece request con headers."; return end
+        local candidate = draft; draft = nil
+        input:ReleaseFocus(); mask.Text = "Cookie recibida (oculta)"
+        connecting = true; session.accountConnecting = true; save.Active = false; once.Active = false
+        save.Text = "Comprobando con Roblox..."; once.Text = "Espera la comprobacion..."; updateEntry()
+        setAuto(false); uiAccess(); message.Text = "Comprobando la conexion con Roblox..."
+        task.spawn(function()
+            local generation = pool.Generation()
+            local page, reason, status
+            for attempt = 1, 2 do
+                page, reason, status = pool.Verify(candidate, function(state)
+                    if not session.alive or generation ~= pool.Generation() then return end
+                    uiAccess(); message.Text = support.DeviceWaitMessage(state)
+                end)
+                if status ~= 429 or attempt == 2 then break end
+            end
+            if not session.alive or generation ~= pool.Generation() then candidate = nil; return end
+            local ok = false
+            if page then
+                uiAccess(); message.Text = persist and "Guardando y verificando el archivo local..." or "Activando solo en esta sesion..."
+                ok, reason = pool.Remember(candidate, persist)
+            end
+            -- Retain a failed attempt only while the form stays open,
+            -- so an interval or cooldown never requires another paste.
+            uiAccess()
+            if not ok and panel.Visible then draft = draft or candidate end
+            candidate = nil; connecting = false; session.accountConnecting = false
+            uiAccess(); save.Active = true; once.Active = true
+            save.Text = "Guardar y usar AUTO"; once.Text = "Solo esta sesion"; updateEntry()
+            if ok then
+                pool.Connected(page)
+                -- Confirm verified storage before starting AUTO, which may
+                -- change the map status or begin a later hop independently.
+                draft = nil; input.Text = ""; mask.Text = "Toca aqui para cambiar la cookie"
+                message.Text = savedMessage(pool.CredentialStatus())
+                pool.MarkConnected(); setAuto(true)
+            else
+                message.Text = reason or "No se pudo conectar. Pega la cookie y reintenta."
+                mask.Text = draft and "Cookie recibida (oculta); puedes reintentar" or "Toca aqui y pega la cookie completa"
+            end
+        end)
     end
-
+    connect(save.Activated, function() activate(true) end)
+    connect(once.Activated, function() activate(false) end)
+    connect(forget.Activated, function()
+        pool.CancelCredential(); draft = nil; connecting = false; session.accountConnecting = false; setAuto(false)
+        local removed = pool.Forget()
+        uiAccess(); input.Text = ""; mask.Text = "Toca aqui y pega la cookie completa"
+        save.Active = true; once.Active = true
+        save.Text = "Guardar y usar AUTO"; once.Text = "Solo esta sesion"; updateEntry()
+        message.Text = removed and "Cookie borrada. AUTO apagado." or "AUTO apagado. No se pudo borrar el archivo local; revisa el executor."
+    end)
+    api.OpenServerAccount = show
+    api.CloseServerAccount = hide
+    api.ServerAccountStatus = function()
+        uiAccess()
+        local state = pool.CredentialStatus()
+        return {open = panel.Visible, launcherVisible = entry.Visible, configured = state.configured, remembered = state.remembered,
+            connecting = connecting, message = message.Text}
+    end
+    session.DisposeAccount = function() draft = nil; session.accountConnecting = false end
+    fit(); updateEntry()
+    local connectionConfig = pool.Connection()
+    if connectionConfig.transport ~= "LocalBridge" and not pool.CredentialStatus().configured
+        and connectionConfig.mode ~= "BestLatency" then show()
+    elseif connectionConfig.transport == "DeviceCookie" and not pool.CredentialStatus().configured then show() end
+end
+return mountAccountPanel
+end)()
+local mountHopButton = (function()
+-- Tarjeta del boton Server Hop: AUTO, salto, plegado, estado, firma, arrastre
+-- y asa de tamano. Solo dibuja; las decisiones de salto viven en el runtime.
+local function mountHopButton(context)
+    local TweenService = game:GetService("TweenService")
+    local UserInputService = game:GetService("UserInputService")
+    local session, screenGui, support, COLORS = context.session, context.screenGui, context.support, context.colors
+    local connect, uiAccess, readJson, writeJson = context.connect, context.uiAccess, context.readJson, context.writeJson
+    local UI_FILE = context.uiFile
     -- Estado de la ventana: si esta plegada y donde la dejaste. Se recuerda
     -- tambien entre saltos, porque vive en un archivo, no en memoria.
     local uiState = readJson(UI_FILE, {})
     local collapsed = (uiState.collapsed == true)
-    local autoEnabled = (uiState.auto == true)
     local EXPANDED_SIZE = Vector2.new(320, 116)
     local COLLAPSED_SIZE = Vector2.new(232, 66)
     local savedPosition = UDim2.new(0.5, 0, 0, 26)
@@ -3657,15 +3816,10 @@ do
         statusLabel.TextColor3 = color or COLORS.muted
     end
 
-    local busy = false
-    reportNativeProgress = function(state)
-        if session.alive and busy then setStatus(support.NativeProgressMessage(state), COLORS.muted) end
-    end
-
+    -- The runtime owns the busy flag; the card only dims the action.
     local function setBusy(value)
         if not session.alive then return end
         uiAccess()
-        busy = value
         TweenService:Create(button, TweenInfo.new(0.15), {
             BackgroundTransparency = value and 0.5 or 0,
         }):Play()
@@ -3686,7 +3840,7 @@ do
         uiAccess()
         local state = readJson(UI_FILE, {})
         state.collapsed = collapsed
-        state.auto = autoEnabled
+        state.auto = context.isAuto()
         state.scale = holderScale.Scale
         state.pos = {
             sx = holder.Position.X.Scale,
@@ -3733,6 +3887,7 @@ do
 
     local function updateAutoChip()
         uiAccess()
+        local autoEnabled = context.isAuto()
         autoLabel.Text = autoEnabled and "AUTO\nON" or "AUTO\nOFF"
         autoChip.BackgroundColor3 = autoEnabled and COLORS.green or COLORS.raised
         autoLabel.TextColor3 = autoEnabled and COLORS.onGreen or COLORS.muted
@@ -3939,6 +4094,332 @@ do
 
     applyCollapsed(collapsed, true)
 
+    return {
+        button = button, autoChip = autoChip, savedAuto = uiState.auto == true,
+        SetLabel = setLabel, SetStatus = setStatus, SetBusy = setBusy,
+        PaintAuto = updateAutoChip, Save = saveUi, DraggedRecently = draggedRecently,
+    }
+end
+return mountHopButton
+end)()
+-- ============================================================================
+--  SERVER HOP + EGG FINDER  -  independiente de Chilli
+-- ----------------------------------------------------------------------------
+--  Este script ya NO carga Chilli Hub. Chilli se instala aparte en el autoexec
+--  con su propia linea; este bundle solo monta el boton de Server Hop y el
+--  buscador de huevos, y no espera ni depende de la UI de Chilli.
+--
+--  INSTALACION EN OTRO PC:
+--    1. Carga este fichero desde el autoexec de tu executor. Es imprescindible:
+--       el script debe re-ejecutarse en cada servidor al que llegas.
+--
+--  PORTABILIDAD: no hay rutas absolutas. readfile/writefile/isfile usan el
+--  workspace del executor, que se crea solo en cada PC. Ficheros de estado:
+--    server_hop_button_state.json / _visited.json / _pool.json / _ui.json
+--
+--  MODULOS: server_support (helpers testables), server_pool (lista, Best Ping
+--  y pool), account_panel (cuenta), hop_button (tarjeta) y este runtime
+--  (sesion, AUTO, saltos, llegada y API). build.py los integra.
+--
+--  AUTO busca spawns Divine >= 7B/s en el mapa; se detiene al encontrar match.
+--  Filtros persistentes: chilli_egg_search_config.json; API: ChilliEggSearch.
+--  AUTO: sin Divine espera la renovacion en este servidor; con Divine que no
+--  cumpla el minimo hace hop y vuelve a escanear al entrar. Durante el reset
+--  espera el snapshot nuevo y repite la decision. Con match se queda y apaga
+--  AUTO. El boton principal sigue siendo un salto manual. El estado se guarda en
+--  server_hop_button_ui.json, asi que sobrevive a los saltos.
+-- ============================================================================
+
+local function montarHopper()
+-- ============================================================================
+--  SERVER HOP  -  un clic: intenta entrar en UN servidor y se para
+-- ----------------------------------------------------------------------------
+--  Pulsas el boton UNA vez. El script consulta la lista publica, elige
+--  candidatos de 7 plazas y lanza el teleport. Si la API falla (respuesta vacia,
+--  JSON invalido, HTTP...) o Roblox rechaza el teleport, NO se rinde: espera y
+--  vuelve a intentarlo hasta conseguir entrar. En cuanto entra, la busqueda
+--  termina: al llegar mide jugadores y ping reales y los muestra (<=2 jugadores
+--  y <=120 ms = si). Aunque salga no, se queda ahi: puede que el servidor te
+--  guste igualmente. Si no te gusta, vuelve a pulsar y arranca otro intento
+--  (el actual y los visitados en la ultima hora se descartan).
+--
+--  Rapidez: un pool de candidatos (7 plazas, sin visitados) se refresca solo
+--  en segundo plano cada 45 s. El clic no consulta nada: usa el pool y sale al
+--  instante; solo si el pool no sirve se consulta la lista en vivo.
+--
+--  Seguridad anti-rebote: solo se lanza un teleport nuevo si el anterior fue
+--  rechazado explicitamente (GameFull, throttle...) o si ya cambiaste de
+--  JobId. Si no hay senal alguna en ~1 min, se para y se pide otro clic en vez
+--  de pisar un teleport que podria estar en camino.
+--
+--  Reglas de seleccion y medicion:
+--    * servidores de 7 plazas; se descarta el actual y los visitados en 1 h
+--    * ocupacion ascendente 1/7 -> 2/7 -> ... -> 6/7; dentro de cada grupo
+--      se conserva FPS sano y ping ANUNCIADO descendente como heuristica previa.
+--      Las observaciones anteriores no prueban el ping de cada usuario.
+--      BestLatency nativo de v2 requiere autenticacion y sigue en pruebas.
+--    * al llegar se mide de verdad: jugadores reales y ping real (10 s de
+--      asentamiento + mediana de 8 muestras, para no confundir el arranque ni
+--      los picos con la conexion real)
+--    * no se usa queue_on_teleport (duplica instancias y corrompe el estado)
+--
+--  Vive en autoexec a proposito: asi se re-ejecuta en cada servidor al que
+--  llegas, y eso es justo lo que permite medir el ping real tras el salto.
+-- ============================================================================
+
+do
+    local Players = game:GetService("Players")
+    local HttpService = game:GetService("HttpService")
+    local TeleportService = game:GetService("TeleportService")
+    local Stats = game:GetService("Stats")
+    local StarterGui = game:GetService("StarterGui")
+    local CoreGui = game:GetService("CoreGui")
+
+    -- ---------------------------------------------------------------- arranque
+    -- Antes de cualquier uso de LocalPlayer (cuenta, cookie, archivos por
+    -- UserId): el autoexec puede ejecutar esto antes de que exista.
+    if not game:IsLoaded() then
+        game.Loaded:Wait()
+    end
+
+    local player = Players.LocalPlayer
+    while not player do
+        Players:GetPropertyChangedSignal("LocalPlayer"):Wait()
+        player = Players.LocalPlayer
+    end
+
+    -- Potassium restaura las capabilities de UI al fijar la identidad en el
+    -- hilo que toca CoreGui. Los callbacks creados con task.spawn la necesitan.
+    local function uiAccess()
+        if type(setthreadidentity) == "function" then setthreadidentity(8) end
+    end
+
+    local PLACE_ID = 107778070777162
+    local IDEAL_PING = 120
+    local IDEAL_PLAYERS = 2
+    local STATE_FILE = "server_hop_button_state.json"
+    local VISITED_FILE = "server_hop_button_visited.json"
+    local SCOUT_STATE_FILE = "steal_an_egg_scout_state.json"
+    local UI_FILE = "server_hop_button_ui.json"
+    local VISITED_MAX_AGE = 60 * 60
+    local PING_SETTLE_SECONDS = 10
+    local PING_SAMPLE_INTERVAL = 1
+    local PING_SAMPLE_COUNT = 8
+    local ARRIVE_STABILIZE_SECONDS = 4
+    local RETRY_DELAY_SECONDS = 15   -- espera entre reintentos del salto
+    local TELEPORT_CONFIRM_SECONDS = 25  -- margen para que arranque el teleport
+    local TELEPORT_HARD_WAIT_SECONDS = 35 -- espera extra si no hay senal alguna
+    local PENDING_FRESH_SECONDS = 60      -- espera inicial; unconfirmed requiere clic manual
+    local AUTO_POLL_SECONDS = 0.5
+
+    -- Misma paleta grafito/champan del Egg Finder; el rojo queda solo en la accion.
+    local COLORS = {
+        surface = Color3.fromRGB(20, 24, 30),
+        raised = Color3.fromRGB(30, 36, 44),
+        border = Color3.fromRGB(56, 65, 77),
+        action = Color3.fromRGB(192, 57, 66),
+        actionBorder = Color3.fromRGB(232, 120, 126),
+        text = Color3.fromRGB(239, 243, 247),
+        muted = Color3.fromRGB(170, 183, 197),
+        gold = Color3.fromRGB(224, 197, 149),
+        green = Color3.fromRGB(147, 215, 191),
+        onGreen = Color3.fromRGB(15, 35, 29),
+        amber = Color3.fromRGB(242, 190, 122),
+    }
+
+    -- ---------------------------------------------------------------- utilidades
+    local session
+    local support = createFinderSupport()
+    local store = support.Store({read = function(path) return readfile(path) end,
+        write = function(path, raw) writefile(path, raw) end,
+        encode = function(value) return HttpService:JSONEncode(value) end,
+        decode = function(raw) return HttpService:JSONDecode(raw) end})
+    local function readJson(path, fallback) return store.Read(path, fallback) end
+    -- Read-only pruned view; writers of VISITED_FILE must call Invalidate.
+    local recentVisited = support.RecentVisited(function() return readJson(VISITED_FILE, {}) end, VISITED_MAX_AGE)
+    local function writeJson(path, value)
+        if session and not session.alive then return false end
+        local ok = store.Write(path, value)
+        if not ok then warn("[EggFinder] No se pudo guardar " .. path) end
+        return ok
+    end
+    -- Plain text for people (the readable hunt report); failures stay silent.
+    local function writeText(path, text)
+        if session and not session.alive then return false end
+        return (pcall(writefile, path, text))
+    end
+
+    local function notify(title, text, duration)
+        pcall(function()
+            StarterGui:SetCore("SendNotification", {
+                Title = title,
+                Text = text,
+                Duration = duration or 6,
+            })
+        end)
+    end
+
+    local function medianOf(values)
+        if #values == 0 then
+            return nil
+        end
+        local sorted = {}
+        for index = 1, #values do
+            sorted[index] = values[index]
+        end
+        table.sort(sorted)
+        return math.floor(sorted[math.ceil(#sorted / 2)] + 0.5)
+    end
+
+    local function readPingValue()
+        local ok, value = pcall(function()
+            local network = Stats.Network and Stats.Network.ServerStatsItem
+            local item = network and network["Data Ping"]
+            return item and item:GetValue() or nil
+        end)
+        if ok and type(value) == "number" and value > 0 then
+            return value
+        end
+        return nil
+    end
+
+    -- Igual que en el hopper: se descarta el arranque y se decide con la mediana.
+    local function measurePing()
+        local series = {}
+        local settleUntil = os.clock() + PING_SETTLE_SECONDS
+        while os.clock() < settleUntil do
+            readPingValue()
+            if session and not session.alive then return nil end
+            task.wait(PING_SAMPLE_INTERVAL)
+        end
+        for _ = 1, PING_SAMPLE_COUNT do
+            local value = readPingValue()
+            if value then
+                table.insert(series, math.floor(value + 0.5))
+            end
+            if session and not session.alive then return nil end
+            task.wait(PING_SAMPLE_INTERVAL)
+        end
+        return medianOf(series), series
+    end
+
+    -- Servidor en el que nacio esta ejecucion del script. En cuanto game.JobId
+    -- deje de coincidir, estamos en otro servidor y NINGUN camino de esta
+    -- instancia debe lanzar otro teleport (evita el doble salto observado).
+    local sessionStartJobId = game.JobId
+
+    -- Lista de servidores, Best Ping y pool precargado (server_pool.luau).
+    local serverPool = createServerPool({support = support, readJson = readJson, writeJson = writeJson,
+        recentVisited = recentVisited, sessionStartJobId = sessionStartJobId, placeId = PLACE_ID,
+        visitedFile = VISITED_FILE, visitedMaxAge = VISITED_MAX_AGE, userId = Players.LocalPlayer.UserId,
+        session = function() return session end})
+
+    local function autoTestRunning()
+        local state = readJson(SCOUT_STATE_FILE, nil)
+        return type(state) == "table" and state.active == true
+    end
+
+    local playerGui = player:WaitForChild("PlayerGui", 30)
+    if not playerGui then
+        playerGui = player:FindFirstChildOfClass("PlayerGui")
+    end
+
+    -- ---------------------------------------------------------------- la UI
+    local function guiParent()
+        if type(gethui) == "function" then
+            local ok, result = pcall(gethui)
+            if ok and result then
+                return result
+            end
+        end
+        local ok = pcall(function()
+            return CoreGui.Name
+        end)
+        if ok then
+            return CoreGui
+        end
+        return playerGui
+    end
+
+    local parent = guiParent()
+    if not parent then
+        return
+    end
+
+    local hopperEnvironment = getgenv and getgenv() or _G
+    -- A script rerun keeps this ID; a new client environment gets a new one.
+    hopperEnvironment.__CHILLI_CONNECTION_ID = hopperEnvironment.__CHILLI_CONNECTION_ID or HttpService:GenerateGUID(false)
+    local connectionId = hopperEnvironment.__CHILLI_CONNECTION_ID
+    local oldSession = hopperEnvironment.__CHILLI_HOPPER_SESSION
+    if oldSession and type(oldSession.Destroy) == "function" then oldSession.Destroy() end
+    session = { alive = true, autoGeneration = 0, connections = {} }
+    local function connect(signal, callback)
+        local connection = signal:Connect(function(...)
+            if not session.alive then return end
+            uiAccess(); callback(...)
+        end)
+        table.insert(session.connections, connection)
+        return connection
+    end
+    local function disconnectSession()
+        for _, connection in ipairs(session.connections) do pcall(function() connection:Disconnect() end) end
+        table.clear(session.connections)
+    end
+    hopperEnvironment.__CHILLI_HOPPER_SESSION = session
+    local previous = parent:FindFirstChild("ServerHopButton")
+    if previous then
+        previous:Destroy()
+    end
+
+    local screenGui = Instance.new("ScreenGui")
+    screenGui.Name = "ServerHopButton"
+    screenGui.ResetOnSpawn = false
+    screenGui.IgnoreGuiInset = true
+    screenGui.DisplayOrder = 500
+    screenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+    screenGui.Parent = parent
+    screenGui.Destroying:Connect(function()
+        session.alive = false
+        disconnectSession()
+        if session.DisposeSearch then session.DisposeSearch() end
+        if session.DisposePanel then session.DisposePanel() end
+        if session.attempt then session.attempt.Cancel() end
+        serverPool.Destroy()
+        if session.DisposeAccount then session.DisposeAccount() end
+    end)
+    function session.Destroy()
+        session.alive = false
+        session.autoGeneration += 1
+        disconnectSession()
+        if session.DisposeSearch then session.DisposeSearch() end
+        if session.DisposePanel then session.DisposePanel() end
+        if session.attempt then session.attempt.Cancel() end
+        serverPool.Destroy()
+        if session.DisposeAccount then session.DisposeAccount() end
+        if session.alertSound then session.alertSound:Destroy() end
+        if screenGui.Parent then screenGui:Destroy() end
+    end
+
+    local autoEnabled
+    local card = mountHopButton({session = session, screenGui = screenGui, support = support, colors = COLORS,
+        connect = connect, uiAccess = uiAccess, readJson = readJson, writeJson = writeJson, uiFile = UI_FILE,
+        isAuto = function() return autoEnabled end})
+    autoEnabled = card.savedAuto
+    local button, autoChip = card.button, card.autoChip
+    local setLabel, setStatus, saveUi = card.SetLabel, card.SetStatus, card.Save
+    local updateAutoChip, draggedRecently = card.PaintAuto, card.DraggedRecently
+
+    local busy = false
+    serverPool.OnProgress(function(state)
+        if session.alive and busy then setStatus(support.NativeProgressMessage(state), COLORS.muted) end
+    end)
+
+    local function setBusy(value)
+        if not session.alive then return end
+        busy = value
+        card.SetBusy(value)
+    end
+
     local eggSearch = createMapEggSearch(readJson, writeJson, writeText)
     session.DisposeSearch = eggSearch.Dispose
     session.hopAllowed = false
@@ -4085,9 +4566,7 @@ do
         Stop = function() if session.alive then setAuto(false) end end,
         GetStatus = function()
             return { active = autoEnabled and session.alive, jobId = game.JobId,
-                serverConnection = {orderBy = serverOrder, transport = connectionConfig.transport or "LocalBridge",
-                    credential = deviceCookie.Status(), request = deviceTransport.State(), native = support.Copy(nativeStatus),
-                    reserve = reserveStatus and reserveStatus() or {count = 0}},
+                serverConnection = serverPool.Status(),
                 mode = session.searchMode, cycle = eggSearch.CycleStatus(),
                 config = support.Copy(eggSearch.config), lastScan = eggSearch.lastScan and {
                     match = support.Copy(eggSearch.lastScan.match), info = support.Copy(eggSearch.lastScan.info),
@@ -4097,188 +4576,9 @@ do
         end,
     }
 
-    -- Account entry stays in a local closure; never expose it in GetStatus,
-    -- logs, Chilli configuration, teleport state, or companion requests.
-    do
-        local surface = Color3.fromRGB(20, 24, 30)
-        local fieldColor = Color3.fromRGB(30, 36, 44)
-        local foreground = Color3.fromRGB(239, 243, 247)
-        local secondary = Color3.fromRGB(170, 183, 197)
-        local accent = Color3.fromRGB(224, 197, 149)
-        local function rounded(object)
-            local corner = Instance.new("UICorner"); corner.CornerRadius = UDim.new(0, 12); corner.Parent = object
-        end
-        local function text(parentObject, name, content, y, height, size, color)
-            local item = Instance.new("TextLabel")
-            item.Name = name; item.BackgroundTransparency = 1; item.Text = content
-            item.Position = UDim2.fromOffset(20, y); item.Size = UDim2.new(1, -40, 0, height)
-            item.Font = Enum.Font.GothamMedium; item.TextSize = size; item.TextColor3 = color or foreground
-            item.TextXAlignment = Enum.TextXAlignment.Left; item.TextYAlignment = Enum.TextYAlignment.Top
-            item.TextWrapped = true; item.Parent = parentObject
-            return item
-        end
-        local function action(parentObject, name, content, y, color)
-            local item = Instance.new("TextButton")
-            item.Name = name; item.Text = content; item.Position = UDim2.fromOffset(20, y)
-            item.Size = UDim2.new(1, -40, 0, 44); item.BackgroundColor3 = color or fieldColor
-            item.BorderSizePixel = 0; item.Font = Enum.Font.GothamBold; item.TextSize = 14
-            item.TextColor3 = color and surface or foreground; item.Parent = parentObject; rounded(item)
-            return item
-        end
-        local function outlined(object)
-            local stroke = Instance.new("UIStroke"); stroke.Color = COLORS.border
-            stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border; stroke.Parent = object
-        end
-        local entry = action(screenGui, "ServerAccount", "Cuenta y Best Ping", 0)
-        entry.AnchorPoint = Vector2.new(0, 1); entry.BackgroundColor3 = surface; entry.TextSize = 12
-        entry.Position = UDim2.new(0, 18, 1, -18); entry.Size = UDim2.fromOffset(184, 36); entry.ZIndex = 90
-        outlined(entry)
-        local panel = Instance.new("Frame")
-        panel.Name = "ServerAccountPanel"; panel.AnchorPoint = Vector2.new(0.5, 0.5)
-        panel.Position = UDim2.fromScale(0.5, 0.5); panel.Size = UDim2.fromOffset(440, 462)
-        panel.BackgroundColor3 = surface; panel.BorderSizePixel = 0; panel.Visible = false
-        panel.ZIndex = 30; panel.Parent = screenGui; rounded(panel); outlined(panel)
-        local scale = Instance.new("UIScale"); scale.Parent = panel
-        text(panel, "Title", "Tu cuenta para Best Ping", 20, 30, 22)
-        text(panel, "Privacy", "Este dispositivo consulta Roblox. El autor del script no recibe tu cookie.", 58, 40, 13, secondary)
-        text(panel, "CookieLabel", ".ROBLOSECURITY", 112, 20, 13)
-        local input = Instance.new("TextBox")
-        input.Name = "CookieInput"; input.Position = UDim2.fromOffset(20, 138)
-        input.Size = UDim2.new(1, -40, 0, 48); input.BackgroundColor3 = fieldColor
-        input.BorderSizePixel = 0; input.Text = ""; input.PlaceholderText = ""
-        input.ClearTextOnFocus = false; input.MultiLine = false; input.TextTransparency = 1
-        input.TextSize = 16; input.Font = Enum.Font.GothamMedium; input.Parent = panel; rounded(input)
-        local mask = text(input, "MaskedValue", "Toca aqui y pega la cookie completa", 14, 24, 13, secondary)
-        mask.Position = UDim2.fromOffset(14, 14); mask.Size = UDim2.new(1, -28, 0, 24)
-        text(panel, "StorageHelp", "Guardar permite continuar entre saltos. Se guarda solo aqui, sin cifrado; otros scripts del executor podrian leerla.", 198, 54, 13, secondary)
-        local message = text(panel, "ConnectionMessage", "", 258, 40, 13, secondary)
-        local save = action(panel, "SaveAndAuto", "Guardar y usar AUTO", 304, accent)
-        local once = action(panel, "SessionOnly", "Solo esta sesion", 356)
-        local forget = action(panel, "ForgetCookie", "Borrar cookie y desconectar", 408)
-        local close = Instance.new("TextButton")
-        close.Name = "Close"; close.Text = "Cerrar"; close.Font = Enum.Font.GothamMedium
-        close.TextSize = 12; close.TextColor3 = secondary; close.BackgroundTransparency = 1
-        close.Size = UDim2.fromOffset(64, 44); close.Position = UDim2.new(1, -74, 0, 5); close.Parent = panel
-        local draft, updating, connecting = nil, false, false
-        local function savedMessage(state)
-            return state.remembered and "Cookie guardada en este dispositivo. Puedes cerrar esta ventana."
-                or "Cookie activa solo en esta sesion; no se guardo."
-        end
-        local function updateEntry()
-            uiAccess()
-            local state = deviceCookie.Status()
-            entry.Text = connecting and "Cuenta: comprobando"
-                or state.configured and (state.remembered and "Cuenta: guardada" or "Cuenta: solo esta sesión")
-                or "Cuenta y Best Ping"
-        end
-        local function fit()
-            uiAccess()
-            local camera = workspace.CurrentCamera
-            local viewport = camera and camera.ViewportSize or Vector2.new(800, 600)
-            scale.Scale = math.min(1, (viewport.X - 32) / 440, (viewport.Y - 40) / 462)
-        end
-        local function show()
-            if not session.alive then return end
-            uiAccess(); fit(); panel.Visible = true; entry.Visible = false
-            local state = deviceCookie.Status()
-            message.Text = connecting and support.DeviceWaitMessage(deviceTransport.State())
-                or state.configured and savedMessage(state)
-                or "Pega tu cookie para conectar tu propia cuenta."
-        end
-        local function hide()
-            uiAccess(); input:ReleaseFocus(); panel.Visible = false; entry.Visible = true; input.Text = ""; draft = nil
-            mask.Text = "Toca aqui y pega la cookie completa"
-        end
-        connect(entry.Activated, show)
-        connect(close.Activated, hide)
-        connect(input:GetPropertyChangedSignal("Text"), function()
-            if updating or input.Text == "" then return end
-            draft = support.NormalizeCookie(input.Text)
-            updating = true; input.Text = ""; updating = false
-            mask.Text = draft and "Cookie recibida (oculta)" or "Pega solo la cookie completa"
-        end)
-        local camera = workspace.CurrentCamera
-        if camera then connect(camera:GetPropertyChangedSignal("ViewportSize"), fit) end
-        local function activate(persist)
-            if connecting then return end
-            if not draft then message.Text = "Pega la cookie completa antes de conectar."; return end
-            if not executorRequest() then message.Text = "Este executor no ofrece request con headers."; return end
-            local candidate = draft; draft = nil
-            input:ReleaseFocus(); mask.Text = "Cookie recibida (oculta)"
-            connecting = true; session.accountConnecting = true; save.Active = false; once.Active = false
-            save.Text = "Comprobando con Roblox..."; once.Text = "Espera la comprobacion..."; updateEntry()
-            setAuto(false); uiAccess(); message.Text = "Comprobando la conexion con Roblox..."
-            task.spawn(function()
-                local generation = credentialGeneration
-                local page, reason, status
-                for attempt = 1, 2 do
-                    page, reason, status = deviceFetch("BestLatency", nil, candidate, function(state)
-                        if not session.alive or generation ~= credentialGeneration then return end
-                        uiAccess(); message.Text = support.DeviceWaitMessage(state)
-                    end)
-                    if status ~= 429 or attempt == 2 then break end
-                end
-                if not session.alive or generation ~= credentialGeneration then candidate = nil; return end
-                local ok = false
-                if page then
-                    uiAccess(); message.Text = persist and "Guardando y verificando el archivo local..." or "Activando solo en esta sesion..."
-                    ok, reason = deviceCookie.Set(candidate, persist)
-                    if ok then
-                        connectionConfig = {mode = "BestLatency", transport = "DeviceCookie"}
-                        ok = writeJson(CONNECTION_FILE, connectionConfig)
-                        if not ok then reason = "No se pudo guardar el modo de conexion. Reintenta." end
-                    end
-                end
-                -- Retain a failed attempt only while the form stays open,
-                -- so an interval or cooldown never requires another paste.
-                uiAccess()
-                if not ok and panel.Visible then draft = draft or candidate end
-                candidate = nil; connecting = false; session.accountConnecting = false
-                uiAccess(); save.Active = true; once.Active = true
-                save.Text = "Guardar y usar AUTO"; once.Text = "Solo esta sesion"; updateEntry()
-                if ok then
-                    credentialGeneration += 1; deviceFatal = nil; serverOrder = "BestLatency"
-                    writeJson(POOL_FILE, {servers = {}}); resetDeviceNative(page, true)
-                    -- Confirm verified storage before starting AUTO, which may
-                    -- change the map status or begin a later hop independently.
-                    draft = nil; input.Text = ""; mask.Text = "Toca aqui para cambiar la cookie"
-                    message.Text = savedMessage(deviceCookie.Status())
-                    nativeStatus = {state = "connected"}; setAuto(true)
-                else
-                    message.Text = reason or "No se pudo conectar. Pega la cookie y reintenta."
-                    mask.Text = draft and "Cookie recibida (oculta); puedes reintentar" or "Toca aqui y pega la cookie completa"
-                end
-            end)
-        end
-        connect(save.Activated, function() activate(true) end)
-        connect(once.Activated, function() activate(false) end)
-        connect(forget.Activated, function()
-            credentialGeneration += 1; draft = nil; connecting = false; session.accountConnecting = false; setAuto(false)
-            local removed = deviceCookie.Forget()
-            deviceFatal = nil; writeJson(POOL_FILE, {servers = {}}); resetDeviceNative(nil, true)
-            -- Leave the selected transport enabled: an absent cookie waits;
-            -- it must not silently resume legacy or the owner's PC bridge.
-            connectionConfig = {mode = "BestLatency", transport = "DeviceCookie"}
-            serverOrder = "BestLatency"; writeJson(CONNECTION_FILE, connectionConfig)
-            uiAccess(); input.Text = ""; mask.Text = "Toca aqui y pega la cookie completa"
-            save.Active = true; once.Active = true
-            save.Text = "Guardar y usar AUTO"; once.Text = "Solo esta sesion"; updateEntry()
-            message.Text = removed and "Cookie borrada. AUTO apagado." or "AUTO apagado. No se pudo borrar el archivo local; revisa el executor."
-        end)
-        hopperEnvironment.ChilliEggSearch.OpenServerAccount = show
-        hopperEnvironment.ChilliEggSearch.CloseServerAccount = hide
-        hopperEnvironment.ChilliEggSearch.ServerAccountStatus = function()
-            uiAccess()
-            local state = deviceCookie.Status()
-            return {open = panel.Visible, launcherVisible = entry.Visible, configured = state.configured, remembered = state.remembered,
-                connecting = connecting, message = message.Text}
-        end
-        session.DisposeAccount = function() draft = nil; session.accountConnecting = false end
-        fit(); updateEntry()
-        if connectionConfig.transport ~= "LocalBridge" and not deviceCookie.Status().configured
-            and connectionConfig.mode ~= "BestLatency" then show()
-        elseif connectionConfig.transport == "DeviceCookie" and not deviceCookie.Status().configured then show() end
-    end
+    mountAccountPanel({session = session, screenGui = screenGui, support = support, colors = COLORS,
+        connect = connect, uiAccess = uiAccess, pool = serverPool, api = hopperEnvironment.ChilliEggSearch,
+        setAuto = function(value) return setAuto(value) end})
 
     local filterPanel = mountEggFilterPanel({ search = eggSearch,
         api = hopperEnvironment.ChilliEggSearch, session = session, screenGui = screenGui,
@@ -4287,152 +4587,7 @@ do
     session.DisposePanel = filterPanel.Destroy
 
     -- ---------------------------------------------------------------- el salto
-    local function pickCandidates(continuing, wanted)
-        local visited = recentVisited.Get(os.time())
-        local now = os.time()
-        if serverOrder == "BestLatency" then
-            if connectionConfig.transport == "DeviceCookie" then
-                if session.accountConnecting then return nil, "conectando la cuenta; espera la comprobacion" end
-                if nativeRequestBusy then return nil, "consulta Best Ping en curso" end
-                nativeRequestBusy = true
-                local generation = credentialGeneration
-                local ok, pool, reason = pcall(deviceNative.Pick, game.JobId, visited, continuing, wanted)
-                nativeRequestBusy = false
-                if not session.alive or generation ~= credentialGeneration then return nil, "conexion cancelada" end
-                if not ok then pool, reason = nil, "No se pudo leer Best Ping en este dispositivo." end
-                nativeStatus = nativeStatus or {}
-                nativeStatus.state, nativeStatus.error, nativeStatus.wait = pool and "ready" or "waiting", reason, nil
-                if pool then nativeStatus.occupancy = pool[1].playing end
-                return pool, reason
-            end
-            if nativeRequestBusy then return nil, "consulta Best Ping en curso" end
-            nativeRequestBusy = true
-            local excluded = {game.JobId}
-            for id in pairs(visited) do table.insert(excluded, id) end
-            local requestId = HttpService:GenerateGUID(false)
-            local ok = pcall(function()
-                writefile(NATIVE_REQUEST_FILE, HttpService:JSONEncode({placeId = PLACE_ID,
-                    requestId = requestId, requestedAt = now, excluded = excluded}))
-            end)
-            if not ok then nativeRequestBusy = false; return nil, "no se pudo solicitar Best Ping al PC" end
-            local deadline = os.clock() + 3
-            repeat
-                local decoded, data = pcall(function()
-                    return HttpService:JSONDecode(readfile(NATIVE_RESPONSE_FILE))
-                end)
-                if decoded and type(data) == "table" and data.requestId == requestId then
-                    local pool, reason = support.NativePool(data, requestId, os.time(), game.JobId, visited)
-                    nativeStatus = {state = data.state, pages = data.pages, complete = data.complete,
-                        occupancy = data.occupancy, error = reason}
-                    nativeRequestBusy = false
-                    return pool, reason
-                end
-                task.wait(0.1)
-            until not session.alive or game.JobId ~= sessionStartJobId or os.clock() >= deadline
-            nativeRequestBusy = false
-            return nil, "esperando proceso Best Ping del PC"
-        end
-        local servers, fetchError = support.Pages(fetchServers, function(server)
-            return type(server.id) == "string" and server.id ~= game.JobId
-                and tonumber(server.maxPlayers) == EXPECTED_CAPACITY
-                and tonumber(server.playing) ~= nil and tonumber(server.playing) >= 1
-                and tonumber(server.playing) < EXPECTED_CAPACITY
-                and tonumber(server.playing) == math.floor(tonumber(server.playing))
-                and now - (tonumber(visited[server.id]) or 0) > VISITED_MAX_AGE
-        end, function() return session.alive and game.JobId == sessionStartJobId end, POOL_SIZE, 5)
-        if not servers then return nil, fetchError end
-        -- fetchServers uses Occupancy Asc: the earliest eligible records prove
-        -- the lowest available group, even when later pages remain unread.
-        local pool = support.OccupancyGroup(servers, "LegacyPing", true)
-
-        if #pool == 0 then
-            return nil, "no quedan servidores nuevos (se probaron todos hace poco)"
-        end
-
-        -- Ocupacion 1 -> 2 -> ... -> 6 antes de FPS/ping. BestLatency sigue en pruebas:
-        -- la peticion v2 sin sesion web devuelve Guest users are not allowed.
-        return pool
-    end
-
-    -- Guarda los mejores candidatos del momento para que el clic no tenga que
-    -- consultar nada. Se refresca en segundo plano cada POOL_REFRESH_SECONDS.
-    local function savePool(pool)
-        if not pool or #pool == 0 then
-            return
-        end
-        local balanced = serverOrder == "BestLatency" and connectionConfig.transport == "DeviceCookie"
-        local group = balanced and support.BalancedReserve(pool, os.time(), game.JobId,
-            recentVisited.Get(os.time()), BALANCED_RESERVE_SIZE)
-            or support.OccupancyGroup(pool, serverOrder, true)
-        if #group == 0 then return end
-        local trimmed = {}
-        for index = 1, math.min(#group, balanced and BALANCED_RESERVE_SIZE or POOL_SIZE) do
-            trimmed[index] = group[index]
-        end
-        writeJson(POOL_FILE, {
-            selectionPolicy = SERVER_SELECTION_POLICY,
-            orderBy = serverOrder,
-            transport = connectionConfig.transport or "LocalBridge",
-            owner = Players.LocalPlayer.UserId,
-            reservePolicy = balanced and "balanced-1-2-v1" or nil,
-            occupancy = group[1].playing,
-            updatedAt = os.time(),
-            servers = trimmed,
-        })
-    end
-    saveNativePool = savePool
-    if connectionConfig.transport == "DeviceCookie" then
-        local restored = deviceNative.Reserve(game.JobId,
-            recentVisited.Get(os.time()))
-        if restored then savePool(restored) end
-    end
-
-    -- Lee el pool guardado (sin HTTP) y filtra lo que ya no sirve: visitados
-    -- en la ultima hora y el servidor actual. Si el pool es viejo, se ignora.
-    local function loadPool()
-        local data = readJson(POOL_FILE, nil)
-        if type(data) ~= "table" or type(data.servers) ~= "table" then
-            return nil
-        end
-        if data.selectionPolicy ~= SERVER_SELECTION_POLICY then return nil end
-        if data.orderBy ~= serverOrder then return nil end
-        if serverOrder == "BestLatency" then
-            if data.owner ~= Players.LocalPlayer.UserId then return nil end
-            if connectionConfig.transport == "DeviceCookie" and (deviceFatal or not deviceCookie.Status().configured) then return nil end
-            return support.PreloadedNativePool(data, os.time(), game.JobId,
-                recentVisited.Get(os.time()),
-                connectionConfig.transport or "LocalBridge", connectionConfig.transport == "DeviceCookie")
-        end
-        local occupancy = tonumber(data.occupancy)
-        if not occupancy or occupancy < 1 or occupancy >= EXPECTED_CAPACITY
-            or occupancy ~= math.floor(occupancy) then return nil end
-        -- Before another hop in groups 2..6, query again: a lower-occupancy
-        -- server may have become available since this cache was created.
-        if occupancy > 1 then return nil end
-        if os.time() - (tonumber(data.updatedAt) or 0) > POOL_MAX_AGE then
-            return nil
-        end
-
-        local visited = readJson(VISITED_FILE, {})
-        local now = os.time()
-        local pool = {}
-        for _, server in ipairs(data.servers) do
-            local id = type(server) == "table" and server.id or nil
-            if type(server) ~= "table" or tonumber(server.playing) ~= occupancy then return nil end
-            if type(id) == "string" and id ~= game.JobId then
-                local seenAt = tonumber(visited[id]) or 0
-                if now - seenAt > VISITED_MAX_AGE then
-                    table.insert(pool, {
-                        id = id,
-                        playing = tonumber(server.playing),
-                        ping = tonumber(server.ping) or -1,
-                        fps = tonumber(server.fps) or 0,
-                    })
-                end
-            end
-        end
-        return support.RankServers(pool, "LegacyPing")
-    end
+    serverPool.RestoreReserve()
 
     -- Several IDs share one verified write of the history file.
     local function markVisited(...)
@@ -4442,19 +4597,10 @@ do
         writeJson(VISITED_FILE, visited)
         recentVisited.Invalidate()
     end
-    reserveStatus = function()
-        local pool = loadPool()
-        local primary, backup = 0, 0
-        for _, row in ipairs(pool or {}) do
-            if row.playing == 1 then primary += 1 elseif row.playing == 2 then backup += 1 end
-        end
-        return {count = pool and #pool or 0, occupancy = pool and pool[1].playing or nil,
-            primary = primary, backup = backup, capacity = connectionConfig.transport == "DeviceCookie" and BALANCED_RESERVE_SIZE or POOL_SIZE}
-    end
     hopperEnvironment.ChilliEggSearch.RefreshServers = function()
         assert(session.alive, "Esta sesion ya termino")
-        local pool, reason = pickCandidates()
-        if pool and session.alive then savePool(pool) end
+        local pool, reason = serverPool.Pick()
+        if pool and session.alive then serverPool.Save(pool) end
         return support.Copy(pool), reason
     end
 
@@ -4474,13 +4620,13 @@ do
             end
 
             -- Pool precargado: cero consultas en el clic.
-            local pool = loadPool()
+            local pool = serverPool.Load()
             local pickError = nil
             if not pool or #pool == 0 then
-                pool, pickError = pickCandidates(function() return canContinueHop(automatic, generation) end)
+                pool, pickError = serverPool.Pick(function() return canContinueHop(automatic, generation) end)
                 if not canContinueHop(automatic, generation) then return false end
                 if pool then
-                    savePool(pool)
+                    serverPool.Save(pool)
                 end
             end
 
@@ -4498,7 +4644,7 @@ do
                     if automatic and not verifyMapBeforeHop(pool[index]) then return false end
                     local candidate = pool[index]
                     setLabel("Saltando...")
-                    setStatus(serverOrder == "BestLatency"
+                    setStatus(serverPool.Order() == "BestLatency"
                         and string.format("Entrando a un servidor de %d/7 (Best Ping)", candidate.playing)
                         or string.format("Entrando a un servidor de %s ms", tostring(candidate.ping)), COLORS.muted)
                     print(string.format(
@@ -4922,39 +5068,7 @@ do
         end
     end)
 
-    -- Pool precargado: se refresca solo en segundo plano para que al pulsar el
-    -- boton no haya que consultar nada; despues va cada POOL_REFRESH_SECONDS. No
-    -- refresca mientras hay un salto en curso.
-    task.spawn(function()
-        while session.alive and game.JobId == sessionStartJobId do
-            if game.PlaceId == PLACE_ID and not busy then
-                local ok, err = pcall(function()
-                    local balanced = serverOrder == "BestLatency" and connectionConfig.transport == "DeviceCookie"
-                    if balanced then
-                        local visited = recentVisited.Get(os.time())
-                        if not deviceNative.NeedsRefill(game.JobId, visited) then return end
-                    elseif serverOrder == "BestLatency" then
-                        local reserve = loadPool()
-                        if reserve and #reserve >= POOL_SIZE then return end
-                    end
-                    local pool = pickCandidates(function()
-                        return session.alive and not busy and game.JobId == sessionStartJobId
-                    end, balanced and BALANCED_RESERVE_SIZE or POOL_SIZE)
-                    if pool and session.alive and game.JobId == sessionStartJobId then
-                        savePool(pool)
-                        print(string.format(
-                            "[ServerHopButton] Pool refrescado: %d candidatos",
-                            #pool
-                        ))
-                    end
-                end)
-                if not ok and type(warn) == "function" then
-                    warn("[ServerHopButton] Pool no refrescado: " .. tostring(err))
-                end
-            end
-            task.wait(serverOrder == "BestLatency" and 5 or POOL_REFRESH_SECONDS)
-        end
-    end)
+    serverPool.StartRefresher(function() return busy end)
 
     updateAutoChip()
     if autoEnabled then
