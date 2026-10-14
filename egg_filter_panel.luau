@@ -524,9 +524,63 @@ local function mountEggFilterPanel(context)
     end
     -- The previous cycle's egg is information only: muted, never gold.
     local function bestColor(row) return row.best == "previous" and C.muted or C.gold end
+    -- Best egg of this cycle and of the last ended ones, same rarity and zones,
+    -- to see what really appears before choosing the minimum. Information only.
+    local HISTORY_CYCLES = 5
+    local function ageText(age)
+        if age <= 0 then return "Ciclo que termina" end
+        if age == 1 then return "Ciclo anterior" end
+        return string.format("Hace %d ciclos", age)
+    end
+    local function bestHistory()
+        access()
+        local card = sheet("BestHistory", "Mejores de ciclos anteriores", 90, 560)
+        paragraph("Hint", card, string.format("El mejor huevo %s+ de cada ciclo en tus zonas, aunque no llegue al mínimo. "
+            .. "Un ciclo sin ninguno no aparece.", search.config.rarity), 18, 44, CONTENT - 36, 32, C.muted, 11)
+        local cycles = {}
+        local current = search.BestSeen()
+        if current then table.insert(cycles, {best = current, label = "Este ciclo"}) end
+        for _, item in ipairs(search.BestHistory(nil, HISTORY_CYCLES)) do
+            table.insert(cycles, {best = item.best, label = ageText(item.age)})
+        end
+        local list = listFrame(card, 84, 412)
+        local minimum = search.config.minIncome
+        for index, item in ipairs(cycles) do
+            local best = item.best
+            local catalog = search.modules and search.modules.assets.Directory[best.category]
+            local labels, ids = {}, table.clone(best.mutations or {})
+            if best.baseMutation then table.insert(ids, 1, best.baseMutation) end
+            for _, id in ipairs(ids) do
+                local ok, label = pcall(function() return data.mutations and data.mutations.LabelOf(id) or id end)
+                label = ok and tostring(label) or tostring(id)
+                if not table.find(labels, label) then table.insert(labels, label) end
+            end
+            local row = make("Frame", "Cycle_" .. index, list, {Size = UDim2.new(1, -2, 0, 58), LayoutOrder = index,
+                BackgroundColor3 = C.card, BorderSizePixel = 0})
+            corner(row); stroke(row, index == 1 and current and C.gold or C.border).Transparency = 0.45
+            text("When", row, item.label, 14, 8, 0, 14, index == 1 and current and C.gold or C.muted, 10, true).Size = UDim2.new(1, -150, 0, 14)
+            text("Name", row, tostring(best.name or best.category), 14, 22, 0, 18, C.white, 14, true).Size = UDim2.new(1, -150, 0, 18)
+            local tags = text("Tags", row, "", 14, 40, 0, 14, C.muted, 10)
+            tags.Size = UDim2.new(1, -150, 0, 14); tags.RichText = true
+            tags.Text = string.format('<font color="%s"><b>%s</b></font>  ·  %s%s',
+                hex(rarityColor(catalog and catalog.Rarity)), escape(best.rarity or "?"), escape(zoneName(best.area)),
+                #labels > 0 and "  ·  " .. escape(table.concat(labels, " + ")) or "")
+            local reaches = best.income >= minimum
+            local income = text("Income", row, number(best.income) .. "/s", 0, 10, 124, 22, reaches and C.green or C.white, 16, true)
+            income.Position = UDim2.new(1, -138, 0, 10); income.TextXAlignment = Enum.TextXAlignment.Right
+            local verdict = text("Minimum", row, reaches and "llega al mínimo" or "bajo el mínimo", 0, 34, 124, 14, C.muted, 10)
+            verdict.Position = UDim2.new(1, -138, 0, 34); verdict.TextXAlignment = Enum.TextXAlignment.Right
+        end
+        if #cycles == 0 then
+            paragraph("Empty", list, "Todavía no hay ciclos con un huevo de tu rareza en tus zonas. Se registran con AUTO activo.",
+                4, 12, 440, 40, C.muted, 12)
+        end
+        paragraph("Minimum", card, "Ingreso mínimo guardado: " .. search.FormatMinimum(minimum) .. "/s", 18, 508, CONTENT - 36, 32, C.muted, 11)
+    end
+    panel.OpenBestHistory = bestHistory
     local function detail(row)
         access()
-        local card = sheet("EggDetail", row.name, 120, row.best and 442 or 400)
+        local card = sheet("EggDetail", row.name, 120, row.best and 486 or 400)
         local tags = text("Tags", card, "", 18, 44, CONTENT - 36, 18, C.muted, 12)
         tags.RichText = true
         tags.Text = string.format('<font color="%s"><b>%s</b></font>  ·  %s', hex(rarityColor(row.catalog and row.catalog.Rarity)),
@@ -555,6 +609,10 @@ local function mountEggFilterPanel(context)
                 make("Frame", "Divider" .. index, card, { Position = UDim2.fromOffset(18, y + 41), Size = UDim2.fromOffset(CONTENT - 36, 1),
                     BackgroundColor3 = C.border, BackgroundTransparency = 0.5, BorderSizePixel = 0 })
             end
+        end
+        if row.best then
+            local history = button("BestHistory", card, "Ver mejores de los últimos ciclos", 18, 432, CONTENT - 36, 40)
+            history.Activated:Connect(function() access(); bestHistory() end)
         end
     end
     local function createCard(row)

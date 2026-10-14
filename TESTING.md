@@ -1,5 +1,19 @@
 # Pruebas y validacion
 
+## 2026-10-14 - Historial de mejores por ciclo
+
+Build, doce compilaciones y 216 regresiones (dos nuevas: historial por
+alcance mas reciente primero, limite pedido, huecos de ciclos sin huevo,
+tope de 30, ciclo en curso excluido; lectura de la version1, ventana sin
+archivar fusionada con el mismo ciclo sin duplicar ni empeorar, archivo
+corrupto). Las aserciones que leian el formato version1 del archivo pasan a
+`history[1]`. Potassium, cliente real (Eternal, tres zonas): el archivo real
+version1 (Pegasus Eternal 1.42B, Light Dark) se lee como "Hace 23 ciclos";
+`BestHistory(5)` responde; la hoja abierta por llamada directa (sin clics)
+cabe en el panel, todos los textos con TextFits, zona como Angels & Demons y
+"bajo el minimo" frente a 15b. AUTO siguio en wait. La reescritura a version2
+ocurre en el siguiente cierre de ciclo con un mejor registrado.
+
 ## 2026-10-14 - Hopper separado en modulos
 
 Refactor sin cambio de comportamiento. Build, doce compilaciones (los cuatro

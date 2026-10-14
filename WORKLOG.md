@@ -1,5 +1,12 @@
 # Estado del trabajo
 
+## 2026-10-14 - Historial de mejores por ciclo
+
+Rama codex/historial-mejores-ciclo sobre main ad6ca63 (build-94). Historial
+de los mejores huevos por ciclo (version2 de chilli_egg_search_previous.json),
+`BestHistory` en detector y API, hoja en el panel desde el detalle del mejor
+fijado. Ver TESTING.
+
 ## 2026-10-14 - Hopper separado en modulos
 
 Rama codex/separar-hopper-runtime sobre main 62dfde3. `hopper_runtime.luau`
