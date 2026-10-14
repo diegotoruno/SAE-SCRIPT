@@ -1,5 +1,14 @@
 # Estado del trabajo
 
+## 2026-10-14 - Vuelta al hopper en un solo archivo
+
+Rama codex/revertir-modulos sobre main 88c627e (build-96). A pedido del
+usuario se revierte la separacion en modulos (#36): `hopper_runtime.luau`
+vuelve a ser el archivo de antes (main 62dfde3) con solo la linea
+`BestHistory` de la API; se retiran `server_support.luau`,
+`server_pool.luau`, `account_panel.luau` y `hop_button.luau`. El historial de
+mejores por ciclo (#37) se conserva. Ver TESTING.
+
 ## 2026-10-14 - Historial de mejores por ciclo
 
 Rama codex/historial-mejores-ciclo sobre main ad6ca63 (build-94). Historial
