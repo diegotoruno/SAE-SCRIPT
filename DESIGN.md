@@ -80,6 +80,12 @@ ni contornos duplicados del texto.
   que bloquea el panel; tocar el velo o la X cierra la hoja.
 - Detalle: nombre, rareza y zona, veredicto, y filas etiqueta/valor para
   ingreso, ingreso exacto, minimo guardado, tamano y peso, mutaciones y zona.
+  El mejor huevo del ciclo agrega el boton "Ver mejores de los ultimos ciclos".
+- Historial de mejores: hasta 6 filas de 58 px (este ciclo con borde champan,
+  luego los 5 ultimos ciclos terminados). Cada fila: antiguedad, nombre,
+  rareza en su color, zona y mutaciones; a la derecha el ingreso, en verde si
+  llega al minimo guardado, con "llega al minimo" o "bajo el minimo". Al pie,
+  el minimo guardado. Solo informativo.
 - Opciones: secciones Presets, Alertas y Servidores con estados explicitos
   ("Notificacion: activada").
 - La misma asa de tres trazos del boton Server Hop, en la esquina inferior

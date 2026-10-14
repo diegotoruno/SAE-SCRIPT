@@ -419,6 +419,7 @@ do
         end,
         CycleStatus = function() return eggSearch.CycleStatus() end,
         HuntReport = function() return eggSearch.HuntReport() end,
+        BestHistory = function(limit) return eggSearch.BestHistory(nil, limit) end,
         RarityOptions = function() return eggSearch.RarityOptions() end,
         ZoneOptions = function() return eggSearch.ZoneOptions() end,
         Presets = function()

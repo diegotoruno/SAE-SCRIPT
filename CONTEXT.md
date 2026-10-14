@@ -1,5 +1,14 @@
 # Contexto del proyecto
 
+## Historial de mejores por ciclo (2026-10-14)
+
+El usuario eligio, de las opciones visuales, un historial de los mejores
+huevos de los ultimos 5 ciclos en vez de solo el ultimo, para calibrar el
+ingreso minimo segun lo que aparece. `chilli_egg_search_previous.json` pasa a
+version2 con una lista (un registro por ciclo y alcance, maximo 30); el panel
+la muestra desde el detalle del huevo fijado en Cumplen. Solo informativo:
+no cambia Cumplen, hop, match ni el aviso fijado actual.
+
 ## Cargador rapido de Chilli (2026-10-13)
 
 El usuario ve la carga de Chilli como el mayor cuello de botella para robar

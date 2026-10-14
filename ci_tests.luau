@@ -647,7 +647,7 @@ test("last cycle's best egg is kept for information and replaced by nothing it c
     -- Night of the same period: the ending cycle's best is offered and archived.
     assert(finder.BestPrevious(cycle(295)).income == 6e9)
     assert(decideCycle(finder, {}, 295) == "loading")
-    assert(files["chilli_egg_search_previous.json"].best.income == 6e9)
+    assert(files["chilli_egg_search_previous.json"].history[1].best.income == 6e9)
     assert(next(files["chilli_egg_search_cycle.json"]) == nil and finder.BestSeen(cycle(295)) == nil)
     -- The next cycle: nothing seen yet, so the previous one stays visible and decides nothing.
     assert(decideCycle(finder, {}, 301) == "wait")
@@ -665,7 +665,7 @@ test("last cycle's best egg is kept for information and replaced by nothing it c
     local _, ages = finder.BestPrevious(cycle(901)); assert(ages == 2)
     assert(decideCycle(finder, {}, 901) == "wait")
     local archived, archivedAge = finder.BestPrevious(cycle(902))
-    assert(archived.income == 5e9 and archivedAge == 2 and files["chilli_egg_search_previous.json"].periodIndex == 1)
+    assert(archived.income == 5e9 and archivedAge == 2 and files["chilli_egg_search_previous.json"].history[1].periodIndex == 1)
     assert(finder.BestPrevious(cycle(100)) == nil, "never a cycle that has not ended")
     assert(decideCycle(finder, {egg("fresh", 2e9)}, 910) == "hop")
     assert(finder.BestSeen(cycle(911)).income == 2e9 and select(2, finder.BestPrevious(cycle(1201))) == 1)
@@ -698,6 +698,80 @@ test("last cycle's best egg follows rarity and zones and tolerates a missed nigh
     files["chilli_egg_search_previous.json"] = {version = 1, rarity = "divine", zones = {}, periodIndex = 0, best = "corrupt"}
     local broken = cycleFactory(read, write); broken.Decide(nil, {ready = false}, cycle(401))
     assert(broken.BestPrevious(cycle(302)) == nil)
+end)
+test("best eggs of ended cycles form a scoped history, newest first", function()
+    local files, read, write = memoryStore(); local finder = cycleFactory(read, write)
+    -- Cycles 0..6 with an in-scope egg, cycle 3 without one.
+    for index, income in ipairs({1e9, 2e9, 3e9, false, 4e9, 5e9, 6e9}) do
+        local start = (index - 1) * 300
+        assert(decideCycle(finder, {}, start + 1) ~= "match")
+        if income then assert(decideCycle(finder, {egg("e" .. index, income)}, start + 10) == "hop") end
+    end
+    assert(decideCycle(finder, {}, 7 * 300 + 1) == "wait")
+    local list = finder.BestHistory(cycle(7 * 300 + 2), 5)
+    assert(#list == 5, "limited to the requested cycles")
+    local incomes, ages = {}, {}
+    for index, item in ipairs(list) do incomes[index], ages[index] = item.best.income, item.age end
+    assert(table.concat(incomes, ",") == "6000000000,5000000000,4000000000,3000000000,2000000000")
+    assert(table.concat(ages, ",") == "1,2,3,5,6", "a cycle without an in-scope egg leaves a gap")
+    list[1].best.income = 1; assert(finder.BestHistory(cycle(7 * 300 + 2), 1)[1].best.income == 6e9)
+    assert(#finder.BestHistory(cycle(7 * 300 + 2)) == 6, "no limit returns every stored cycle")
+    assert(finder.BestHistory(cycle(6 * 300 + 50), 1)[1].best.income == 5e9, "the running cycle is never history")
+    assert(#finder.BestHistory(false, 5) == 0 and #finder.BestHistory({}, 5) == 0)
+    -- Records of another scope stay stored but hidden; they come back with that scope.
+    finder.Configure({rarity = "Common"})
+    assert(#finder.BestHistory(cycle(7 * 300 + 2), 5) == 0)
+    finder.Configure({rarity = "Divine"})
+    assert(#finder.BestHistory(cycle(7 * 300 + 2), 5) == 5)
+    -- It survives another server and keeps at most 30 records.
+    assert(#cycleFactory(read, write).BestHistory(cycle(7 * 300 + 2), 5) == 5)
+    local many = {}
+    for period = 40, 1, -1 do
+        table.insert(many, {rarity = "divine", zones = {}, periodIndex = period,
+            best = {key = "k" .. period, category = "divine", income = period * 1e9}})
+    end
+    files["chilli_egg_search_previous.json"] = {version = 2, history = many}
+    local capped = cycleFactory(read, write)
+    assert(decideCycle(capped, {egg("cap", 6e9)}, 41 * 300 + 5) == "hop")
+    assert(decideCycle(capped, {}, 42 * 300 + 1) == "wait")
+    local stored = files["chilli_egg_search_previous.json"].history
+    assert(#stored == 30 and stored[1].periodIndex == 41 and stored[30].periodIndex == 12)
+end)
+test("best egg history keeps one record per cycle and reads the version 1 file", function()
+    local files, read, write = memoryStore()
+    files["chilli_egg_search_previous.json"] = {version = 1, rarity = "divine", zones = {}, periodIndex = 0,
+        best = {key = "old", category = "divine", income = 4e9}}
+    local finder = cycleFactory(read, write)
+    local old, age = finder.BestPrevious(cycle(301))
+    assert(old.income == 4e9 and age == 1, "the single record of version 1 is the newest history entry")
+    assert(decideCycle(finder, {egg("worse", 3e9)}, 305) == "hop")
+    assert(decideCycle(finder, {egg("better", 6e9)}, 306) == "hop")
+    -- Before the night is archived, the closed window already joins the history.
+    local list = finder.BestHistory(cycle(601), 5)
+    assert(#list == 2 and list[1].best.income == 6e9 and list[2].best.income == 4e9)
+    assert(decideCycle(finder, {}, 601) == "wait")
+    local stored = files["chilli_egg_search_previous.json"]
+    assert(stored.version == 2 and #stored.history == 2 and stored.history[1].best.income == 6e9)
+    -- A stale window of a cycle already stored: one entry, the better egg.
+    local function staleWindow(income)
+        files["chilli_egg_search_cycle.json"] = {version = 2, rarity = "divine", zones = {}, periodIndex = 1,
+            nextReset = 600, periodSeconds = 300, nightSeconds = 10, untilTime = 590, seenAt = 310,
+            best = {key = "stale" .. income, category = "divine", income = income}}
+        return cycleFactory(read, write)
+    end
+    local worse = staleWindow(1e9)
+    list = worse.BestHistory(cycle(602), 5)
+    assert(#list == 2 and list[1].best.income == 6e9)
+    assert(decideCycle(worse, {}, 602) == "wait")
+    stored = files["chilli_egg_search_previous.json"]
+    assert(#stored.history == 2 and stored.history[1].best.income == 6e9, "never duplicated nor downgraded")
+    local better = staleWindow(6.5e9)
+    assert(better.BestHistory(cycle(602), 1)[1].best.income == 6.5e9)
+    assert(decideCycle(better, {}, 602) == "wait")
+    stored = files["chilli_egg_search_previous.json"]
+    assert(#stored.history == 2 and stored.history[1].best.income == 6.5e9 and stored.history[2].periodIndex == 0)
+    files["chilli_egg_search_previous.json"] = {version = 2, history = "corrupt"}
+    assert(#cycleFactory(read, write).BestHistory(cycle(602), 5) == 0)
 end)
 test("absence alone cannot invent an active hunt", function()
     local _, read, write = memoryStore(); local finder = cycleFactory(read, write)
