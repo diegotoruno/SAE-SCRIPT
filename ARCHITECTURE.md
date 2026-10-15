@@ -1,5 +1,50 @@
 # Arquitectura
 
+## Mistake Hub (2026-10-14)
+
+`mountEggFilterPanel` crea `MistakeHub` (760 x 560) en el ScreenGui
+`ServerHopButton`: `Header` (logo, titulo, `Subtitle`, `ToggleSearch` AUTO,
+`Minimize`), `Sidebar` (`ActiveTab` con `Indicator`, `Tab_<id>` con
+`Pending`, `AutoState`, `AutoMode`, `ByMistakeCredit`), `Pages` con `Page_finder`,
+`Page_filters`, `Page_calc`, `Page_hop` y `Page_settings`, y `ResizeGrip`.
+Las hojas modales son hijas de `MistakeHub` y ocupan el area de paginas
+(`sheet(name, title, height, origin)`, alto maximo 480; la tarjeta `Sheet`
+lleva `Zoom` (UIScale)). No hay lanzador `OpenEggFilters` ni boton
+`ServerAccount`. Movimiento: `animate`/`place` y la tabla `motion` (tweens por
+objeto y propiedad, preferencias de accesibilidad, arrastre y resorte); el
+runtime pasa `support.Rubberband` y `support.SpringStep` en `context.scaling`
+y usa los mismos calculos para la tarjeta `Holder`. `panel.SyncAuto(active)`
+repinta AUTO cuando cambia desde el runtime. La funcion del hub esta cerca del
+limite de 200 locales de Luau (el compilador del executor lo aplica; el
+`luau-compile` de CI no lo detecto): el estado nuevo va en tablas o bloques
+`do`.
+
+`panel.Select(id)` muestra una seccion, cierra la hoja, libera los modelos al
+salir de Egg Finder, despliega el hub si estaba plegado, guarda `tab` y
+ejecuta el renderer de la seccion: Filtros reconstruye los presets, Ajustes
+sus interruptores y Calculadora la pagina completa; el runtime registra el de
+Server Hop con `panel.OnSelect`. `panel.SetMinimized` deja solo la cabecera
+(340 x 56); `Open` despliega y muestra, `Close` oculta (Alt izquierdo alterna
+mostrar/ocultar sin cambiar el plegado). Las tarjetas solo se construyen con
+`finderVisible()` (abierto, desplegado y en Egg Finder). Se guardan `open`,
+`minimized` y `tab` en `chilli_egg_panel_ui.json`; `open=false` solo se
+respeta con `UserInputService.KeyboardEnabled` y si el archivo ya tiene `tab`.
+`OpenCalculator`, `OpenOptions` (Ajustes), `OpenZones`, `OpenBestHistory` y
+`GetStatus` (agrega `tab` y `minimized`) se conservan.
+
+El panel expone `panel.Page(id)`, `panel.Tab()` y `panel.ui` (colores, ancho,
+alto, columna, `make`, `text`, `paragraph`, `button`, `field`, `primary`,
+`paint`, `heading`, `toggleRow`...). `hopper_runtime` monta el hub antes del
+bloque de cuenta y construye `Page_hop`: `HopStatus` (`Status` y el boton
+rojo `ServerHop`), interruptores `AutoSearch` y `QuickAccess`, y la cuenta
+(`AccountState`, `CookieInput` con `MaskedValue`, `SaveAndAuto`,
+`SessionOnly`, `ForgetCookie`). `setLabel`, `setStatus`, `setBusy` y
+`updateAutoChip` actualizan la tarjeta y `hopView`; ambos botones llaman a
+`startManualHop`. `uiState.quick` (`server_hop_button_ui.json`) fija
+`Holder.Visible`; API `QuickHop()` y `SetQuickHop(bool)`.
+`ServerAccountStatus().open` es verdadero con el hub abierto, desplegado y en
+Server Hop; `launcherVisible` siempre es falso.
+
 ## Calculadora de ingreso (2026-10-14)
 
 `search.CalculateIncome(category, weight, mutations)` convierte los kg en
@@ -156,7 +201,7 @@ se retiraron gradiente, Shine y las ocho copias Outline. Status es hijo de
 Holder con dos lineas y recorte. Las superficies de arrastre no cambian.
 
 egg_filter_panel: las hojas (Dropdown, ZonePicker, EggDetail, FinderOptions, Calculator, SpeciesPicker)
-son un TextButton de velo hijo de EggFilterPanel con ese nombre y una Frame
+son un TextButton de velo hijo de MistakeHub (antes EggFilterPanel) con ese nombre y una Frame
 Sheet activa dentro; `popup` apunta al velo y closePopup lo destruye. La barra
 ListBar agrupa MapTab/CatalogTab/VisualMode/Sort; layout mueve la barra y la
 lista. buildCards cuenta todos y coincidencias del snapshot para las pestanas.
@@ -223,7 +268,7 @@ Delta y Potassium usan el mismo punto de entrada `main/chilli_hopper.luau`, que 
 
 `DeviceRequest` coordina reservas de peticiones con token compartido, intervalo 15s, cooldown 60s tras 429 y espera de cola hasta 95s. Una peticion nativa que excede 30s no libera la reserva hasta terminar; pcall asegura limpieza ante excepciones. `accountConnecting` detiene consultas de fondo y da prioridad a la validacion inicial. El formulario muestra progreso, reintenta una vez ante 429 y conserva borrador oculto si falla y sigue abierto. `serverConnection.request` permite diagnostico sanitizado; no confundir intervalo/pendiente con 429. Los callbacks de progreso restauran identidad antes de acceder a UI.
 
-`hopper_runtime.luau` agrega helpers testables NormalizeCookie, DeviceCookie, CookiePage y DeviceNative. Transporte `DeviceCookie` consulta v2 desde el executor y conserva la prioridad 1..6/BestLatency con prueba OccupancyAsc. Sin cookie/ante rechazo espera, sin bridge/fallback. Cookie aislada en closure y archivo opcional `sae_account_cookie_<UserId>.json` sin cifrado ni backups; no usa Store. GetStatus solo expone booleanos de credencial; API OpenServerAccount/CloseServerAccount/ServerAccountStatus no entrega secretos. Esta ultima agrega connecting/message sanitizados. Launcher fijo fuera de Holder y acceso desde opciones del panel; confirma GUARDADA/SOLO SESION y formulario conserva feedback visible tras escritura/relectura. Callbacks restauran identidad y pertenecen a la sesion. DisposeAccount elimina borrador; Destroy limpia credencial en memoria y conexiones; el archivo recordado permanece hasta borrado explicito. Gate sanitizado guarda cooldown/ultima consulta entre hops, nunca credenciales. Mantener el cargador comun de main en autoexec.
+`hopper_runtime.luau` agrega helpers testables NormalizeCookie, DeviceCookie, CookiePage y DeviceNative. Transporte `DeviceCookie` consulta v2 desde el executor y conserva la prioridad 1..6/BestLatency con prueba OccupancyAsc. Sin cookie/ante rechazo espera, sin bridge/fallback. Cookie aislada en closure y archivo opcional `sae_account_cookie_<UserId>.json` sin cifrado ni backups; no usa Store. GetStatus solo expone booleanos de credencial; API OpenServerAccount/CloseServerAccount/ServerAccountStatus no entrega secretos. Esta ultima agrega connecting/message sanitizados. Formulario en la seccion Server Hop de Mistake Hub (antes launcher fijo y modal); confirma GUARDADA/SOLO SESION y formulario conserva feedback visible tras escritura/relectura. Callbacks restauran identidad y pertenecen a la sesion. DisposeAccount elimina borrador; Destroy limpia credencial en memoria y conexiones; el archivo recordado permanece hasta borrado explicito. Gate sanitizado guarda cooldown/ultima consulta entre hops, nunca credenciales. Mantener el cargador comun de main en autoexec.
 
 ## Seleccion de servidores en pruebas
 
@@ -240,7 +285,7 @@ El proceso mantiene el cursor nativo entre hops. Al no tener candidatos 1/7, una
 | Archivo | Responsabilidad |
 | --- | --- |
 | `map_egg_search.luau` | Factory `createMapEggSearch`: configuracion, evaluacion pura, ciclo, snapshot y decisiones. |
-| `egg_filter_panel.luau` | Factory `mountEggFilterPanel`: UI, catalogo, tarjetas del mapa y recursos visuales. |
+| `egg_filter_panel.luau` | Factory `mountEggFilterPanel`: Mistake Hub (ventana, secciones, hojas), catalogo, tarjetas del mapa y recursos visuales. |
 | `hopper_runtime.luau` | Chilli, persistencia del hopper, pool de servidores, teleport, ciclo AUTO y API publica. |
 | `build.py` | Integra las factories en closures y anade el runtime; produce `dist/`. |
 | `ci_tests.luau` | Regresiones del detector con snapshots simulados. |
@@ -294,7 +339,7 @@ finder.PanelStatus()
 
 ## UI y ciclo de vida
 
-`ServerHopButton` contiene `EggFilterPanel`. En Potassium puede estar debajo de `gethui()`/`CoreGui.RobloxGui`, no directamente bajo CoreGui. Al comprobar duplicados, recorrer descendientes y deduplicar instancias entre roots.
+`ServerHopButton` contiene `Holder` (acceso rapido) y `MistakeHub`. En Potassium puede estar debajo de `gethui()`/`CoreGui.RobloxGui`, no directamente bajo CoreGui. Al comprobar duplicados, recorrer descendientes y deduplicar instancias entre roots.
 
 El boton rojo se arrastra desde el marco y todos sus controles existentes (texto, AUTO y plegado), con raton o un solo toque activo. Un umbral de 6px distingue clic de arrastre; se bloquean acciones durante el gesto y los 250ms posteriores a soltar. La posicion se guarda en `server_hop_button_ui.json` al soltar o perder foco. Todos los listeners pertenecen a la sesion y se desconectan al destruirla.
 

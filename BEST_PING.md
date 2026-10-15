@@ -4,11 +4,11 @@ El hopper puede usar el orden nativo `BestLatency` de Roblox v2. Con cuenta prop
 
 ## Cuenta propia en Delta / Potassium
 
-El script incluye un formulario dentro de Roblox. En un dispositivo nuevo se abre al cargar. Tras cerrarlo, el boton fijo **CUENTA / BEST PING** de la esquina inferior izquierda lo reabre, independiente del plegado y la posicion del hopper. Tambien esta en **Egg Filters > Opciones > Cuenta / Best Ping**.
+El formulario esta en **Mistake Hub > Server Hop > Cuenta y Best Ping**. En un dispositivo nuevo, sin cookie, el hub se abre en esa seccion al cargar. No hay boton flotante propio de la cuenta.
 
 Pega el valor completo de `.ROBLOSECURITY` en el campo oculto. **Guardar y usar AUTO** comprueba una consulta BestLatency, guarda la cookie solo en el workspace local del executor y activa AUTO con los filtros actuales. **Solo esta sesion** no conserva la cookie al reejecutar o cambiar de servidor; al llegar habra que pegarla otra vez. Las decisiones de huevos, rareza minima e ingresos exactos no cambian.
 
-Pulsar Guardar no confirma por si solo el guardado. Mientras consulta Roblox, los botones muestran **Comprobando**. Tras escribir y releer el archivo correctamente, la ventana queda abierta con **Cookie guardada en este dispositivo**; al cerrarla el launcher dice **CUENTA · GUARDADA**. Reabrir conserva esa confirmacion; al reejecutar se muestra solo si la cookie se recupero del archivo. La opcion temporal confirma **Cookie activa solo en esta sesion; no se guardo**. El aviso de guardado es independiente de que AUTO encuentre una coincidencia y se apague.
+Pulsar Guardar no confirma por si solo el guardado. Mientras consulta Roblox, los botones muestran **Comprobando**. Tras escribir y releer el archivo correctamente, la seccion muestra **Cookie guardada en este dispositivo** y el estado **Cuenta guardada** junto al titulo. Volver a la seccion conserva esa confirmacion; al reejecutar se muestra solo si la cookie se recupero del archivo. La opcion temporal confirma **Cookie activa solo en esta sesion; no se guardo**. El aviso de guardado es independiente de que AUTO encuentre una coincidencia y se apague.
 
 La cookie recordada vive en `sae_account_cookie_<UserId>.json`, separada por cuenta de Roblox. Es un archivo **sin cifrado**: otros scripts con acceso al executor pueden leerlo. No usar almacenamiento compartido entre personas. El codigo no transmite credenciales al autor, GitHub ni al proceso de su PC; declara peticiones autenticadas solo a `https://games.roblox.com`. El modo directo no necesita Python, PC ni proxy.
 

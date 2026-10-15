@@ -1,5 +1,20 @@
 # Decisiones de producto e implementacion
 
+## Mistake Hub: una ventana y un solo acceso flotante (2026-10-14)
+
+Pedido del usuario: todas las opciones en un hub, sin botones flotantes,
+salvo el acceso rapido de Server Hop, que se puede ocultar. Reemplaza el
+lanzador "Egg Finder" (2026-10-06) y el boton fijo "CUENTA / BEST PING"
+(2026-10-07). La tarjeta Server Hop conserva AUTO, salto, plegado, asa y
+firma; su visibilidad (`quick`) se guarda con su posicion. El hub se pliega a
+su cabecera en lugar de cerrarse, para que siempre se pueda volver sin otro
+boton; Alt izquierdo lo oculta, pero ese estado solo se recuerda con teclado:
+sin teclado (iPad) el hub vuelve a verse al cargar. El primer arranque del
+hub lo muestra una vez aunque el panel anterior estuviera cerrado. El hub
+sigue en `egg_filter_panel.luau` y la seccion Server Hop en
+`hopper_runtime.luau`, sin archivos nuevos (el usuario revirtio la
+separacion en modulos, #38).
+
 ## Cargador de Chilli como archivo aparte (2026-10-13)
 
 Excepcion acotada a "Chilli separado del hopper": el hopper sigue sin cargar

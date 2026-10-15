@@ -1,5 +1,24 @@
 # Estado del trabajo
 
+## 2026-10-14 - Movimiento y respuesta de Mistake Hub
+
+Rama codex/mistake-hub (PR #43). Solo UI y movimiento: controles que se
+repintan en la misma pulsacion, pulsacion inmediata por `GuiState`, plegado,
+secciones, hojas e interruptores interrumpibles desde el valor actual, hojas
+que nacen de su origen y salen por el mismo camino, arrastre con resistencia y
+resorte en hub y tarjeta flotante, barra lateral mas pesada sin divisores,
+escala tipografica y movimiento reducido. Sin cambios en detector, filtros,
+AUTO, ciclo, teleports, API publica ni persistencia. Ver DESIGN y TESTING.
+
+## 2026-10-14 - Mistake Hub
+
+Rama codex/mistake-hub sobre codex/calculadora-mascotas (PR #42). El panel
+pasa a ser Mistake Hub: cabecera, barra lateral y secciones Egg Finder,
+Filtros (con presets), Calculadora, Server Hop (con la cuenta de Best Ping) y
+Ajustes. Unico flotante: la tarjeta Server Hop, con el interruptor "Acceso
+rapido flotante". Sin cambios en detector, AUTO, ciclo ni teleports. Ver
+CONTEXT, DESIGN y TESTING.
+
 ## 2026-10-14 - Calculadora de ingreso
 
 Rama codex/calculadora-mascotas sobre main d06dfa5. Boton Calculadora en la

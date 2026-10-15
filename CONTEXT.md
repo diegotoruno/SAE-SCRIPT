@@ -1,5 +1,18 @@
 # Contexto del proyecto
 
+## Mistake Hub (2026-10-14)
+
+Con la calculadora, el usuario pidio un hub llamado "Mistake Hub" que reuna
+todas las opciones sin botones flotantes, con un diseno limpio y filtros
+claros, inspirado en Chilli Hub. Aclaro que el unico elemento flotante sera el
+acceso rapido de Server Hop, con una opcion para mostrarlo u ocultarlo. Se
+inspecciono en solo lectura la GUI de Chilli (ventana central con barra de
+titulo, pestanas laterales, secciones con interruptores, asa de tamano) y se
+uso esa estructura con la paleta grafito/champan. Secciones: Egg Finder,
+Filtros (con presets), Calculadora, Server Hop (con la cuenta de Best Ping) y
+Ajustes. Se retiran los lanzadores flotantes "Egg Finder" y "Cuenta y Best
+Ping". Detector, filtros guardados, AUTO, ciclo, teleports y API no cambian.
+
 ## Calculadora de ingreso (2026-10-14)
 
 El usuario pidio una calculadora en el Egg Finder, tomando como ejemplo

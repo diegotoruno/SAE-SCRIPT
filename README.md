@@ -38,12 +38,12 @@ El punto de entrada de `main` carga el script validado de la rama `stable`. Los 
 
 ## Desarrollo y CI/CD
 
-**CUENTA / BEST PING** permite pegar una cookie propia desde Delta o Potassium. Guardado opcional local sin cifrado, consulta directa a Roblox y opcion de borrar/desconectar. El boton fijo permite reabrir el formulario si se cierra; **CUENTA · GUARDADA** confirma la escritura y verificacion local. Configuracion, APIs y limites de prueba: [BEST_PING.md](BEST_PING.md). Todos usan el cargador de `main` mostrado arriba, tambien en autoexec; CI publica la misma version validada para todos. La cuenta, cookie y filtros siguen siendo propios de cada dispositivo. Los cargadores antiguos fijados a un SHA o a una rama de prueba deben sustituirse por el de `main`.
+**Mistake Hub > Server Hop > Cuenta y Best Ping** permite pegar una cookie propia desde Delta o Potassium. Guardado opcional local sin cifrado, consulta directa a Roblox y opcion de borrar/desconectar. **Cuenta guardada** confirma la escritura y verificacion local. Configuracion, APIs y limites de prueba: [BEST_PING.md](BEST_PING.md). Todos usan el cargador de `main` mostrado arriba, tambien en autoexec; CI publica la misma version validada para todos. La cuenta, cookie y filtros siguen siendo propios de cada dispositivo. Los cargadores antiguos fijados a un SHA o a una rama de prueba deben sustituirse por el de `main`.
 
 El codigo mantenido esta en tres archivos:
 
 - `map_egg_search.luau`: filtros, lecturas del mapa y decisiones del detector.
-- `egg_filter_panel.luau`: panel, imagenes, modelos y controles.
+- `egg_filter_panel.luau`: Mistake Hub (ventana, secciones, filtros, calculadora, ajustes), imagenes y modelos.
 - `hopper_runtime.luau`: Server Hop, cuenta/Best Ping y API publica. No carga Chilli.
 
 `build.py` integra los tres en `dist/chilli_hopper.luau`. No edites el `chilli_hopper.luau` de la raiz ni la rama `stable`: son puntos de distribucion.
@@ -80,23 +80,31 @@ La rareza seleccionada es un minimo inclusivo segun el Rank del juego: Eternal a
 
 El ingreso previsto incluye escala y mutaciones; excluye bonos personales y boosts temporales. Los filtros y el estado de AUTO se guardan en el workspace del executor.
 
-## Panel
+## Mistake Hub
 
-Estilo grafito con acento champan, tipografia Gotham y tarjetas con ingreso destacado; detalles en [DESIGN.md](DESIGN.md). Conserva la lista virtualizada y las opciones existentes.
+Todas las opciones viven en una sola ventana, **Mistake Hub**: cabecera con la marca, AUTO y plegar; barra lateral con las secciones y, al pie, el estado de AUTO y la firma **By Mistake**. Estilo grafito con acento champan y tipografia Gotham; detalles en [DESIGN.md](DESIGN.md).
 
-**Egg Finder** (arriba a la derecha) abre el panel. **Alt izquierdo** alterna abrir/cerrar el panel, tambien cuando estas editando un filtro. La lista principal muestra exclusivamente huevos actuales del mapa, con imagen o modelo, ingreso, rareza, escala, peso, mutaciones y zona.
+| Seccion | Que contiene |
+| --- | --- |
+| **Egg Finder** | Estado de la busqueda y reloj del ciclo, resumen de los filtros guardados (**Editar filtros**), **Todos/Cumplen**, vista y orden, y los huevos del mapa. |
+| **Filtros** | Rareza minima, ingreso minimo, mutacion, zonas y nombre; **Aplicar filtros**; presets. Un punto champan en la barra lateral avisa de cambios sin aplicar. |
+| **Calculadora** | Ingreso de una mascota por especie, peso y mutaciones. |
+| **Server Hop** | Estado y boton **Server Hop**, interruptores **AUTO** y **Acceso rapido flotante**, y la cuenta para Best Ping. |
+| **Ajustes** | Notificacion, sonido y prueba de alerta; atajos y **Restablecer tamaño y posición**. |
 
-La marca **By Mistake** aparece al pie de la tarjeta del boton Server Hop, tanto expandida como plegada, en una fila separada de AUTO y del estado. No hay otra etiqueta flotante en la pantalla.
+El unico elemento flotante es el **acceso rapido** de Server Hop (la tarjeta con AUTO y Server Hop). Se muestra u oculta con el interruptor **Acceso rapido flotante** de la seccion Server Hop y la preferencia se guarda. El boton de la cabecera **pliega** el hub a una barra con la marca y AUTO; **Alt izquierdo** lo oculta o lo muestra, tambien cuando estas editando un filtro. Sin teclado (iPad) el hub no se oculta: al cargar vuelve a verse, plegado si lo dejaste asi. La esquina inferior derecha cambia el tamaño y la cabecera lo arrastra.
+
+La lista del Egg Finder muestra exclusivamente huevos actuales del mapa, con imagen o modelo, ingreso, rareza, escala, peso, mutaciones y zona.
 
 **Zonas** muestra las 13 zonas actuales con checks, en orden de progreso del juego. Pulsa **Ninguna**, marca **Enchanted Forest** y luego **Aplicar filtros** para buscar solo en esa zona; Forest queda excluido. Puedes marcar varias zonas o usar **Todas**. No puedes aplicar un borrador sin ninguna zona marcada. Rareza minima, ingreso exacto, mutacion y nombre siguen siendo obligatorios. La seleccion se conserva al recargar y en presets. El filtro anterior de especies se retira.
 
 El minimo acepta `500k`, `25m`, `7b`, `7.5b`, `1t` o `1q`, tambien en mayusculas. Puedes usar coma decimal (`7,5b`). Sin sufijo, el valor son unidades por segundo: `7` significa 7/s. La configuracion anterior de 7B conserva su valor y aparece como `7b`; editar y volver a aplicar conserva el limite exacto.
 
-**Cumplen** muestra los spawns actuales que cumplen los filtros guardados y **Todos** el mapa completo; cada uno indica su cantidad. Con AUTO activo, **Cumplen** fija arriba el mejor huevo visto en el ciclo (rareza minima o superior, en tus zonas, aunque no llegue al ingreso minimo) con el aviso `MEJOR DEL CICLO` y si esta en este servidor, ya no esta aqui o se vio en otro; se renueva con la noche. Si el ciclo nuevo aun no tiene ninguno, se muestra apagado el último visto en un ciclo terminado (`ÚLTIMO DEL CICLO ANTERIOR` o `ÚLTIMO VISTO HACE N CICLOS · ya no existe`) solo como referencia, hasta que aparezca otro de tu rareza y zonas. En el detalle de ese huevo, **Ver mejores de los últimos ciclos** abre el historial: el mejor de este ciclo y de los 5 últimos ciclos terminados con tu rareza y zonas, con su ingreso y si llega al mínimo guardado, para calibrar el ingreso mínimo. **Orden: Rareza** muestra primero la mejor rareza usando el rango real del juego; dentro de cada rareza, primero el mayor ingreso. El boton alterna con **Orden: Nombre** y conserva la preferencia. Este orden se aplica a huevos, criaturas y modelos 3D. Puedes cambiar la vista visual, arrastrar el panel y plegar los filtros.
+**Cumplen** muestra los spawns actuales que cumplen los filtros guardados y **Todos** el mapa completo; cada uno indica su cantidad. Con AUTO activo, **Cumplen** fija arriba el mejor huevo visto en el ciclo (rareza minima o superior, en tus zonas, aunque no llegue al ingreso minimo) con el aviso `MEJOR DEL CICLO` y si esta en este servidor, ya no esta aqui o se vio en otro; se renueva con la noche. Si el ciclo nuevo aun no tiene ninguno, se muestra apagado el último visto en un ciclo terminado (`ÚLTIMO DEL CICLO ANTERIOR` o `ÚLTIMO VISTO HACE N CICLOS · ya no existe`) solo como referencia, hasta que aparezca otro de tu rareza y zonas. En el detalle de ese huevo, **Ver mejores de los últimos ciclos** abre el historial: el mejor de este ciclo y de los 5 últimos ciclos terminados con tu rareza y zonas, con su ingreso y si llega al mínimo guardado, para calibrar el ingreso mínimo. **Orden: Rareza** muestra primero la mejor rareza usando el rango real del juego; dentro de cada rareza, primero el mayor ingreso. El boton alterna con **Orden: Nombre** y conserva la preferencia. Este orden se aplica a huevos, criaturas y modelos 3D. Puedes cambiar la vista visual.
 
-Cada tarjeta indica **Cumple** o el motivo corto por el que queda fuera. Tocarla abre el **detalle**, que explica el motivo completo y muestra el ingreso exacto, sin redondear. **Opciones** permite guardar, cargar y borrar presets, activar notificaciones o sonido y probar la alerta. Un preset cargado queda pendiente de **Aplicar filtros**; no inicia ni detiene AUTO. La lista crea solo tarjetas cercanas a la vista y reutiliza sus instancias.
+Cada tarjeta indica **Cumple** o el motivo corto por el que queda fuera. Tocarla abre el **detalle**, que explica el motivo completo y muestra el ingreso exacto, sin redondear. En **Filtros**, los presets se guardan, cargan y borran; en **Ajustes** se activan la notificacion o el sonido y se prueba la alerta. Un preset cargado queda pendiente de **Aplicar filtros**; no inicia ni detiene AUTO. La lista crea solo tarjetas cercanas a la vista y reutiliza sus instancias.
 
-**Calculadora** (en la cabecera) calcula cuánto da una mascota: eliges la especie, escribes el peso en kg (sirve la etiqueta del juego, p. ej. `44,904Kg`) y tocas las mutaciones; muestra el ingreso por segundo, minuto, hora y día, el multiplicador total y el tamaño. Usa las fórmulas del juego: las mutaciones se suman (Golden + Rainbow = x5). No incluye el pase x2 ni boosts temporales. En el detalle de un huevo, **Calcular con otras mutaciones** la abre con su especie, peso y mutaciones. Es solo informativa: no cambia filtros ni AUTO.
+**Calculadora** (seccion del hub) calcula cuánto da una mascota: eliges la especie, escribes el peso en kg (sirve la etiqueta del juego, p. ej. `44,904Kg`) y tocas las mutaciones; muestra el ingreso por segundo, minuto, hora y día, el multiplicador total y el tamaño. Usa las fórmulas del juego: las mutaciones se suman (Golden + Rainbow = x5). No incluye el pase x2 ni boosts temporales. En el detalle de un huevo, **Calcular con otras mutaciones** abre la seccion con su especie, peso y mutaciones. Es solo informativa: no cambia filtros ni AUTO.
 
 Si un teleport queda sin confirmar, AUTO sigue revisando el mapa pero no envia otro salto. **Server Hop** permite reintentarlo manualmente. Los modulos que fallen al cargar se reintentan y los modelos ausentes usan imagen. Los archivos guardados conservan una copia `.bak` para recuperacion.
 
@@ -113,7 +121,8 @@ finder.Configure({
 })
 finder.Start()
 -- finder.Stop()
--- finder.OpenPanel()
+-- finder.OpenPanel()  -- abre Mistake Hub; finder.Panel.Select("calc") cambia de seccion
+-- finder.SetQuickHop(false) -- oculta el acceso rapido flotante (true lo muestra)
 -- finder.GetStatus()
 finder.HuntReport()   -- busquedas recientes, tambien en chilli_egg_hunt_report.json
 finder.HuntReportText() -- el mismo reporte legible (chilli_egg_hunt_report.txt)

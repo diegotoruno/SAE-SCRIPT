@@ -1,5 +1,70 @@
 # Pruebas y validacion
 
+## 2026-10-14 - Movimiento y respuesta de Mistake Hub
+
+Build, ocho compilaciones y 223 regresiones Luau (dos nuevas: el arrastre
+sigue 1:1 dentro de la pantalla y resiste cada vez mas fuera, simetrico en
+ambos bordes; el resorte vuelve sin cruzar el objetivo, hereda la velocidad y
+sigue el mismo camino a 30 y 60 fps). Potassium, cliente real, sin entradas
+simuladas ni conexiones disparadas y sin teleports:
+
+- Lectura de APIs antes de usarlas: `GuiService.ReducedMotionEnabled`
+  (false), `PreferredTransparency` (1), `GuiObject.GuiState` y su senal,
+  `Interactable`, `FontFace` SemiBold y `LineHeight` existen. `UIScale`
+  escala desde el `AnchorPoint` y en un `UIListLayout` sube al hermano
+  siguiente (25 px con escala 0.5): por eso la pulsacion no usa escala.
+- El compilador del executor rechazo la primera version ("Out of local
+  registers ... exceeded limit 200") aunque `luau-compile` 0.741 la aceptaba;
+  tras agrupar el estado nuevo, la vista previa y el bundle completo compilan
+  con `loadstring` en Potassium.
+- Hub candidato en una GUI de prueba aparte (`MistakeHubPreview`), con su
+  propio detector, archivos en memoria (solo lectura de los reales) y API
+  simulada; solo llamadas directas (`Select`, `SetMinimized`, `OpenZones`,
+  `OpenBestHistory`, `SetView`). En 1720 x 1017 a escala 1: las cinco
+  secciones, las hojas de zonas e historial y la cabecera plegada sin
+  elementos fuera de la ventana ni textos que no quepan (`TextFits`).
+- Interrumpidas: plegar y desplegar a los 80 ms termina en 760 x 560 con
+  barra lateral y paginas visibles y el mas en 0 grados; plegado completo
+  queda en 340 x 56, subtitulo `Filtros`, mas en 90 grados. Filtros ->
+  Calculadora -> Ajustes cada 50 ms deja solo `Page_settings` en (0, 0) y
+  `ActiveTab` en y = 200. Zonas abierta, cerrada a los 50 ms y reabierta a los
+  50 ms deja una sola hoja centrada (466, 308), `Zoom` 1, velo 0.35; al
+  cerrarla no queda ninguna. El interruptor de acceso rapido invertido a los
+  50 ms termina con la perilla en 23 y el carril verde.
+- La vista previa quedo montada en el cliente del usuario (un autoexec
+  temporal la reponia tras cada hop de AUTO) y el usuario aprobo el diseno.
+  Despues se retiraron la GUI de prueba, el autoexec temporal y el archivo
+  de la vista previa del workspace.
+- Pendiente a mano: pulsacion de pestanas, botones e interruptores, origen
+  del detalle desde su tarjeta y vuelta con `Detalle`, arrastre con
+  resistencia y resorte del hub y de la tarjeta flotante (la vista previa no
+  incluye la tarjeta), y movimiento reducido activado en Roblox.
+
+## 2026-10-14 - Mistake Hub
+
+Build, ocho compilaciones, 221 regresiones Luau y diez Python (la UI no tiene
+regresiones offline). Potassium, cliente real, sin entradas simuladas ni
+conexiones disparadas y sin teleports; solo llamadas directas a la API:
+
+- Hub candidato montado en una GUI de prueba aparte con su propio detector y
+  archivos en memoria: 760 x 560 y 65 huevos del mapa (7 tarjetas). En cada
+  seccion, las hojas de zonas e historial y la cabecera plegada (340 x 56):
+  ningun elemento fuera de la ventana, ningun texto que no quepa
+  (`TextFits`) ni hermanos superpuestos. La calculadora, abierta con
+  `OpenCalculator` desde un Spirit Hare Silver+Silver del mapa, da
+  26885614/s, igual que el detector. La GUI de prueba se destruyo.
+- Bundle candidato ejecutado sobre la sesion real con AUTO activo (Eternal+,
+  15b, 3 zonas, cookie guardada): una sola GUI, un hub, sin lanzadores
+  `OpenEggFilters` ni `ServerAccount`; arriba solo `Holder` y `MistakeHub`.
+  La seccion Server Hop sin problemas de geometria, con el mismo estado y
+  texto del boton que la tarjeta, AUTO y acceso rapido activos y "Cuenta
+  guardada". `SetQuickHop(false/true)` oculta y muestra la tarjeta, mueve la
+  perilla y guarda `quick`, sin tocar AUTO. Con teclado, el hub oculto se
+  mantuvo oculto al reejecutar; `OpenPanel` lo mostro con AUTO ON, "AUTO
+  activo / Esperando Eternal+", el resumen de filtros y Todos 65 / Cumplen 0.
+- Pendiente a mano: pulsar pestanas, interruptores, plegar, arrastrar y
+  redimensionar en PC e iPad; comprobar en iPad que el hub vuelve a verse.
+
 ## 2026-10-14 - Calculadora de ingreso
 
 Build, ocho compilaciones y 221 regresiones (cuatro nuevas: peso con la
