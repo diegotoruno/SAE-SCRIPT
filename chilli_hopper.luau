@@ -313,6 +313,122 @@ local function createMapEggSearch(readJson, writeJson, writeText)
         end
         error("Rareza no disponible en el catalogo del juego: " .. value)
     end
+    -- Calculadora: ingreso de una mascota con el peso y las mutaciones elegidos,
+    -- con las mismas funciones del juego que el detector. Las mutaciones se
+    -- suman (Golden + Rainbow = x5) y una repetida contaria dos veces.
+    function search.PetOptions(directory, rarities)
+        if directory == nil then
+            local modules = search.modules
+            if not modules then return {} end
+            directory, rarities = modules.assets.Directory, modules.rarities.Rarities
+        end
+        local options = {}
+        for id, catalog in pairs(directory) do
+            if type(id) == "string" and type(catalog) == "table" then
+                local rarity = rarityId(catalog.Rarity)
+                local info = rarities and rarities[rarity]
+                table.insert(options, { id = id, label = tostring(catalog.DisplayName or id), rarity = rarity,
+                    rank = type(info) == "table" and finite(info.Rank) and info.Rank or 0 })
+            end
+        end
+        table.sort(options, function(a, b)
+            if a.label ~= b.label then return a.label < b.label end
+            return a.id < b.id
+        end)
+        return options
+    end
+    -- Peso en kg como lo muestra el juego ("44,904Kg"), decimal ("8,4" u "8.4")
+    -- o con sufijo ("1.5m"). La coma solo es de miles en grupos de tres cifras.
+    local function thousands(value)
+        local whole = string.match(value, "^([%d,]+)%.?%d*$")
+        if not whole or not string.find(whole, ",") then return false end
+        local groups = string.split(whole, ",")
+        if #groups[1] < 1 or #groups[1] > 3 then return false end
+        for index = 2, #groups do if #groups[index] ~= 3 then return false end end
+        return true
+    end
+    function search.ParseWeight(value)
+        if type(value) == "number" then
+            return finite(value) and value > 0 and value or nil
+        end
+        if type(value) ~= "string" then return nil end
+        local normalized = string.lower(value):gsub("%s+", ""):gsub("kg$", "")
+        if thousands(normalized) then
+            normalized = normalized:gsub(",", "")
+        elseif not string.find(normalized, "%.") then
+            local count
+            normalized, count = normalized:gsub(",", ".")
+            if count > 1 then return nil end
+        end
+        local weight = tonumber(normalized)
+        if weight == nil and string.find(normalized, "^[%d%.]+%a$") then weight = search.ParseMinimum(normalized) end
+        if type(weight) ~= "number" or not finite(weight) or weight <= 0 then return nil end
+        return weight
+    end
+    function search.FormatWeight(value)
+        if not finite(value) then return "?" end
+        local text = value >= 100 and string.format("%.0f", value)
+            or (string.format("%.2f", value):gsub("0+$", ""):gsub("%.$", ""))
+        local whole, decimals = string.match(text, "^(%d+)(.*)$")
+        if not whole then return text end
+        whole = whole:reverse():gsub("(%d%d%d)", "%1,"):reverse():gsub("^,", "")
+        return whole .. decimals
+    end
+    local function uniqueMutations(mutations)
+        local list, seen = {}, {}
+        for _, id in ipairs(mutations or {}) do
+            assert(type(id) == "string" and id ~= "", "Mutación inválida")
+            if not seen[id] then seen[id] = true; table.insert(list, id) end
+        end
+        return list
+    end
+    local function calculatorModules(modules)
+        modules = modules or search.modules
+        assert(modules, "Cargando los datos del juego")
+        return modules
+    end
+    function search.IncomeAt(category, scale, mutations, modules)
+        modules = calculatorModules(modules)
+        assert(modules.assets.Directory[category], "Especie desconocida")
+        assert(finite(scale) and scale > 0, "Tamaño inválido")
+        -- Same fields ToAssetItemData gives a field egg; that function rejects
+        -- an egg without its full saved schema, so the item is built directly.
+        local item = { Category = category, Scale = scale, Mutations = uniqueMutations(mutations) }
+        local income = modules.earnings.MutationOnlyRatePerSecond(item)
+        assert(finite(income) and income >= 0, "El juego no devolvió un ingreso válido")
+        return income
+    end
+    function search.WeightAt(category, scale, modules)
+        modules = calculatorModules(modules)
+        local weight = modules.records.WeightKgForScale(category, scale)
+        assert(finite(weight) and weight >= 0, "El juego no devolvió un peso válido")
+        return weight
+    end
+    function search.CalculateIncome(category, weight, mutations, modules)
+        modules = calculatorModules(modules)
+        assert(modules.assets.Directory[category], "Especie desconocida")
+        weight = search.ParseWeight(weight)
+        assert(weight, "Peso inválido; escribe los kg, por ejemplo 44,904 o 8.4")
+        local cap = tonumber(modules.records.ScaleHardCap) or 150
+        local maximum = search.WeightAt(category, cap, modules)
+        assert(weight <= maximum * (1 + 1e-9), "Supera el peso máximo de la especie: "
+            .. search.FormatWeight(maximum) .. " kg")
+        -- El peso crece con la escala; se busca la escala que da ese peso.
+        local low, high = 0, cap
+        for _ = 1, 80 do
+            local middle = (low + high) / 2
+            if search.WeightAt(category, middle, modules) < weight then low = middle else high = middle end
+        end
+        return search.CalculateAtScale(category, (low + high) / 2, mutations, modules)
+    end
+    -- Exact scale of a known egg; its weight label is rounded.
+    function search.CalculateAtScale(category, scale, mutations, modules)
+        local list = uniqueMutations(mutations)
+        local base = search.IncomeAt(category, scale, {}, modules)
+        local income = #list > 0 and search.IncomeAt(category, scale, list, modules) or base
+        return { category = category, weight = search.WeightAt(category, scale, modules), scale = scale, mutations = list,
+            income = income, base = base, multiplier = base > 0 and income / base or nil }
+    end
     local function normalize(config)
         assert(type(config) == "table", "Los filtros deben ser una tabla")
         local minimum = search.ParseMinimum(config.minIncome == nil and 7000000000 or config.minIncome)
@@ -1323,6 +1439,13 @@ local function mountEggFilterPanel(context)
     local saved = readJson(FILE, {})
     local panel: { [string]: any } = { alive = true, open = saved.open ~= false, view = "map", cards = 0, matches = 0 }
     local onlyMatches = saved.onlyMatches == true
+    -- Ultima especie, peso y mutaciones de la calculadora.
+    local calc = type(saved.calc) == "table" and saved.calc or {}
+    calc = { category = type(calc.category) == "string" and calc.category or nil,
+        weight = type(calc.weight) == "string" and calc.weight or "",
+        mutations = type(calc.mutations) == "table" and calc.mutations or {},
+        -- Escala exacta del huevo abierto, valida mientras el peso no cambie.
+        scale = tonumber(calc.scale), scaleWeight = type(calc.scaleWeight) == "string" and calc.scaleWeight or nil }
     -- Tamano elegido con el asa; la pantalla puede reducirlo al mostrarlo.
     local scaling = context.scaling
     local userScale = scaling.Panel(tonumber(saved.scale))
@@ -1538,8 +1661,8 @@ local function mountEggFilterPanel(context)
 
     -- Cabecera: titulo a la izquierda, acciones a la derecha en una sola fila.
     local header = make("Frame", "Header", root, { Size = UDim2.new(1, 0, 0, 68), BackgroundTransparency = 1, BorderSizePixel = 0, Active = true })
-    text("Title", header, "Egg Finder", PAD, 14, 240, 28, C.white, 22, true)
-    text("Subtitle", header, "Huevos disponibles en el mapa", PAD, 41, 240, 16, C.muted, 11)
+    text("Title", header, "Egg Finder", PAD, 14, 144, 28, C.white, 22, true)
+    text("Subtitle", header, "Huevos del mapa", PAD, 41, 144, 16, C.muted, 11)
     local minimize = button("Minimize", header, "", PAD + CONTENT - 32, 18, 32, 32)
     line(minimize, "Minus", 16, 16, 12, 0, C.muted)
     local auto = button("ToggleSearch", header, "AUTO OFF", PAD + CONTENT - 32 - 8 - 100, 18, 100, 32)
@@ -1548,6 +1671,7 @@ local function mountEggFilterPanel(context)
     local autoDot = make("Frame", "Dot", auto, { Position = UDim2.new(0, -2, 0.5, -4), Size = UDim2.fromOffset(8, 8), BackgroundColor3 = C.muted, BorderSizePixel = 0 })
     corner(autoDot, 4)
     local optionsButton = button("Options", header, "Opciones", PAD + CONTENT - 32 - 8 - 100 - 8 - 92, 18, 92, 32)
+    local calculatorButton = button("Calculator", header, "Calculadora", PAD + CONTENT - 32 - 8 - 100 - 8 - 92 - 8 - 104, 18, 104, 32)
     make("Frame", "HeaderDivider", root, { Position = UDim2.fromOffset(PAD, 68), Size = UDim2.fromOffset(CONTENT, 1), BackgroundColor3 = C.border, BackgroundTransparency = 0.3, BorderSizePixel = 0 })
 
     -- Estado de la busqueda: titulo, explicacion de una linea y reloj del ciclo.
@@ -1602,7 +1726,7 @@ local function mountEggFilterPanel(context)
     local function save()
         access()
         local ok = writeJson(FILE, { open = panel.open, visual = visual, filtersOpen = filtersOpen,
-            view = "map", onlyMatches = onlyMatches, sortBest = sortBest,
+            view = "map", onlyMatches = onlyMatches, sortBest = sortBest, calc = calc,
             x = root.Position.X.Offset, y = root.Position.Y.Offset, scale = userScale })
         if not ok then panel.error = "No se pudo guardar la posición / vista"; warn("[EggPanel] " .. panel.error) end
     end
@@ -1895,7 +2019,7 @@ local function mountEggFilterPanel(context)
     panel.OpenBestHistory = bestHistory
     local function detail(row)
         access()
-        local card = sheet("EggDetail", row.name, 120, row.best and 486 or 400)
+        local card = sheet("EggDetail", row.name, row.best and 90 or 120, row.best and 534 or 448)
         local tags = text("Tags", card, "", 18, 44, CONTENT - 36, 18, C.muted, 12)
         tags.RichText = true
         tags.Text = string.format('<font color="%s"><b>%s</b></font>  ·  %s', hex(rarityColor(row.catalog and row.catalog.Rarity)),
@@ -1929,6 +2053,10 @@ local function mountEggFilterPanel(context)
             local history = button("BestHistory", card, "Ver mejores de los últimos ciclos", 18, 432, CONTENT - 36, 40)
             history.Activated:Connect(function() access(); bestHistory() end)
         end
+        local calculate = button("Calculate", card, "Calcular con otras mutaciones", 18, row.best and 480 or 394, CONTENT - 36, 40)
+        calculate.Activated:Connect(function()
+            access(); panel.OpenCalculator(row.category, row.scale, row.mutationIds)
+        end)
     end
     local function createCard(row)
         local entry = {row = row}
@@ -2032,7 +2160,8 @@ local function mountEggFilterPanel(context)
                 table.insert(labels, ok and tostring(label) or tostring(id))
             end
             mutation(egg.BaseMutation); for _, id in ipairs(egg.Mutations or {}) do mutation(id) end
-            return {uid = uid, key = key, category = tostring(egg.AssetCategory or "Desconocida"), catalog = catalog,
+            local ids = {}; for id in pairs(seen) do table.insert(ids, id) end; table.sort(ids)
+            return {uid = uid, mutationIds = ids, key = key, category = tostring(egg.AssetCategory or "Desconocida"), catalog = catalog,
                 name = tostring(catalog and catalog.DisplayName or egg.AssetCategory or "Desconocida"), rarity = tostring(rarityId or "Desconocida"),
                 rarityRank = rank and rank.Rank or 0, income = income, scale = egg.AssetScale,
                 weight = weightOk and weight or "peso no disponible", eggIcon = iconOk and icon or nil,
@@ -2204,6 +2333,162 @@ local function mountEggFilterPanel(context)
         end
     end
     connect(optionsButton.Activated, function() panel.OpenOptions() end)
+    -- Calculadora: ingreso de una especie con el peso y las mutaciones que se
+    -- elijan, con las funciones del juego. Solo informativa; no cambia filtros.
+    local function petLabel(category)
+        local catalog = category and search.modules and search.modules.assets.Directory[category]
+        return catalog and tostring(catalog.DisplayName or category) or nil
+    end
+    local function speciesPicker()
+        access()
+        local card = sheet("SpeciesPicker", "Especie", 64, 580)
+        local query = field("Search", card, "", "Buscar por nombre", 18, 48, CONTENT - 36, 36)
+        local list = listFrame(card, 96, 470)
+        local options = search.PetOptions()
+        local rarities = search.modules and search.modules.rarities.Rarities or {}
+        access()
+        local function render()
+            access()
+            for _, child in ipairs(list:GetChildren()) do
+                if child:IsA("GuiObject") then child:Destroy() end
+            end
+            local wanted = string.lower(query.Text)
+            local shown = 0
+            for index, option in ipairs(options) do
+                if wanted == "" or string.find(string.lower(option.label), wanted, 1, true) then
+                    shown += 1
+                    local selected = option.id == calc.category
+                    local b = button("Pet_" .. index, list, "", 0, 0, 0, 40)
+                    b.Size = UDim2.new(1, -2, 0, 40); b.LayoutOrder = index
+                    text("Label", b, option.label, 14, 0, 0, 40, C.white, 14, selected).Size = UDim2.new(1, -150, 1, 0)
+                    local rarity = text("Rarity", b, tostring(option.rarity or "?"), 0, 0, 120, 40,
+                        rarityColor(rarities[option.rarity], C.muted), 11, true)
+                    rarity.Position = UDim2.new(1, -134, 0, 0); rarity.TextXAlignment = Enum.TextXAlignment.Right
+                    if selected then paint(b, C.selected, C.white, C.green) end
+                    b.Activated:Connect(function()
+                        access(); calc.category = option.id; calc.scale, calc.scaleWeight = nil, nil; save(); panel.OpenCalculator()
+                    end)
+                end
+            end
+            if shown == 0 then paragraph("Empty", list, "Ninguna especie con ese nombre.", 4, 12, 440, 30, C.muted, 12) end
+        end
+        query:GetPropertyChangedSignal("Text"):Connect(render)
+        render()
+    end
+    function panel.OpenCalculator(category, scale, mutations)
+        access()
+        if not search.modules then setMessage("Cargando los datos del juego..."); return end
+        -- Desde el detalle de un huevo: su especie, su peso y sus mutaciones.
+        if category ~= nil then
+            calc.category = category
+            local ok, weight = pcall(search.WeightAt, category, scale or 1)
+            access()
+            calc.weight = ok and search.FormatWeight(weight) or ""
+            calc.mutations = table.clone(mutations or {})
+            calc.scale, calc.scaleWeight = ok and scale or nil, ok and calc.weight or nil
+            save()
+        end
+        local card = sheet("Calculator", "Calculadora de ingreso", 50, 600)
+        paragraph("Hint", card, "Cuánto da una mascota según su peso y mutaciones, con las fórmulas del juego. "
+            .. "Las mutaciones se suman: Golden + Rainbow = x5.", 18, 44, CONTENT - 36, 30, C.muted, 11)
+        text("SpeciesLabel", card, "Especie", 18, 84, 280, 16, C.muted, 11)
+        text("WeightLabel", card, "Peso (kg)", 306, 84, 172, 16, C.muted, 11)
+        local species = button("Species", card, petLabel(calc.category) or "Elegir especie", 18, 104, 280, 38)
+        species.TextSize = 14; chevron(species)
+        local weight = field("Weight", card, calc.weight, "Ej. 44,904", 306, 104, 172, 38)
+        weight.Font = Enum.Font.GothamBold
+        caption(card, "MUTACIONES", 156)
+        local clear = button("ClearMutations", card, "Quitar todas", CONTENT - 18 - 110, 150, 110, 28)
+        local grid = make("ScrollingFrame", "Mutations", card, { Position = UDim2.fromOffset(18, 184), Size = UDim2.fromOffset(CONTENT - 30, 160),
+            CanvasSize = UDim2.new(), AutomaticCanvasSize = Enum.AutomaticSize.Y, BackgroundTransparency = 1,
+            ScrollBarThickness = 3, ScrollBarImageColor3 = C.muted, BorderSizePixel = 0 })
+        make("UIGridLayout", "Layout", grid, { CellSize = UDim2.fromOffset(148, 34), CellPadding = UDim2.fromOffset(8, 8),
+            SortOrder = Enum.SortOrder.LayoutOrder })
+        local result = make("Frame", "Result", card, { Position = UDim2.fromOffset(18, 356), Size = UDim2.fromOffset(CONTENT - 36, 168),
+            BackgroundColor3 = C.card, BorderSizePixel = 0 })
+        corner(result, 10); stroke(result).Transparency = 0.45
+        text("IncomeCaption", result, "Ingreso por segundo", 16, 12, 220, 14, C.muted, 11)
+        local income = text("Income", result, "--", 16, 28, CONTENT - 68, 34, C.gold, 28, true)
+        local exact = text("Exact", result, "", 16, 62, CONTENT - 68, 16, C.muted, 11)
+        local rows = {}
+        for index, label in ipairs({"Por minuto", "Por hora", "Por día", "Multiplicador", "Tamaño", "Sin mutaciones"}) do
+            local x, y = index <= 3 and 16 or 236, 86 + ((index - 1) % 3) * 24
+            text("Label" .. index, result, label, x, y, 100, 20, C.muted, 11)
+            rows[index] = text("Value" .. index, result, "--", x + 100, y, 108, 20, C.white, 12, true)
+        end
+        local message = paragraph("Message", card, "", 18, 534, CONTENT - 36, 52, C.muted, 11)
+        local chips, bonuses = {}, {}
+        local function update()
+            access()
+            local selected = {}
+            for _, id in ipairs(calc.mutations) do selected[id] = true end
+            for id, chip in pairs(chips) do
+                local on = selected[id] == true
+                paint(chip, on and C.selected or C.card, on and C.green or C.white, on and C.green or C.border)
+            end
+            for _, value in ipairs(rows) do value.Text = "--" end
+            income.Text = "--"; exact.Text = ""
+            if not calc.category then message.Text = "Elige una especie para empezar."; message.TextColor3 = C.muted; return end
+            if string.gsub(weight.Text, "%s", "") == "" then message.Text = "Escribe el peso en kg (el que muestra el huevo o la mascota)."; message.TextColor3 = C.muted; return end
+            local exactScale = calc.scale and calc.scaleWeight == weight.Text
+            local ok, value
+            if exactScale then ok, value = pcall(search.CalculateAtScale, calc.category, calc.scale, calc.mutations)
+            else ok, value = pcall(search.CalculateIncome, calc.category, weight.Text, calc.mutations) end
+            access()
+            if not ok then message.Text = sentence(tostring(value):gsub("^.-:%d+: ", "")); message.TextColor3 = C.red; return end
+            income.Text = number(value.income) .. "/s"
+            exact.Text = string.format("Exacto: %.17g/s  ·  %s kg", value.income, search.FormatWeight(value.weight))
+            rows[1].Text = number(value.income * 60); rows[2].Text = number(value.income * 3600)
+            rows[3].Text = number(value.income * 86400)
+            rows[4].Text = value.multiplier and string.format("x%.2f", value.multiplier) or "--"
+            rows[5].Text = string.format("x%.2f", value.scale); rows[6].Text = number(value.base) .. "/s"
+            message.Text = #value.mutations == 0 and "Sin mutaciones. Toca las que quieras sumar."
+                or "Ingreso del juego sin boosts temporales ni pases."
+            message.TextColor3 = C.muted
+        end
+        -- Bono de cada mutacion para la especie elegida, medido con el juego.
+        if calc.category then
+            local okBase, base = pcall(search.IncomeAt, calc.category, 1, {})
+            if okBase and base > 0 and data.mutations then
+                for id in pairs(data.mutations.IdSet) do
+                    local ok, value = pcall(search.IncomeAt, calc.category, 1, {id})
+                    if ok then bonuses[id] = value / base - 1 end
+                end
+            end
+            access()
+        end
+        if data.mutations then
+            local options = {}
+            for id in pairs(data.mutations.IdSet) do
+                local ok, label = pcall(data.mutations.LabelOf, id)
+                table.insert(options, { id = id, label = ok and tostring(label) or id })
+            end
+            access()
+            table.sort(options, function(a, b) return a.label < b.label end)
+            for index, option in ipairs(options) do
+                local bonus = bonuses[option.id]
+                local chip = button("Mutation_" .. option.id, grid, bonus and string.format("%s  +%s", option.label,
+                    (string.format("%.2f", bonus):gsub("0+$", ""):gsub("%.$", ""))) or option.label, 0, 0, 148, 34)
+                chip.LayoutOrder = index
+                chips[option.id] = chip
+                chip.Activated:Connect(function()
+                    access()
+                    local position = table.find(calc.mutations, option.id)
+                    if position then table.remove(calc.mutations, position) else table.insert(calc.mutations, option.id) end
+                    save(); update()
+                end)
+            end
+        else
+            paragraph("Loading", grid, "Cargando las mutaciones del juego...", 4, 8, 440, 30, C.muted, 12)
+        end
+        species.Activated:Connect(function() access(); speciesPicker() end)
+        clear.Activated:Connect(function() access(); table.clear(calc.mutations); save(); update() end)
+        weight:GetPropertyChangedSignal("Text"):Connect(function() access(); calc.weight = weight.Text; update() end)
+        weight.Focused:Connect(function() access(); weight.Border.Color = C.gold; weight.Border.Thickness = 1.5 end)
+        weight.FocusLost:Connect(function() access(); weight.Border.Color = C.border; weight.Border.Thickness = 1; save() end)
+        update()
+    end
+    connect(calculatorButton.Activated, function() panel.OpenCalculator() end)
     function panel.GetStatus()
         access(); return { open = panel.open, view = "map", onlyMatches = onlyMatches, cards = panel.cards, matches = panel.matches, dirty = dirty, error = panel.error,
             selected = selectionList(), allZones = allZones, visual = visual, sortBest = sortBest, position = {x = root.AbsolutePosition.X, y = root.AbsolutePosition.Y},
