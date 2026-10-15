@@ -69,6 +69,9 @@ local function mountEggFilterPanel(context)
         fold = TweenInfo.new(0.24, Enum.EasingStyle.Quint, Enum.EasingDirection.Out),
         sheetIn = TweenInfo.new(0.22, Enum.EasingStyle.Quint, Enum.EasingDirection.Out),
         sheetOut = TweenInfo.new(0.16, Enum.EasingStyle.Quint, Enum.EasingDirection.In),
+        -- El hub entero recorre mas que una hoja: un poco mas de tiempo para verse.
+        hubIn = TweenInfo.new(0.28, Enum.EasingStyle.Quint, Enum.EasingDirection.Out),
+        hubOut = TweenInfo.new(0.18, Enum.EasingStyle.Quint, Enum.EasingDirection.In),
         fade = TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
     }
     -- Preferencias de accesibilidad de Roblox: movimiento reducido cambia
@@ -371,10 +374,36 @@ local function mountEggFilterPanel(context)
         corner(dot, 4)
         tabButtons[item.id] = { button = b, label = label, dot = dot, y = 16 + (index - 1) * 46, text = item.label }
     end
-    local sideState = text("AutoState", sidebar, "AUTO apagado", 16, HUB_HEIGHT - HEADER - 90, SIDEBAR - 32, 16, C.muted, 11, true)
-    local sideMode = paragraph("AutoMode", sidebar, "", 16, HUB_HEIGHT - HEADER - 72, SIDEBAR - 32, 28, C.muted, 11)
-    local credit = text("ByMistakeCredit", sidebar, "By Mistake", 16, HUB_HEIGHT - HEADER - 34, SIDEBAR - 32, 14, C.gold, 11, true)
+    local sideState = text("AutoState", sidebar, "AUTO apagado", 16, HUB_HEIGHT - HEADER - 112, SIDEBAR - 32, 16, C.muted, 11, true)
+    local sideMode = paragraph("AutoMode", sidebar, "", 16, HUB_HEIGHT - HEADER - 94, SIDEBAR - 32, 28, C.muted, 11)
+    local credit = text("ByMistakeCredit", sidebar, "By Mistake", 16, HUB_HEIGHT - HEADER - 54, SIDEBAR - 32, 14, C.gold, 11, true)
     credit.TextTransparency = 0.25
+    -- Marca de agua: el TikTok del autor. Tocarlo copia el enlace si el
+    -- executor tiene portapapeles (Roblox no lo expone); si no, lo muestra.
+    do
+        local LINK, LABEL = "https://www.tiktok.com/@mistakeontt", "TikTok @mistakeontt"
+        local tiktok = make("TextButton", "TikTok", sidebar, { Position = UDim2.fromOffset(16, HUB_HEIGHT - HEADER - 40),
+            Size = UDim2.fromOffset(SIDEBAR - 32, 24), BackgroundTransparency = 1, BorderSizePixel = 0, Text = LABEL,
+            TextColor3 = C.muted, TextSize = 11, Font = Enum.Font.GothamMedium, TextXAlignment = Enum.TextXAlignment.Left,
+            TextTruncate = Enum.TextTruncate.AtEnd, TextStrokeTransparency = 1, AutoButtonColor = false })
+        local stamp = 0
+        connect(tiktok:GetPropertyChangedSignal("GuiState"), function()
+            local state = tiktok.GuiState
+            local lit = state == Enum.GuiState.Press or (state == Enum.GuiState.Hover and UIS.MouseEnabled)
+            if state == Enum.GuiState.Press then place(tiktok, { TextColor3 = C.white })
+            else animate(tiktok, MOTION.color, { TextColor3 = lit and C.white or C.muted }) end
+        end)
+        connect(tiktok.Activated, function()
+            local copy = type(setclipboard) == "function" and setclipboard or type(toclipboard) == "function" and toclipboard or nil
+            local copied = copy ~= nil and pcall(copy, LINK)
+            access(); stamp += 1
+            local mine = stamp
+            tiktok.Text = copied and "Enlace copiado" or "tiktok.com/@mistakeontt"
+            task.delay(1.6, function()
+                if panel.alive and session.alive and stamp == mine then access(); tiktok.Text = LABEL end
+            end)
+        end)
+    end
 
     -- Paginas: una por seccion, en el area a la derecha de la barra lateral.
     local pageArea = make("Frame", "Pages", root, { Position = UDim2.fromOffset(PAGE_X, PAGE_Y),
@@ -584,7 +613,8 @@ local function mountEggFilterPanel(context)
     end
     -- Limites de la esquina superior izquierda para el tamano final del hub.
     local function bounds(viewport)
-        local width, height = HUB_WIDTH * scale.Scale, HUB_HEIGHT * scale.Scale
+        local base = motion.base or scale.Scale
+        local width, height = HUB_WIDTH * base, HUB_HEIGHT * base
         return Vector2.new(8, 8), Vector2.new(math.max(8, viewport.X - width - 8), math.max(8, viewport.Y - height - 8))
     end
     local function fit(animated)
@@ -592,10 +622,12 @@ local function mountEggFilterPanel(context)
         local camera = workspace.CurrentCamera
         if not camera then return end
         local viewport = camera.ViewportSize
-        scale.Scale = scaling.Panel(userScale, fitLimit())
+        -- Escala de reposo; mientras el hub crece o se encoge la lleva su tween.
+        motion.base = scaling.Panel(userScale, fitLimit())
+        if not motion.moving(scale, "Scale") then scale.Scale = motion.base end
         if not initializedPosition then
-            root.Position = UDim2.fromOffset(tonumber(saved.x) or (viewport.X - HUB_WIDTH * scale.Scale) / 2,
-                tonumber(saved.y) or math.max(14, (viewport.Y - HUB_HEIGHT * scale.Scale) / 2))
+            root.Position = UDim2.fromOffset(tonumber(saved.x) or (viewport.X - HUB_WIDTH * motion.base) / 2,
+                tonumber(saved.y) or math.max(14, (viewport.Y - HUB_HEIGHT * motion.base) / 2))
             -- El boton M empieza al borde izquierdo, a media altura.
             local spot = type(saved.button) == "table" and saved.button or {}
             mini.button.Position = UDim2.fromOffset(tonumber(spot.x) or 16, tonumber(spot.y) or math.floor((viewport.Y - LAUNCHER) / 2))
@@ -639,9 +671,11 @@ local function mountEggFilterPanel(context)
         local goal = { Position = UDim2.fromOffset(12, tabButtons[tab].y) }
         if animated and not motion.reduced then animate(activeTab, MOTION.indicator, goal) else place(activeTab, goal) end
     end
-    -- El hub aparece y se va en su propio sitio, no desde el boton M. Sin
-    -- origen, sigue la regla de las hojas: entra subiendo 12 px y sale bajando
-    -- por el mismo camino. Otro toque a mitad de camino lo invierte desde ahi.
+    -- El hub aparece y se va en su propio sitio, no desde el boton M. Como las
+    -- hojas, se expande desde el 85 % con el centro fijo y se va encogiendose
+    -- por el mismo camino: escala y posicion comparten curva y tiempo, asi el
+    -- centro no se mueve. Otro toque a mitad de camino lo invierte desde ahi.
+    local HUB_ZOOM = 0.85
     local function applyMinimized(animated)
         access()
         local show = panel.open and not minimized
@@ -649,19 +683,24 @@ local function mountEggFilterPanel(context)
         if not show then closePopup(true); releaseModels() end
         if motion.shown == show then return end
         motion.shown = show
-        local rest = motion.rest or root.Position
+        local rest, base = motion.rest or root.Position, motion.base or scale.Scale
         root.Interactable = show
         if not animated or motion.reduced then
-            place(root, { Position = rest }); motion.rest = nil; root.Visible = show
+            place(root, { Position = rest }); place(scale, { Scale = base }); motion.rest = nil; root.Visible = show
             return
         end
         motion.rest = rest
-        local low = UDim2.fromOffset(rest.X.Offset, rest.Y.Offset + 12)
+        local inset = (1 - HUB_ZOOM) * base / 2
+        local small = UDim2.fromOffset(rest.X.Offset + HUB_WIDTH * inset, rest.Y.Offset + HUB_HEIGHT * inset)
         if show then
-            if not root.Visible then root.Position = low; root.Visible = true end
-            animate(root, MOTION.sheetIn, { Position = rest }, function() motion.rest = nil end)
+            if not root.Visible then root.Position = small; scale.Scale = HUB_ZOOM * base; root.Visible = true end
+            animate(scale, MOTION.hubIn, { Scale = base })
+            animate(root, MOTION.hubIn, { Position = rest }, function() motion.rest = nil; fit() end)
         else
-            animate(root, MOTION.sheetOut, { Position = low }, function() root.Visible = false; root.Position = rest; motion.rest = nil end)
+            animate(scale, MOTION.hubOut, { Scale = HUB_ZOOM * base })
+            animate(root, MOTION.hubOut, { Position = small }, function()
+                root.Visible = false; place(root, { Position = rest }); place(scale, { Scale = motion.base or base }); motion.rest = nil
+            end)
         end
     end
     local function refreshSoon()
@@ -1501,7 +1540,7 @@ local function mountEggFilterPanel(context)
         access(); return { open = panel.open, minimized = minimized, tab = tab, view = "map", onlyMatches = onlyMatches,
             cards = panel.cards, matches = panel.matches, dirty = dirty, error = panel.error,
             selected = selectionList(), allZones = allZones, visual = visual, sortBest = sortBest, position = {x = root.AbsolutePosition.X, y = root.AbsolutePosition.Y},
-            size = {x = root.AbsoluteSize.X, y = root.AbsoluteSize.Y}, scale = scale.Scale, userScale = userScale,
+            size = {x = root.AbsoluteSize.X, y = root.AbsoluteSize.Y}, scale = motion.base or scale.Scale, userScale = userScale,
             stats = table.clone(panel.stats), resources = {mutations = data.mutations ~= nil, models = data.assetModels ~= nil} }
     end
     function panel.Destroy()
@@ -1694,7 +1733,7 @@ local function mountEggFilterPanel(context)
     connect(grip.InputBegan, function(input)
         if resizeInput or (input.UserInputType ~= Enum.UserInputType.MouseButton1 and input.UserInputType ~= Enum.UserInputType.Touch) then return end
         motion.dragging = false; motion.stopSpring()
-        resizeInput, resizeStart, resizeScale = input, input.Position, scale.Scale
+        resizeInput, resizeStart, resizeScale = input, input.Position, motion.base or scale.Scale
         paintGrip()
     end)
     connect(UIS.InputChanged, function(input)

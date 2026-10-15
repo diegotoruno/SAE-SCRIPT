@@ -1,5 +1,28 @@
 # Pruebas y validacion
 
+## 2026-10-14 - Expansion del hub y marca de agua del TikTok
+
+El usuario noto que se perdio la animacion de abrir (subir 12 px apenas se
+veia). Ahora el hub se expande desde el 85 % con el centro fijo (280 ms) y se
+encoge al minimizar (180 ms). Marca de agua `TikTok @mistakeontt` al pie de la
+barra lateral. Build, ocho compilaciones y 223 regresiones. Potassium, GUI de
+prueba aparte, sin entradas simuladas ni teleports, solo `SetMinimized`,
+`Open`, `Close` y `GetStatus`; 15 de 15:
+
+- El bundle compila con `loadstring` (limite de 200 locales).
+- Marca de agua presente, `TextFits`, dentro de la barra lateral y sin
+  solaparse con el estado de AUTO ni con `By Mistake`.
+- Minimizar encoge con el centro fijo; al terminar queda oculto en su sitio y
+  con la escala completa.
+- Abrir empieza en 0.85 de la escala con el mismo centro; a 80 ms va por 0.973
+  con el centro fijo; termina en su sitio y escala.
+- Interrumpido cuatro veces, `Close` y `Open`: termina en su sitio, escala
+  completa, entero en pantalla; `Open` tambien se expande.
+- Se guarda la posicion de reposo y `GetStatus().scale` es la de reposo.
+- `setclipboard` existe en Potassium (solo se comprobo el tipo; copiar el
+  enlace queda para validar a mano).
+- Version candidata montada en la sesion real (un hub).
+
 ## 2026-10-14 - Boton M independiente del hub
 
 Build-110 en el cliente del usuario: Alt encogia el hub y lo ocultaba, sin

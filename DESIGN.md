@@ -91,7 +91,12 @@ pestanas laterales, secciones con interruptores), con la paleta propia.
   su texto pasa a blanco y el resto queda secundario. Pasar el puntero da
   fondo al 40 % y pulsar al 70 %, al instante. Filtros muestra un punto
   champan con cambios sin aplicar. Al pie, el estado de AUTO (verde si esta
-  activo) con su modo (11 px) y la firma `By Mistake` en champan.
+  activo) con su modo (11 px), la firma `By Mistake` en champan y, debajo,
+  la marca de agua `TikTok @mistakeontt` (11 px, secundaria; blanca al pasar
+  o pulsar). Tocarla copia `https://www.tiktok.com/@mistakeontt` con el
+  portapapeles del executor (`setclipboard`; Roblox no tiene API de
+  portapapeles) y dice `Enlace copiado` 1,6 s; sin portapapeles muestra el
+  enlace.
 - Egg Finder: tarjeta de estado (punto, titulo de 15 px, linea explicativa y
   reloj a la derecha), fila `Filtros` con el resumen guardado y `Editar
   filtros`, barra `Todos N` / `Cumplen N` / `Ver:` / `Orden:` en cuatro
@@ -147,7 +152,7 @@ pestanas laterales, secciones con interruptores), con la paleta propia.
 ## Interaccion
 
 La firma `By Mistake` vive al pie de la tarjeta de acceso rapido y de la
-barra lateral del hub. No hay etiqueta flotante en la pantalla (retirada el
+barra lateral del hub; la marca de agua del TikTok, solo en la barra lateral. No hay etiqueta flotante en la pantalla (retirada el
 2026-10-11) ni lanzadores flotantes del panel o de la cuenta (retirados con
 el hub, 2026-10-14).
 
@@ -193,8 +198,8 @@ donde esta.
 | Perilla y color del interruptor, en el mismo frame | 160 ms | Quint Out |
 | Pagina nueva: sube 8 px | 180 ms | Quint Out |
 | `ActiveTab` hasta la pestana activa | 200 ms | Quint Out |
-| Abrir el hub en su sitio: sube 12 px | 220 ms | Quint Out |
-| Minimizar el hub: baja 12 px y se oculta | 160 ms | Quint In |
+| Abrir el hub en su sitio: escala 0.85 a 1, centro fijo | 280 ms | Quint Out |
+| Minimizar el hub: escala 1 a 0.85 y se oculta | 180 ms | Quint In |
 | Volver el hub a la pantalla tras cambiar su tamano | 240 ms | Quint Out |
 | Hoja: entra desde su origen, escala 0.9 a 1, velo hasta 35 % | 220 ms | Quint Out |
 | Hoja: sale por el mismo camino | 160 ms | Quint In |
@@ -205,15 +210,16 @@ donde esta.
   instante (`GuiState` cubre raton, toque y mando); el cambio se confirma al
   soltar. `UIScale` escala desde el `AnchorPoint` y empuja a los hermanos de
   un `UIListLayout`, asi que no se usa para la pulsacion; solo en hojas,
-  que estan centradas.
+  que estan centradas, y en el hub al abrir y minimizar, con la posicion
+  compensada en el mismo tween para que el centro no se mueva.
 - Origen de las hojas: rareza, mutacion, zonas y especie salen de su boton;
   el detalle, de su tarjeta; el historial abierto desde el detalle entra por
   la derecha y `Detalle` vuelve por la izquierda. Sin origen, la hoja sube
   12 px. La hoja que sale ya no bloquea el hub (`Interactable`).
-- El hub aparece y se va en su propio sitio, nunca desde el boton `M`. Sin
-  origen sigue la regla de las hojas: abrir lo muestra 12 px por debajo y
-  sube a su sitio; minimizar lo baja 12 px y lo oculta al terminar, y el
-  boton aparece al empezar. Mientras se va no recibe toques (`Interactable`)
+- El hub aparece y se va en su propio sitio, nunca desde el boton `M`. Como
+  las hojas, abrir lo expande desde el 85 % con el centro fijo; minimizar lo
+  encoge al 85 % por el mismo camino y lo oculta al terminar, y el boton
+  aparece al empezar. Escala y posicion comparten curva y tiempo. Mientras se va no recibe toques (`Interactable`)
   ni se puede arrastrar. Otro toque a mitad de camino lo invierte.
 - Alt izquierdo hace lo mismo que minimizar y tocar el boton: con el hub
   abierto lo minimiza y deja el boton `M`; con el boton, abre el hub en su

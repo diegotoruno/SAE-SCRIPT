@@ -1,5 +1,12 @@
 # Estado del trabajo
 
+## 2026-10-14 - Expansion del hub y TikTok
+
+Rama codex/alt-keeps-button (PR #45). Abrir el hub vuelve a verse: se expande
+desde el 85 % con el centro fijo y se encoge al minimizar. Marca de agua
+`TikTok @mistakeontt` al pie de la barra lateral; tocarla copia el enlace. Ver
+DESIGN y TESTING.
+
 ## 2026-10-14 - Boton M independiente del hub
 
 Rama codex/alt-keeps-button (PR #45) sobre main 185f3e3. El boton M es
