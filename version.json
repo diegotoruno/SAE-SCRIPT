@@ -1,7 +1,7 @@
 {
-  "source_commit": "6081319fddd1b97034b8b7830970bf4cce63dd1c",
-  "run": "106",
-  "sha256": "b442efba70a2f8daab89cd6471ea03bfeada5ce71892004f1c0423e724b17768",
-  "bytes": 300641,
+  "source_commit": "08205dcec61db04292037c29dd746f1a08d015e2",
+  "run": "108",
+  "sha256": "a5bf0528809cab850a6707cf3d8618de3df5ea16df869a0ac4707d2cf9ff4a5a",
+  "bytes": 336448,
   "luau": "0.741"
 }
