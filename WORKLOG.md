@@ -1,5 +1,15 @@
 # Estado del trabajo
 
+## 2026-10-14 - Movimiento y respuesta de Mistake Hub
+
+Rama codex/mistake-hub (PR #43). Solo UI y movimiento: controles que se
+repintan en la misma pulsacion, pulsacion inmediata por `GuiState`, plegado,
+secciones, hojas e interruptores interrumpibles desde el valor actual, hojas
+que nacen de su origen y salen por el mismo camino, arrastre con resistencia y
+resorte en hub y tarjeta flotante, barra lateral mas pesada sin divisores,
+escala tipografica y movimiento reducido. Sin cambios en detector, filtros,
+AUTO, ciclo, teleports, API publica ni persistencia. Ver DESIGN y TESTING.
+
 ## 2026-10-14 - Mistake Hub
 
 Rama codex/mistake-hub sobre codex/calculadora-mascotas (PR #42). El panel

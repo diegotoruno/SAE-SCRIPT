@@ -394,6 +394,24 @@ local function createFinderSupport()
         local rounded = math.floor(math.clamp(value, math.min(PANEL_MIN_SCALE, upper), upper) * 100 + 0.5) / 100
         return math.max(0.1, math.min(upper, rounded))
     end
+    -- Arrastre de ventanas: pasado el borde, cada pixel cuenta menos (0.55,
+    -- la constante de iOS); dentro del borde sigue 1:1.
+    function support.Rubberband(value, low, high, dimension)
+        high = math.max(low, high)
+        local over = value < low and low - value or value > high and value - high or 0
+        if over == 0 then return value end
+        local give = over * dimension * 0.55 / (dimension + 0.55 * over)
+        return value < low and low - give or high + give
+    end
+    -- Un eje de un resorte criticamente amortiguado (sin rebote): devuelve la
+    -- posicion y la velocidad tras dt, partiendo de los valores actuales.
+    function support.SpringStep(position, velocity, target, dt, response)
+        local omega = 2 * math.pi / response
+        local offset = position - target
+        local decay = math.exp(-omega * dt)
+        local lead = velocity + omega * offset
+        return target + (offset + lead * dt) * decay, (velocity - omega * lead * dt) * decay
+    end
     -- A fresh one-player reserve is already the minimum eligible occupancy.
     -- Larger groups still require a new OccupancyAsc proof before a hop.
     function support.BalancedReserve(servers, now, current, visited, limit)
@@ -816,6 +834,8 @@ do
     local Stats = game:GetService("Stats")
     local StarterGui = game:GetService("StarterGui")
     local CoreGui = game:GetService("CoreGui")
+    local GuiService = game:GetService("GuiService")
+    local RunService = game:GetService("RunService")
 
     -- ---------------------------------------------------------------- arranque
     -- Antes de cualquier uso de LocalPlayer (cuenta, cookie, archivos por
@@ -1213,6 +1233,7 @@ do
     screenGui.Destroying:Connect(function()
         session.alive = false
         disconnectSession()
+        if session.holderSpring then session.holderSpring:Disconnect(); session.holderSpring = nil end
         if session.DisposeSearch then session.DisposeSearch() end
         if session.DisposePanel then session.DisposePanel() end
         if session.attempt then session.attempt.Cancel() end
@@ -1223,6 +1244,7 @@ do
         session.alive = false
         session.autoGeneration += 1
         disconnectSession()
+        if session.holderSpring then session.holderSpring:Disconnect(); session.holderSpring = nil end
         if session.DisposeSearch then session.DisposeSearch() end
         if session.DisposePanel then session.DisposePanel() end
         if session.attempt then session.attempt.Cancel() end
@@ -1324,6 +1346,49 @@ do
     round(holder, 14)
     outline(holder, COLORS.border)
 
+    -- Movimiento de la tarjeta: un tween por propiedad que parte del valor
+    -- actual, cancela el anterior y se cancela al destruir su objeto.
+    -- Con movimiento reducido, plegar y volver al borde son inmediatos.
+    local reducedMotion = false
+    pcall(function()
+        reducedMotion = GuiService.ReducedMotionEnabled == true
+        connect(GuiService:GetPropertyChangedSignal("ReducedMotionEnabled"), function()
+            reducedMotion = GuiService.ReducedMotionEnabled == true
+        end)
+    end)
+    local cardTweens = {}
+    local function cardTween(object, info, goals, done)
+        uiAccess()
+        local slot = cardTweens[object]
+        if not slot then
+            slot = {}; cardTweens[object] = slot
+            object.Destroying:Connect(function()
+                for _, tween in pairs(slot) do tween:Cancel() end
+                cardTweens[object] = nil
+            end)
+        end
+        local first
+        for key, value in pairs(goals) do
+            if slot[key] then slot[key]:Cancel() end
+            local tween = TweenService:Create(object, info, { [key] = value })
+            slot[key] = tween; first = first or tween
+            tween:Play()
+        end
+        if done and first then
+            first.Completed:Connect(function(state)
+                if state == Enum.PlaybackState.Completed and session.alive then uiAccess(); done() end
+            end)
+        end
+    end
+    local function cardPlace(object, goals)
+        uiAccess()
+        local slot = cardTweens[object]
+        for key, value in pairs(goals) do
+            if slot and slot[key] then slot[key]:Cancel(); slot[key] = nil end
+            object[key] = value
+        end
+    end
+
     local button = Instance.new("TextButton")
     button.Name = "ServerHop"
     button.AutoButtonColor = true
@@ -1381,9 +1446,7 @@ do
         uiAccess()
         busy = value
         for _, target in ipairs({button, hopView.button}) do
-            TweenService:Create(target, TweenInfo.new(0.15), {
-                BackgroundTransparency = value and 0.5 or 0,
-            }):Play()
+            cardTween(target, TweenInfo.new(0.15), { BackgroundTransparency = value and 0.5 or 0 })
         end
     end
 
@@ -1396,6 +1459,7 @@ do
     local dragStart = nil
     local startPosition = nil
     local lastDragAt = -math.huge
+    local dragOrigin, dragSample, dragVelocity = nil, nil, Vector2.zero
     local resizeInput, resizeStart, resizeScale, resizePosition = nil, nil, nil, nil
 
     local function saveUi()
@@ -1443,6 +1507,13 @@ do
     round(autoChip, 10)
     local autoBorder = outline(autoChip, COLORS.border, 0.3)
 
+    -- Sin AutoButtonColor (cambia de color con el estado): la pulsacion se ve
+    -- al instante como un tono mas oscuro y vuelve en 120 ms al soltar.
+    connect(autoChip:GetPropertyChangedSignal("GuiState"), function()
+        if autoChip.GuiState == Enum.GuiState.Press then cardPlace(autoChip, { BackgroundTransparency = 0.3 })
+        else cardTween(autoChip, TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { BackgroundTransparency = 0 }) end
+    end)
+
     local autoLabel = label("AutoLabel", autoChip, 11, COLORS.muted, true)
     autoLabel.Size = UDim2.fromScale(1, 1)
     autoLabel.Text = "AUTO\nOFF"
@@ -1455,6 +1526,7 @@ do
         autoLabel.TextColor3 = autoEnabled and COLORS.onGreen or COLORS.muted
         autoBorder.Color = autoEnabled and COLORS.green or COLORS.border
         if hopView.setAuto then hopView.setAuto(autoEnabled) end
+        if hopView.syncHub then hopView.syncHub(autoEnabled) end
     end
 
     local function applyCollapsed(value, instant)
@@ -1464,23 +1536,24 @@ do
         local row = value and 34 or 44
         local chip = value and 52 or 60
         local side = value and 28 or 32
-        local tween = TweenInfo.new(0.22, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
-        local function place(object, properties)
-            if instant then
-                for key, target in pairs(properties) do object[key] = target end
-            else
-                TweenService:Create(object, tween, properties):Play()
-            end
+        instant = instant or reducedMotion
+        local tween = TweenInfo.new(0.22, Enum.EasingStyle.Quint, Enum.EasingDirection.Out)
+        local function place(object, properties, done)
+            if instant then cardPlace(object, properties); if done then done() end
+            else cardTween(object, tween, properties, done) end
         end
 
-        place(holder, { Size = UDim2.fromOffset(size.X, size.Y) })
+        -- El estado solo se ve con la tarjeta ya abierta: nunca sobresale.
+        if value then statusLabel.Visible = false end
+        place(holder, { Size = UDim2.fromOffset(size.X, size.Y) }, function()
+            if not collapsed then statusLabel.Visible = true end
+        end)
         place(autoChip, { Position = UDim2.fromOffset(pad, pad), Size = UDim2.fromOffset(chip, row) })
         place(button, { Position = UDim2.fromOffset(pad + chip + 6, pad),
             Size = UDim2.new(1, -(2 * pad + chip + side + 12), 0, row) })
         place(toggle, { Position = UDim2.new(1, -pad, 0, pad), Size = UDim2.fromOffset(side, row) })
         mainLabel.TextSize = value and 14 or 18
         autoLabel.TextSize = value and 10 or 11
-        statusLabel.Visible = not value
         -- Desplegado muestra "plegar" (chevron arriba); plegado, "desplegar".
         toggleChevron[1].Rotation = value and 45 or -45
         toggleChevron[2].Rotation = value and -45 or 45
@@ -1496,7 +1569,10 @@ do
             dragging = false
             dragInput = input
             dragStart = input.Position
+            -- Agarrar la tarjeta mientras vuelve al borde la detiene ahi.
+            if session.holderSpring then session.holderSpring:Disconnect(); session.holderSpring = nil end
             startPosition = holder.Position
+            dragOrigin, dragSample, dragVelocity = holder.AbsolutePosition, nil, Vector2.zero
         end
     end
 
@@ -1524,19 +1600,63 @@ do
 
         dragging = true
         lastDragAt = os.clock()
+        -- 1:1 dentro de la pantalla; pasado el borde cada pixel cuenta menos.
+        local offset = Vector2.new(delta.X, delta.Y)
+        local camera = workspace.CurrentCamera
+        if camera and dragOrigin then
+            local viewport, size = camera.ViewportSize, holder.AbsoluteSize
+            local raw = dragOrigin + offset
+            offset = Vector2.new(support.Rubberband(raw.X, 8, viewport.X - size.X - 8, viewport.X),
+                support.Rubberband(raw.Y, 8, viewport.Y - size.Y - 8, viewport.Y)) - dragOrigin
+        end
+        if dragSample and lastDragAt > dragSample.at then
+            dragVelocity = dragVelocity:Lerp((offset - dragSample.point) / (lastDragAt - dragSample.at), 0.5)
+        end
+        dragSample = { at = lastDragAt, point = offset }
         holder.Position = UDim2.new(
             startPosition.X.Scale,
-            startPosition.X.Offset + delta.X,
+            startPosition.X.Offset + offset.X,
             startPosition.Y.Scale,
-            startPosition.Y.Offset + delta.Y
+            startPosition.Y.Offset + offset.Y
         )
     end)
+
+    -- Al soltar fuera de la pantalla, un resorte sin rebote la devuelve desde
+    -- donde esta, con la velocidad del dedo. Dentro de la pantalla se queda.
+    local function settleHolder(velocity)
+        local camera = workspace.CurrentCamera
+        if not camera then saveUi(); return end
+        local viewport, size, at = camera.ViewportSize, holder.AbsoluteSize, holder.AbsolutePosition
+        local correction = Vector2.new(math.clamp(at.X, 8, math.max(8, viewport.X - size.X - 8)),
+            math.clamp(at.Y, 8, math.max(8, viewport.Y - size.Y - 8))) - at
+        if correction.Magnitude < 0.5 then saveUi(); return end
+        local base = holder.Position
+        local position = Vector2.new(base.X.Offset, base.Y.Offset)
+        local target = position + correction
+        local function put(point) holder.Position = UDim2.new(base.X.Scale, point.X, base.Y.Scale, point.Y) end
+        if reducedMotion then put(target); saveUi(); return end
+        local speed = velocity.Magnitude > 3000 and velocity.Unit * 3000 or velocity
+        session.holderSpring = RunService.RenderStepped:Connect(function(dt)
+            if not session.alive then return end
+            uiAccess()
+            dt = math.min(dt, 1 / 20)
+            local x, vx = support.SpringStep(position.X, speed.X, target.X, dt, 0.3)
+            local y, vy = support.SpringStep(position.Y, speed.Y, target.Y, dt, 0.3)
+            position, speed = Vector2.new(x, y), Vector2.new(vx, vy)
+            if (position - target).Magnitude < 0.5 and speed.Magnitude < 5 then
+                session.holderSpring:Disconnect(); session.holderSpring = nil
+                put(target); saveUi(); return
+            end
+            put(position)
+        end)
+    end
 
     local function finishDrag()
         if dragging then
             -- Tambien cubrir un arrastre que se mantuvo quieto antes de soltar.
+            local moving = dragSample and os.clock() - dragSample.at < 0.06
             lastDragAt = os.clock()
-            saveUi()
+            settleHolder(moving and dragVelocity or Vector2.zero)
         end
         pendingDrag = false
         dragging = false
@@ -1604,6 +1724,7 @@ do
             return
         end
         -- El marco puede recibir el mismo toque: el asa nunca mueve la tarjeta.
+        if session.holderSpring then session.holderSpring:Disconnect(); session.holderSpring = nil end
         pendingDrag, dragging = false, false
         dragInput, dragStart, startPosition = nil, nil, nil
         resizeInput, resizeStart = input, input.Position
@@ -1821,9 +1942,11 @@ do
     local filterPanel = mountEggFilterPanel({ search = eggSearch,
         api = hopperEnvironment.ChilliEggSearch, session = session, screenGui = screenGui,
         readJson = readJson, writeJson = writeJson,
-        scaling = { Drag = support.DragScale, Panel = support.PanelScale } })
+        scaling = { Drag = support.DragScale, Panel = support.PanelScale,
+            Rubberband = support.Rubberband, Spring = support.SpringStep } })
     session.DisposePanel = filterPanel.Destroy
     local ui = filterPanel.ui
+    hopView.syncHub = filterPanel.SyncAuto
     local hopPage = filterPanel.Page("hop")
 
     -- Seccion Server Hop: el mismo salto y AUTO que la tarjeta flotante y el
@@ -1841,7 +1964,7 @@ do
         local card = ui.make("Frame", "HopStatus", hopPage, { Position = UDim2.fromOffset(0, 56), Size = UDim2.fromOffset(width, 68),
             BackgroundColor3 = C.card, BorderSizePixel = 0 })
         ui.corner(card, 10); ui.stroke(card).Transparency = 0.45
-        ui.text("Caption", card, "ESTADO", 16, 12, width - 220, 14, C.muted, 10, true)
+        ui.text("Caption", card, "Estado", 16, 12, width - 220, 14, C.muted, 11, "semi")
         hopView.status = ui.paragraph("Status", card, statusLabel.Text, 16, 28, width - 220, 30, statusLabel.TextColor3, 12)
         hopView.button = ui.button("ServerHop", card, mainLabel.Text, width - 188, 12, 172, 44)
         hopView.button.BackgroundColor3 = COLORS.action; hopView.button.Border.Color = COLORS.actionBorder
@@ -1854,8 +1977,6 @@ do
             "Muestra la tarjeta Server Hop sobre el juego, fuera del hub.", 196, quickVisible, function()
                 setQuickVisible(not quickVisible)
             end)
-        ui.make("Frame", "AccountDivider", hopPage, { Position = UDim2.fromOffset(0, 260), Size = UDim2.fromOffset(width, 1),
-            BackgroundColor3 = C.border, BackgroundTransparency = 0.3, BorderSizePixel = 0 })
     end
     hopperEnvironment.ChilliEggSearch.QuickHop = function() return quickVisible end
     hopperEnvironment.ChilliEggSearch.SetQuickHop = function(value)

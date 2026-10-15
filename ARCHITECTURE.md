@@ -3,13 +3,21 @@
 ## Mistake Hub (2026-10-14)
 
 `mountEggFilterPanel` crea `MistakeHub` (760 x 560) en el ScreenGui
-`ServerHopButton`: `Header` (logo, titulo, `ToggleSearch` AUTO, `Minimize`),
-`HeaderDivider`, `Sidebar` (`Tab_<id>` con `Indicator`/`Pending`,
-`AutoState`, `AutoMode`, `ByMistakeCredit`), `Pages` con `Page_finder`,
+`ServerHopButton`: `Header` (logo, titulo, `Subtitle`, `ToggleSearch` AUTO,
+`Minimize`), `Sidebar` (`ActiveTab` con `Indicator`, `Tab_<id>` con
+`Pending`, `AutoState`, `AutoMode`, `ByMistakeCredit`), `Pages` con `Page_finder`,
 `Page_filters`, `Page_calc`, `Page_hop` y `Page_settings`, y `ResizeGrip`.
 Las hojas modales son hijas de `MistakeHub` y ocupan el area de paginas
-(`sheet(name, title, height)`, alto maximo 480). No hay lanzador
-`OpenEggFilters` ni boton `ServerAccount`.
+(`sheet(name, title, height, origin)`, alto maximo 480; la tarjeta `Sheet`
+lleva `Zoom` (UIScale)). No hay lanzador `OpenEggFilters` ni boton
+`ServerAccount`. Movimiento: `animate`/`place` y la tabla `motion` (tweens por
+objeto y propiedad, preferencias de accesibilidad, arrastre y resorte); el
+runtime pasa `support.Rubberband` y `support.SpringStep` en `context.scaling`
+y usa los mismos calculos para la tarjeta `Holder`. `panel.SyncAuto(active)`
+repinta AUTO cuando cambia desde el runtime. La funcion del hub esta cerca del
+limite de 200 locales de Luau (el compilador del executor lo aplica; el
+`luau-compile` de CI no lo detecto): el estado nuevo va en tablas o bloques
+`do`.
 
 `panel.Select(id)` muestra una seccion, cierra la hoja, libera los modelos al
 salir de Egg Finder, despliega el hub si estaba plegado, guarda `tab` y

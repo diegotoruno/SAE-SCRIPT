@@ -2626,6 +2626,28 @@ test("egg finder scale keeps the chosen size but always fits the screen", functi
     assert(support.PanelScale(support.DragScale(1, base, {X = 0, Y = 140}), 1.4) == 1.2)
     assert(support.PanelScale(support.DragScale(1, base, {X = -108, Y = 0}), 1.4) == 0.8)
 end)
+test("window drag follows 1:1 inside the screen and resists past the edge", function()
+    assert(support.Rubberband(200, 8, 900, 1000) == 200 and support.Rubberband(8, 8, 900, 1000) == 8)
+    local near, far = support.Rubberband(-12, 8, 900, 1000), support.Rubberband(-200, 8, 900, 1000)
+    assert(near < 8 and near > -12, "past the edge it moves less than the pointer")
+    assert(far < near and 8 - far < 0.55 * 208, "resistance grows with the distance")
+    local right = support.Rubberband(1100, 8, 900, 1000)
+    assert(right > 900 and math.abs((right - 900) - (8 - support.Rubberband(-192, 8, 900, 1000))) < 1e-9)
+    assert(support.Rubberband(20, 8, 4, 1000) > 8, "a window larger than the screen keeps the left edge")
+end)
+test("window spring settles on its target without overshoot", function()
+    local x, v, peak = 120, 0, 0
+    for _ = 1, 90 do
+        x, v = support.SpringStep(x, v, 0, 1 / 60, 0.3)
+        assert(x >= -1e-9, "critically damped: never crosses the target"); peak = math.max(peak, x)
+    end
+    assert(peak <= 120 and math.abs(x) < 0.5 and math.abs(v) < 3)
+    local thrown, speed = support.SpringStep(0, 600, 0, 1 / 60, 0.3)
+    assert(thrown > 0 and speed < 600, "the release velocity carries on and decays")
+    local a = support.SpringStep(10, 0, 0, 1 / 30, 0.3)
+    local half, halfSpeed = support.SpringStep(10, 0, 0, 1 / 60, 0.3)
+    assert(math.abs(a - support.SpringStep(half, halfSpeed, 0, 1 / 60, 0.3)) < 1e-9, "same path at any frame rate")
+end)
 
 local calculatorBonus = {Golden = 1.5, Rainbow = 2.5, Silver = 0.2}
 local calculatorModules = {
