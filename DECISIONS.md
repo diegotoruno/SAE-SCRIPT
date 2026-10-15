@@ -1,5 +1,12 @@
 # Decisiones de producto e implementacion
 
+## Tarjeta flotante de una sola fila (2026-10-15)
+
+Sin plegado: un tamano unico (250 x 60) con AUTO y el contador. El estado se
+guarda en `ink.statusText` para la seccion Server Hop del hub, que lo sigue
+mostrando. La clave `collapsed` de `server_hop_button_ui.json` deja de leerse
+y de escribirse; si existe se ignora.
+
 ## Tarjeta flotante con paleta propia de manga (2026-10-15)
 
 La tarjeta usa `support.MANGA` en lugar de los tokens del tema y queda fuera

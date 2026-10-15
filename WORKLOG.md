@@ -1,5 +1,10 @@
 # Estado del trabajo
 
+## 2026-10-15 - Tarjeta Server Hop minima
+
+Una fila con AUTO y el contador sobre la vineta de los ojos de fondo; sin
+plegado, estado ni firma. Asa de tamano mas pequena fuera del contador.
+
 ## 2026-10-15 - Tarjeta Server Hop estilo manga
 
 Nuevo aspecto de panel de manga en tonos de Gojo para la tarjeta flotante (ver

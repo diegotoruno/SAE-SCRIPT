@@ -1,5 +1,12 @@
 # Pruebas y validacion
 
+## 2026-10-15 - Tarjeta Server Hop minima
+
+Build, compilaciones y 227 regresiones. Potassium, solo lecturas: una sola
+GUI, tarjeta 250 x 60 a escala 1 con fondo, AUTO, contador y asa dentro de la
+superficie, sin solaparse y sin textos truncados. Pendiente a mano: aspecto
+del fondo, pulsar el contador, AUTO, arrastre y asa.
+
 ## 2026-10-15 - Tarjeta Server Hop estilo manga
 
 Build, compilaciones y 227 regresiones (incluye contraste de `support.MANGA`).

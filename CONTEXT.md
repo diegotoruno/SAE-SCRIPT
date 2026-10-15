@@ -1,5 +1,13 @@
 # Contexto del proyecto
 
+## Tarjeta flotante minima con la vineta de fondo (2026-10-15)
+
+La vineta de los ojos arriba (completa o en franja) no le gusto al usuario;
+eligio llevarla de fondo tenue de la tarjeta. Despues pidio quitar el plegado
+y dejar solo el boton de AUTO y el contador: la tarjeta pierde el estado y la
+firma By Mistake. El asa de tamano se conserva porque es la unica forma de
+cambiar su tamano.
+
 ## Tarjeta flotante Server Hop con estetica de manga (2026-10-15)
 
 El usuario conserva el diseno de Mistake Hub y pidio un diseno nuevo y

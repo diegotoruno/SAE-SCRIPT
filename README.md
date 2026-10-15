@@ -82,7 +82,7 @@ El ingreso previsto incluye escala y mutaciones; excluye bonos personales y boos
 
 ## Mistake Hub
 
-Todas las opciones viven en una sola ventana, **Mistake Hub**: cabecera con la marca, AUTO y plegar; barra lateral con las secciones y, al pie, el estado de AUTO y la firma **By Mistake**. Estilo inspirado en macOS (barra lateral con iconos, capsula de seleccion azul, Builder Sans) con tema **Claro**, **Oscuro** o **Sistema**; detalles en [DESIGN.md](DESIGN.md).
+Todas las opciones viven en una sola ventana, **Mistake Hub**: cabecera con la marca, AUTO y plegar; barra lateral con las secciones y, al pie, el enlace de TikTok. Estilo inspirado en macOS (barra lateral con iconos, capsula de seleccion azul, Builder Sans) con tema **Claro**, **Oscuro** o **Sistema**; detalles en [DESIGN.md](DESIGN.md).
 
 | Seccion | Que contiene |
 | --- | --- |
@@ -92,7 +92,7 @@ Todas las opciones viven en una sola ventana, **Mistake Hub**: cabecera con la m
 | **Server Hop** | Estado y boton **Server Hop**, interruptores **AUTO** y **Acceso rapido flotante**, y la cuenta para Best Ping. |
 | **Ajustes** | Apariencia (**Claro / Oscuro / Sistema**); notificacion, sonido y prueba de alerta; atajos y **Restablecer tamaño y posición**. |
 
-El unico elemento flotante es el **acceso rapido** de Server Hop (la tarjeta con AUTO y Server Hop). Se muestra u oculta con el interruptor **Acceso rapido flotante** de la seccion Server Hop y la preferencia se guarda. El boton de la cabecera **pliega** el hub a una barra con la marca y AUTO; **Alt izquierdo** lo oculta o lo muestra, tambien cuando estas editando un filtro. Sin teclado (iPad) el hub no se oculta: al cargar vuelve a verse, plegado si lo dejaste asi. La esquina inferior derecha cambia el tamaño y la cabecera lo arrastra.
+El unico elemento flotante es el **acceso rapido** de Server Hop (una tarjeta de una sola fila con AUTO y el contador de Server Hop; el estado completo esta en la seccion Server Hop). Se muestra u oculta con el interruptor **Acceso rapido flotante** de la seccion Server Hop y la preferencia se guarda. El boton de la cabecera **pliega** el hub a una barra con la marca y AUTO; **Alt izquierdo** lo oculta o lo muestra, tambien cuando estas editando un filtro. Sin teclado (iPad) el hub no se oculta: al cargar vuelve a verse, plegado si lo dejaste asi. La esquina inferior derecha cambia el tamaño y la cabecera lo arrastra.
 
 La lista del Egg Finder muestra exclusivamente huevos actuales del mapa, con imagen o modelo, ingreso, rareza, escala, peso, mutaciones y zona.
 

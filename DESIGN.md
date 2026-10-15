@@ -84,35 +84,28 @@ comprueba sus contrastes. Tonos de Gojo: papel blanco frio `#F6F8FF`, tinta
 azul noche `#0E1024`, acento azul `#2563EB` a violeta `#7C3AED`, trama lavanda
 y sombra violeta `#4C1D95`.
 
+- Una sola fila, sin plegado, estado ni firma: AUTO y el contador (el boton
+  Server Hop, que muestra la accion o la cuenta atras). 250 x 60: AUTO en
+  (8, 8) de 56 x 44 y contador desde x = 70 hasta 20 px del borde derecho, de
+  44 px de alto. El estado completo sigue en la seccion Server Hop del hub.
 - Superficie de papel con borde de tinta de 3 px, esquinas de 4 px y sombra
   solida violeta desplazada 5 px abajo a la derecha (sin sombra difusa).
-  Trama de puntos lavanda en la esquina inferior izquierda.
-- Franja de los ojos (`mistake_hop_banner.jpg`, recorte de unos 9:1 de un
-  panel de manga) arriba de la tarjeta en ambos tamanos, con borde de tinta de
-  2 px: abierta 300 x 32, plegada 216 x 24. Se descarga de `stable` como el
-  icono; sin ella la tarjeta mide 320 x 116 / 232 x 66 y la fila va arriba.
-- Expandido 320 x 156 con franja (fila en y = 50, estado en y = 102).
-  Fila de 44 px: AUTO (60 px), boton Server Hop
-  (flexible) y plegado (32 px). Debajo, el estado en un recuadro de narracion
-  (borde de tinta de 1.5 px, texto de 11 px alineado a la izquierda, dos
-  lineas como maximo). Abajo a la derecha, junto al asa, la firma By Mistake
-  en Bangers 13 y tinta.
-- Plegado 232 x 96 con franja (fila en y = 38). La misma fila con 34 px de alto (AUTO 52, plegado 28,
-  rotulo 18) y la firma debajo. El estado se oculta.
-- Boton Server Hop: vineta con degradado azul a violeta, borde de tinta de 2.5 px y rotulo en
-  Bangers 21, blanco con contorno de tinta. Lineas de velocidad blancas,
-  quietas y tenues en reposo; mientras hay un salto se aclaran y corren en
-  bucle (0.45 s, lineal), y el boton baja al 85 % de opacidad. Con movimiento
-  reducido no corren. Pulsar atenua el degradado al instante y baja el rotulo
-  1 px.
-- AUTO: etiqueta en Bangers 14 (azul si esta activo, azul gris si no) e interruptor
-  cuadrado de 38 x 20 (plegado 32 x 16) con borde de tinta: pista azul o lavanda
+- Fondo: la vineta de los ojos (`mistake_hop_banner.jpg`, recorte 4:1 de un
+  panel de manga) cubre la tarjeta, recortada al centro, tenida de lavanda
+  (`backdrop`) y al 78 % de transparencia. Se descarga de `stable` como el
+  icono; sin ella, una trama de puntos lavanda en la esquina inferior
+  izquierda.
+- Contador: vineta con degradado azul a violeta, borde de tinta de 2.5 px y
+  rotulo en Bangers 21, blanco con contorno de tinta. Lineas de velocidad
+  blancas, quietas y tenues en reposo; mientras hay un salto se aclaran y
+  corren en bucle (0.45 s, lineal), y el boton baja al 85 % de opacidad. Con
+  movimiento reducido no corren. Pulsar atenua el degradado al instante y baja
+  el rotulo 1 px.
+- AUTO: etiqueta en Bangers 14 (azul si esta activo, azul gris si no) e
+  interruptor cuadrado de 38 x 20 con borde de tinta: pista azul o lavanda
   palida y perilla de tinta.
-- Plegado: cuadro de papel con borde de tinta y chevron de tinta de 2 px.
-- Colores del estado sobre el papel: avisos en `alert`, exito en `go` y el
-  resto en `soft`. La seccion Server Hop del hub conserva los colores del tema.
-- Asa de tamano en la esquina inferior derecha: tres trazos diagonales de
-  1.5 px dentro del borde, trama lavanda al 60 % y azul al pasar o
+- Asa de tamano de 18 x 18 en la esquina inferior derecha, fuera del
+  contador: tres trazos diagonales de 1.5 px (3, 7 y 11 px) dentro del borde, trama lavanda al 60 % y azul al pasar o
   arrastrar (120 ms, Quad Out). Escala la tarjeta entera (UIScale) entre
   0.75 y 1.75, sin pasar del ancho/alto de la pantalla, y fija el borde
   izquierdo. Las medidas de arriba son a escala 1.
@@ -239,8 +232,8 @@ pestanas laterales, secciones con interruptores), con la paleta propia.
 
 ## Interaccion
 
-La firma `By Mistake` vive solo al pie de la tarjeta de acceso rapido; la
-marca de agua del TikTok, solo al pie de la barra lateral. No hay etiqueta flotante en la pantalla (retirada el
+Sin firma `By Mistake` visible (retirada de la tarjeta de acceso rapido el
+2026-10-15); la marca de agua del TikTok vive solo al pie de la barra lateral. No hay etiqueta flotante en la pantalla (retirada el
 2026-10-11) ni lanzadores flotantes del panel o de la cuenta (retirados con
 el hub, 2026-10-14).
 
@@ -277,7 +270,7 @@ espaciado entre letras: los rotulos van en tipo oracion, no en mayusculas.
 | Control, valor de atajo | 13 | Medium (pestanas SemiBold) |
 | Etiqueta de fila | 12 | Medium |
 | Ayuda, rotulo (`Estado`, `Mutaciones`) | 11 | Medium / SemiBold |
-| Insignia, firma de la tarjeta | 10 | Bold |
+| Insignia | 10 | Bold |
 
 Los parrafos de ayuda usan `LineHeight` 1.1.
 

@@ -449,6 +449,7 @@ local function createFinderSupport()
         paper = {246, 248, 255}, ink = {14, 16, 36}, soft = {58, 62, 92}, dots = {150, 140, 210},
         blue = {37, 99, 235}, violet = {124, 58, 237}, shade = {76, 29, 149}, onBlue = {255, 255, 255},
         press = {205, 210, 230}, trackOff = {218, 220, 236}, alert = {176, 24, 40}, go = {20, 110, 56},
+        backdrop = {170, 180, 255},
     }
     function support.ThemePreference(value)
         return (value == "light" or value == "dark" or value == "system") and value or "system"
@@ -1423,16 +1424,14 @@ do
         end
     end)
 
-    -- Estado de la ventana: si esta plegada y donde la dejaste. Se recuerda
+    -- Estado de la tarjeta: AUTO, tamano y donde la dejaste. Se recuerda
     -- tambien entre saltos, porque vive en un archivo, no en memoria.
     local uiState = readJson(UI_FILE, {})
-    local collapsed = (uiState.collapsed == true)
     local autoEnabled = (uiState.auto == true)
     -- Acceso rapido: la tarjeta flotante se puede ocultar desde el hub.
     local quickVisible = (uiState.quick ~= false)
-    -- La franja de los ojos va arriba en ambos tamanos y suma su alto.
-    local EXPANDED_SIZE = hubTheme.banner and Vector2.new(320, 156) or Vector2.new(320, 116)
-    local COLLAPSED_SIZE = hubTheme.banner and Vector2.new(232, 96) or Vector2.new(232, 66)
+    -- Una sola fila: AUTO y el contador (boton Server Hop). Sin plegado.
+    local CARD_SIZE = Vector2.new(250, 60)
     local savedPosition = UDim2.new(0.5, 0, 0, 26)
     if type(uiState.pos) == "table" then
         local pos = uiState.pos
@@ -1455,8 +1454,8 @@ do
     holder.AnchorPoint = Vector2.new(0.5, 0)
     holder.Position = savedPosition
     holder.Size = UDim2.fromOffset(
-        collapsed and COLLAPSED_SIZE.X or EXPANDED_SIZE.X,
-        collapsed and COLLAPSED_SIZE.Y or EXPANDED_SIZE.Y
+        CARD_SIZE.X,
+        CARD_SIZE.Y
     )
     holder.BackgroundTransparency = 1
     holder.BorderSizePixel = 0
@@ -1470,7 +1469,7 @@ do
         local camera = workspace.CurrentCamera
         local viewport = camera and camera.ViewportSize
         if not viewport or viewport.X <= 0 or viewport.Y <= 0 then return nil end
-        return math.min((viewport.X - 16) / EXPANDED_SIZE.X, (viewport.Y - 16) / EXPANDED_SIZE.Y)
+        return math.min((viewport.X - 16) / CARD_SIZE.X, (viewport.Y - 16) / CARD_SIZE.Y)
     end
     local holderScale = Instance.new("UIScale")
     holderScale.Name = "UserScale"
@@ -1504,22 +1503,6 @@ do
         item.Parent = parent
         return item
     end
-    -- Chevron de dos segmentos: no depende de glifos de la fuente.
-    local function chevronSegments(parent)
-        local segments = {}
-        for index = 1, 2 do
-            local segment = Instance.new("Frame")
-            segment.Name = "Chevron" .. index
-            segment.AnchorPoint = Vector2.new(0.5, 0.5)
-            segment.Size = UDim2.fromOffset(7, 1.5)
-            segment.BackgroundColor3 = COLORS.muted
-            segment.BorderSizePixel = 0
-            segment.Position = UDim2.new(0.5, index == 1 and -2.5 or 2.5, 0.5, 0)
-            segment.Parent = parent
-            segments[index] = segment
-        end
-        return segments
-    end
     -- Sombra solida de vineta: un bloque violeta desplazado abajo a la derecha.
     ink.shadow = Instance.new("Frame")
     ink.shadow.Name = "Shadow"
@@ -1537,8 +1520,22 @@ do
     surface.Parent = holder
     round(surface, 4)
     outline(surface, ink.ink).Thickness = 3
-    -- Trama de puntos en la esquina inferior izquierda, como el tono de un manga.
-    for row = 0, 2 do
+    -- Fondo: la vineta de los ojos, tenue y teñida de lavanda, cubre toda la
+    -- tarjeta (recortada al centro). Sin ella, una trama de puntos en la
+    -- esquina inferior izquierda, como el tono de un manga.
+    if hubTheme.banner then
+        ink.banner = Instance.new("ImageLabel")
+        ink.banner.Name = "Backdrop"
+        ink.banner.Size = UDim2.fromScale(1, 1)
+        ink.banner.BackgroundTransparency = 1
+        ink.banner.Image = hubTheme.banner
+        ink.banner.ImageColor3 = ink.backdrop
+        ink.banner.ImageTransparency = 0.78
+        ink.banner.ScaleType = Enum.ScaleType.Crop
+        ink.banner.Parent = surface
+        round(ink.banner, 4)
+    end
+    for row = 0, hubTheme.banner and -1 or 2 do
         for column = 0, 5 - row * 2 do
             local dot = Instance.new("Frame")
             dot.Name = "Tone"
@@ -1596,22 +1593,6 @@ do
         end
     end
 
-    -- Franja de los ojos (vineta de manga de unos 9:1) arriba de la tarjeta,
-    -- abierta o plegada, con borde de tinta.
-    if hubTheme.banner then
-        ink.banner = Instance.new("ImageLabel")
-        ink.banner.Name = "Banner"
-        ink.banner.Position = UDim2.fromOffset(10, 10)
-        ink.banner.Size = UDim2.new(1, -20, 0, 32)
-        ink.banner.BackgroundColor3 = ink.paper
-        ink.banner.BorderSizePixel = 0
-        ink.banner.Image = hubTheme.banner
-        ink.banner.ScaleType = Enum.ScaleType.Crop
-        ink.banner.Parent = surface
-        round(ink.banner, 3)
-        outline(ink.banner, ink.ink).Thickness = 2
-    end
-
     -- Boton de accion: vineta azul a violeta con borde de tinta y rotulo de onomatopeya.
     local button = Instance.new("TextButton")
     button.Name = "ServerHop"
@@ -1658,32 +1639,6 @@ do
     mainLabel.Position = UDim2.fromOffset(8, 0)
     mainLabel.Size = UDim2.new(1, -16, 1, 0)
 
-    -- Recuadro de narracion: el estado va en una caja con borde fino de tinta.
-    local statusLabel = label("Status", surface, 11, ink.soft, true)
-    statusLabel.Position = UDim2.fromOffset(12, hubTheme.banner and 102 or 62)
-    statusLabel.Size = UDim2.new(1, -24, 0, 30)
-    statusLabel.TextWrapped = true
-    statusLabel.TextXAlignment = Enum.TextXAlignment.Left
-    statusLabel.BackgroundColor3 = ink.paper
-    statusLabel.BackgroundTransparency = 0
-    outline(statusLabel, ink.ink).Thickness = 1.5
-    do
-        local padding = Instance.new("UIPadding")
-        padding.PaddingLeft = UDim.new(0, 8)
-        padding.PaddingRight = UDim.new(0, 8)
-        padding.Parent = statusLabel
-    end
-
-    -- La firma del autor va abajo a la derecha, junto al asa, en ambas versiones.
-    local creditLabel = label("ByMistakeCredit", surface, 13, ink.ink, true, ink.title)
-    creditLabel.AnchorPoint = Vector2.new(1, 1)
-    creditLabel.Position = UDim2.new(1, -26, 1, -3)
-    creditLabel.Size = UDim2.fromOffset(110, 15)
-    creditLabel.TextXAlignment = Enum.TextXAlignment.Right
-    creditLabel.Text = "By Mistake"
-    creditLabel.Active = false
-    creditLabel.Selectable = false
-
     -- La seccion Server Hop del hub repite el texto, el estado y AUTO de la tarjeta.
     local hopView = {}
     local function setLabel(text)
@@ -1696,10 +1651,8 @@ do
     local function setStatus(text, color)
         if not session.alive then return end
         uiAccess()
-        statusLabel.Text = text
-        ink.status = color or COLORS.muted
-        -- Sobre el papel: avisos en rojo tinta, exito en verde y el resto en azul gris.
-        statusLabel.TextColor3 = color == COLORS.amber and ink.alert or color == COLORS.green and ink.go or ink.soft
+        -- La tarjeta no muestra el estado: lo guarda para la seccion Server Hop del hub.
+        ink.statusText, ink.status = text, color or COLORS.muted
         if hopView.status then hopView.status.Text = text; hopView.status.TextColor3 = color or COLORS.muted end
     end
 
@@ -1752,7 +1705,6 @@ do
     local function saveUi()
         uiAccess()
         local state = readJson(UI_FILE, {})
-        state.collapsed = collapsed
         state.auto = autoEnabled
         state.quick = quickVisible
         state.scale = holderScale.Scale
@@ -1768,20 +1720,6 @@ do
     local function draggedRecently()
         return dragging or (os.clock() - lastDragAt) < 0.25
     end
-
-    -- Plegar/desplegar, a la derecha del boton principal.
-    local toggle = Instance.new("TextButton")
-    toggle.Name = "Toggle"
-    toggle.AutoButtonColor = true
-    toggle.AnchorPoint = Vector2.new(1, 0)
-    toggle.BackgroundColor3 = ink.paper
-    toggle.BorderSizePixel = 0
-    toggle.Text = ""
-    toggle.Parent = surface
-    round(toggle, 3)
-    outline(toggle, ink.ink).Thickness = 2
-    local toggleChevron = chevronSegments(toggle)
-    for _, segment in ipairs(toggleChevron) do segment.BackgroundColor3 = ink.ink; segment.Size = UDim2.fromOffset(8, 2) end
 
     -- AUTO: etiqueta e interruptor; enciende/apaga el encadenado automatico. Se
     -- guarda en server_hop_button_ui.json para que siga encendido entre saltos.
@@ -1843,47 +1781,15 @@ do
         if hopView.syncHub then hopView.syncHub(autoEnabled) end
     end
 
-    local function applyCollapsed(value, instant)
-        collapsed = value
-        local size = value and COLLAPSED_SIZE or EXPANDED_SIZE
-        local pad = value and 8 or 10
-        local row = value and 34 or 44
-        local chip = value and 52 or 60
-        local side = value and 28 or 32
-        instant = instant or reducedMotion
-        local tween = TweenInfo.new(0.22, Enum.EasingStyle.Quint, Enum.EasingDirection.Out)
-        local function place(object, properties, done)
-            if instant then cardPlace(object, properties); if done then done() end
-            else cardTween(object, tween, properties, done) end
-        end
-
-        -- El estado solo se ve con la tarjeta ya abierta: nunca sobresale.
-        -- Con la franja de los ojos, la fila de controles va debajo de ella.
-        local top = pad
-        if ink.banner then
-            local strip = value and 24 or 32
-            place(ink.banner, { Position = UDim2.fromOffset(pad, pad), Size = UDim2.new(1, -2 * pad, 0, strip) })
-            top = pad + strip + (value and 6 or 8)
-        end
-        if value then statusLabel.Visible = false end
-        place(holder, { Size = UDim2.fromOffset(size.X, size.Y) }, function()
-            if not collapsed then statusLabel.Visible = true end
-        end)
-        place(autoChip, { Position = UDim2.fromOffset(pad, top), Size = UDim2.fromOffset(chip, row) })
-        place(button, { Position = UDim2.fromOffset(pad + chip + 6, top),
-            Size = UDim2.new(1, -(2 * pad + chip + side + 12), 0, row) })
-        place(toggle, { Position = UDim2.new(1, -pad, 0, top), Size = UDim2.fromOffset(side, row) })
-        mainLabel.TextSize = value and 18 or 21
-        autoLabel.TextSize = value and 12 or 14
-        autoLabel.Size = UDim2.new(1, 0, 0, value and 13 or 16)
-        autoTrack.Size = value and UDim2.fromOffset(32, 16) or UDim2.fromOffset(38, 20)
-        -- Desplegado muestra "plegar" (chevron arriba); plegado, "desplegar".
-        toggleChevron[1].Rotation = value and 45 or -45
-        toggleChevron[2].Rotation = value and -45 or 45
-    end
+    -- Fila unica: AUTO a la izquierda y el contador a la derecha, dejando la
+    -- esquina inferior derecha libre para el asa de tamano.
+    autoChip.Position = UDim2.fromOffset(8, 8)
+    autoChip.Size = UDim2.fromOffset(56, 44)
+    button.Position = UDim2.fromOffset(70, 8)
+    button.Size = UDim2.new(1, -90, 0, 44)
 
     -- Los eventos del marco no reciben necesariamente los de sus controles.
-    -- Registrar toda la tarjeta, incluidos texto, AUTO y plegado.
+    -- Registrar toda la tarjeta, incluidos AUTO y el contador.
     local function beginDrag(input)
         if pendingDrag or resizeInput then return end
         if input.UserInputType == Enum.UserInputType.MouseButton1
@@ -1998,13 +1904,13 @@ do
     -- Asa de tamano en la esquina inferior derecha: tres trazos diagonales
     -- dentro del borde redondeado. Se crea despues de registrar el arrastre de
     -- la tarjeta, asi que tirar de ella redimensiona sin mover.
-    local GRIP_TRACES = { {11, 5}, {16, 11}, {21, 17} } -- distancia a la esquina, largo
+    local GRIP_TRACES = { {6, 3}, {10, 7}, {14, 11} } -- distancia a la esquina, largo
     local grip = Instance.new("TextButton")
     grip.Name = "ResizeGrip"
     grip.AutoButtonColor = false
     grip.AnchorPoint = Vector2.new(1, 1)
     grip.Position = UDim2.fromScale(1, 1)
-    grip.Size = UDim2.fromOffset(24, 24)
+    grip.Size = UDim2.fromOffset(18, 18)
     grip.BackgroundTransparency = 1
     grip.Text = ""
     grip.ZIndex = 3
@@ -2062,7 +1968,7 @@ do
         elseif input.UserInputType ~= Enum.UserInputType.MouseMovement then
             return
         end
-        local base = collapsed and COLLAPSED_SIZE or EXPANDED_SIZE
+        local base = CARD_SIZE
         local scale = support.ResizeHopperScale(resizeScale, base, input.Position - resizeStart, fitScaleLimit())
         holderScale.Scale = scale
         -- AnchorPoint centra la tarjeta en X: compensar para fijar el borde izquierdo.
@@ -2091,15 +1997,6 @@ do
     end)
     connect(UserInputService.WindowFocusReleased, finishResize)
 
-    connect(toggle.MouseButton1Click, function()
-        if draggedRecently() then
-            return
-        end
-        applyCollapsed(not collapsed)
-        saveUi()
-    end)
-
-    applyCollapsed(collapsed, true)
 
     local eggSearch = createMapEggSearch(readJson, writeJson, writeText)
     session.DisposeSearch = eggSearch.Dispose
@@ -2288,7 +2185,7 @@ do
             BackgroundColor3 = C.raised, BorderSizePixel = 0 })
         ui.corner(card, 10); ui.stroke(card).Transparency = 0.8
         ui.text("Caption", card, "Estado", 16, 12, width - 220, 14, C.secondary, 11, "semi")
-        hopView.status = ui.paragraph("Status", card, statusLabel.Text, 16, 28, width - 220, 30, ink.status or COLORS.muted, 12)
+        hopView.status = ui.paragraph("Status", card, ink.statusText or "", 16, 28, width - 220, 30, ink.status or COLORS.muted, 12)
         hopView.button = ui.button("ServerHop", card, mainLabel.Text, width - 188, 12, 172, 44)
         ui.primary(hopView.button); hopView.button.TextSize = 15
         hopView.setAuto = ui.toggleRow(hopPage, "AutoSearch", "Búsqueda automática (AUTO)",
