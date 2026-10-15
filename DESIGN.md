@@ -91,12 +91,15 @@ pestanas laterales, secciones con interruptores), con la paleta propia.
   su texto pasa a blanco y el resto queda secundario. Pasar el puntero da
   fondo al 40 % y pulsar al 70 %, al instante. Filtros muestra un punto
   champan con cambios sin aplicar. Al pie, el estado de AUTO (verde si esta
-  activo) con su modo (11 px), la firma `By Mistake` en champan y, debajo,
-  la marca de agua `TikTok @mistakeontt` (11 px, secundaria; blanca al pasar
-  o pulsar). Tocarla copia `https://www.tiktok.com/@mistakeontt` con el
+  activo) con su modo (11 px), la tarjeta del TikTok y la firma `By
+  Mistake` en champan.
+- Tarjeta del TikTok (marca de agua): 148 x 92 en superficie con borde,
+  etiqueta `TIKTOK` (10 px Bold, secundaria), el enlace a la vista
+  `tiktok.com/@mistakeontt` (11 px, blanco) y `Copiar enlace` (primario
+  champan, 32 px). El boton copia `https://www.tiktok.com/@mistakeontt` con el
   portapapeles del executor (`setclipboard`; Roblox no tiene API de
-  portapapeles) y dice `Enlace copiado` 1,6 s; sin portapapeles muestra el
-  enlace.
+  portapapeles) y dice `Copiado` en verde 1,6 s; sin portapapeles dice `Sin
+  portapapeles` y el enlace sigue escrito.
 - Egg Finder: tarjeta de estado (punto, titulo de 15 px, linea explicativa y
   reloj a la derecha), fila `Filtros` con el resumen guardado y `Editar
   filtros`, barra `Todos N` / `Cumplen N` / `Ver:` / `Orden:` en cuatro

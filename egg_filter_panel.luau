@@ -374,36 +374,36 @@ local function mountEggFilterPanel(context)
         corner(dot, 4)
         tabButtons[item.id] = { button = b, label = label, dot = dot, y = 16 + (index - 1) * 46, text = item.label }
     end
-    local sideState = text("AutoState", sidebar, "AUTO apagado", 16, HUB_HEIGHT - HEADER - 112, SIDEBAR - 32, 16, C.muted, 11, true)
-    local sideMode = paragraph("AutoMode", sidebar, "", 16, HUB_HEIGHT - HEADER - 94, SIDEBAR - 32, 28, C.muted, 11)
-    local credit = text("ByMistakeCredit", sidebar, "By Mistake", 16, HUB_HEIGHT - HEADER - 54, SIDEBAR - 32, 14, C.gold, 11, true)
-    credit.TextTransparency = 0.25
-    -- Marca de agua: el TikTok del autor. Tocarlo copia el enlace si el
-    -- executor tiene portapapeles (Roblox no lo expone); si no, lo muestra.
+    local sideState = text("AutoState", sidebar, "AUTO apagado", 16, HUB_HEIGHT - HEADER - 194, SIDEBAR - 32, 16, C.muted, 11, true)
+    local sideMode = paragraph("AutoMode", sidebar, "", 16, HUB_HEIGHT - HEADER - 176, SIDEBAR - 32, 28, C.muted, 11)
+    -- Marca de agua: el TikTok del autor, con el enlace a la vista y un boton
+    -- que dice lo que hizo. Copia con el portapapeles del executor (Roblox no
+    -- lo expone); sin el, el enlace sigue escrito en la tarjeta.
     do
-        local LINK, LABEL = "https://www.tiktok.com/@mistakeontt", "TikTok @mistakeontt"
-        local tiktok = make("TextButton", "TikTok", sidebar, { Position = UDim2.fromOffset(16, HUB_HEIGHT - HEADER - 40),
-            Size = UDim2.fromOffset(SIDEBAR - 32, 24), BackgroundTransparency = 1, BorderSizePixel = 0, Text = LABEL,
-            TextColor3 = C.muted, TextSize = 11, Font = Enum.Font.GothamMedium, TextXAlignment = Enum.TextXAlignment.Left,
-            TextTruncate = Enum.TextTruncate.AtEnd, TextStrokeTransparency = 1, AutoButtonColor = false })
+        local LINK = "https://www.tiktok.com/@mistakeontt"
+        local card = make("Frame", "TikTok", sidebar, { Position = UDim2.fromOffset(12, HUB_HEIGHT - HEADER - 136),
+            Size = UDim2.fromOffset(SIDEBAR - 24, 92), BackgroundColor3 = C.card, BorderSizePixel = 0 })
+        corner(card, 10); stroke(card, C.border)
+        text("Label", card, "TIKTOK", 10, 10, SIDEBAR - 44, 12, C.muted, 10, true)
+        text("Link", card, "tiktok.com/@mistakeontt", 10, 24, SIDEBAR - 44, 16, C.white, 11)
+        local copyLink = button("CopyLink", card, "Copiar enlace", 10, 50, SIDEBAR - 44, 32)
+        primary(copyLink)
         local stamp = 0
-        connect(tiktok:GetPropertyChangedSignal("GuiState"), function()
-            local state = tiktok.GuiState
-            local lit = state == Enum.GuiState.Press or (state == Enum.GuiState.Hover and UIS.MouseEnabled)
-            if state == Enum.GuiState.Press then place(tiktok, { TextColor3 = C.white })
-            else animate(tiktok, MOTION.color, { TextColor3 = lit and C.white or C.muted }) end
-        end)
-        connect(tiktok.Activated, function()
+        connect(copyLink.Activated, function()
             local copy = type(setclipboard) == "function" and setclipboard or type(toclipboard) == "function" and toclipboard or nil
             local copied = copy ~= nil and pcall(copy, LINK)
             access(); stamp += 1
             local mine = stamp
-            tiktok.Text = copied and "Enlace copiado" or "tiktok.com/@mistakeontt"
+            copyLink.Text = copied and "Copiado" or "Sin portapapeles"
+            if copied then paint(copyLink, C.success, C.green, C.green) end
             task.delay(1.6, function()
-                if panel.alive and session.alive and stamp == mine then access(); tiktok.Text = LABEL end
+                if not panel.alive or not session.alive or stamp ~= mine then return end
+                access(); copyLink.Text = "Copiar enlace"; primary(copyLink)
             end)
         end)
     end
+    local credit = text("ByMistakeCredit", sidebar, "By Mistake", 16, HUB_HEIGHT - HEADER - 34, SIDEBAR - 32, 14, C.gold, 11, true)
+    credit.TextTransparency = 0.25
 
     -- Paginas: una por seccion, en el area a la derecha de la barra lateral.
     local pageArea = make("Frame", "Pages", root, { Position = UDim2.fromOffset(PAGE_X, PAGE_Y),

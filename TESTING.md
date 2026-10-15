@@ -4,14 +4,17 @@
 
 El usuario noto que se perdio la animacion de abrir (subir 12 px apenas se
 veia). Ahora el hub se expande desde el 85 % con el centro fijo (280 ms) y se
-encoge al minimizar (180 ms). Marca de agua `TikTok @mistakeontt` al pie de la
+encoge al minimizar (180 ms). Tarjeta del TikTok (marca de agua) al pie de la
 barra lateral. Build, ocho compilaciones y 223 regresiones. Potassium, GUI de
 prueba aparte, sin entradas simuladas ni teleports, solo `SetMinimized`,
-`Open`, `Close` y `GetStatus`; 15 de 15:
+`Open`, `Close` y `GetStatus`; 18 de 18:
 
 - El bundle compila con `loadstring` (limite de 200 locales).
-- Marca de agua presente, `TextFits`, dentro de la barra lateral y sin
-  solaparse con el estado de AUTO ni con `By Mistake`.
+- Tarjeta del TikTok (pedida despues, con el enlace a la vista y el boton
+  de copiar): etiqueta, enlace, `Copiar enlace`, `Copiado` y `Sin
+  portapapeles` con `TextFits`; tarjeta dentro de la barra lateral, boton
+  dentro de la tarjeta (32 px) y sin solaparse con las pestanas, el estado
+  de AUTO ni `By Mistake`.
 - Minimizar encoge con el centro fijo; al terminar queda oculto en su sitio y
   con la escala completa.
 - Abrir empieza en 0.85 de la escala con el mismo centro; a 80 ms va por 0.973
