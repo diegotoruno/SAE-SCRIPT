@@ -412,6 +412,83 @@ local function createFinderSupport()
         local lead = velocity + omega * offset
         return target + (offset + lead * dt) * decay, (velocity - omega * lead * dt) * decay
     end
+    -- Temas de Mistake Hub: los mismos tokens en claro y oscuro (RGB 0-255).
+    -- Cambiar de tema reemplaza cada color por el del mismo token, asi que dos
+    -- tokens que comparten valor en un tema lo comparten tambien en el otro.
+    -- Los blancos casi puros (#FFFFFE, #FFFFFD) separan tokens que en oscuro difieren.
+    support.THEMES = {
+        light = {
+            window = {250, 250, 249}, sidebar = {233, 234, 237}, raised = {255, 255, 255}, field = {255, 255, 255},
+            control = {252, 252, 252}, controlHover = {240, 240, 243}, trackOff = {226, 226, 231}, fill = {120, 120, 128},
+            separator = {60, 60, 67}, text = {29, 29, 31}, secondary = {99, 99, 104}, tertiary = {142, 142, 147},
+            accent = {0, 122, 255}, accentStrong = {0, 110, 230}, accentText = {0, 100, 214}, selection = {219, 235, 255},
+            onAccent = {255, 255, 254}, knob = {255, 255, 253},
+            yellow = {255, 189, 46}, yellowEdge = {222, 161, 35}, yellowGlyph = {153, 87, 0},
+            green = {26, 117, 52}, greenDot = {52, 199, 89}, successTint = {227, 245, 232},
+            orange = {168, 74, 0}, orangeDot = {255, 149, 0}, orangeTint = {255, 242, 224},
+            red = {196, 30, 40}, scrim = {0, 0, 0},
+        },
+        dark = {
+            window = {30, 30, 32}, sidebar = {40, 40, 43}, raised = {44, 44, 47}, field = {44, 44, 47},
+            control = {58, 58, 61}, controlHover = {70, 70, 74}, trackOff = {72, 72, 76}, fill = {128, 128, 136},
+            separator = {229, 229, 234}, text = {245, 245, 247}, secondary = {164, 164, 170}, tertiary = {124, 124, 130},
+            accent = {10, 132, 255}, accentStrong = {0, 98, 204}, accentText = {100, 172, 255}, selection = {28, 58, 96},
+            onAccent = {255, 255, 254}, knob = {255, 255, 253},
+            yellow = {255, 189, 46}, yellowEdge = {222, 161, 35}, yellowGlyph = {153, 87, 0},
+            green = {74, 214, 120}, greenDot = {48, 209, 88}, successTint = {24, 52, 34},
+            orange = {255, 170, 60}, orangeDot = {255, 159, 10}, orangeTint = {58, 42, 16},
+            red = {255, 138, 130}, scrim = {0, 0, 0},
+        },
+    }
+    -- Transparencia de los materiales de vidrio en cada tema: ventana y barra lateral.
+    support.THEME_ALPHA = { light = { window = 0.04, sidebar = 0.12 }, dark = { window = 0.04, sidebar = 0.12 } }
+    -- Tarjeta flotante de Server Hop: panel de manga en tonos de Gojo, igual
+    -- con cualquier tema del hub. Papel blanco frio, tinta azul noche, trama
+    -- lavanda, acento azul a violeta y sombra violeta.
+    support.MANGA = {
+        paper = {246, 248, 255}, ink = {14, 16, 36}, soft = {58, 62, 92}, dots = {150, 140, 210},
+        blue = {37, 99, 235}, violet = {124, 58, 237}, shade = {76, 29, 149}, onBlue = {255, 255, 255},
+        press = {205, 210, 230}, trackOff = {218, 220, 236}, alert = {176, 24, 40}, go = {20, 110, 56},
+        backdrop = {170, 180, 255},
+    }
+    function support.ThemePreference(value)
+        return (value == "light" or value == "dark" or value == "system") and value or "system"
+    end
+    -- Roblox no expone la apariencia del sistema operativo: "Sistema" sigue la
+    -- hora local del dispositivo, como el modo automatico de macOS.
+    function support.ResolveTheme(preference, hour)
+        preference = support.ThemePreference(preference)
+        if preference ~= "system" then return preference end
+        hour = tonumber(hour) or 12
+        return (hour >= 7 and hour < 19) and "light" or "dark"
+    end
+    local function themeKey(rgb) return rgb[1] * 65536 + rgb[2] * 256 + rgb[3] end
+    -- Valor de cada color de un tema al pasar al otro; falla si es ambiguo.
+    function support.ThemeRemap(from, to)
+        local source, target, map = support.THEMES[from], support.THEMES[to], {}
+        for token, rgb in pairs(source) do
+            local key, wanted = themeKey(rgb), target[token]
+            assert(wanted, "Falta el token " .. token .. " en " .. to)
+            if map[key] then
+                assert(themeKey(map[key]) == themeKey(wanted), "Color ambiguo entre temas: " .. token)
+            end
+            map[key] = wanted
+        end
+        return map, themeKey
+    end
+    -- Contraste WCAG entre dos colores RGB 0-255.
+    function support.ThemeContrast(a, b)
+        local function luminance(rgb)
+            local total = 0
+            for index, weight in ipairs({0.2126, 0.7152, 0.0722}) do
+                local value = rgb[index] / 255
+                total += weight * (value <= 0.04045 and value / 12.92 or ((value + 0.055) / 1.055) ^ 2.4)
+            end
+            return total
+        end
+        local x, y = luminance(a), luminance(b)
+        return (math.max(x, y) + 0.05) / (math.min(x, y) + 0.05)
+    end
     -- A fresh one-player reserve is already the minimum eligible occupancy.
     -- Larger groups still require a new OccupancyAsc proof before a hop.
     function support.BalancedReserve(servers, now, current, visited, limit)
@@ -888,20 +965,14 @@ do
     local API_429_COOLDOWN_SECONDS = 30   -- castigo tras un HTTP 429
     local AUTO_POLL_SECONDS = 0.5
 
-    -- Misma paleta grafito/champan del Egg Finder; el rojo queda solo en la accion.
-    local COLORS = {
-        surface = Color3.fromRGB(20, 24, 30),
-        raised = Color3.fromRGB(30, 36, 44),
-        border = Color3.fromRGB(56, 65, 77),
-        action = Color3.fromRGB(192, 57, 66),
-        actionBorder = Color3.fromRGB(232, 120, 126),
-        text = Color3.fromRGB(239, 243, 247),
-        muted = Color3.fromRGB(170, 183, 197),
-        gold = Color3.fromRGB(224, 197, 149),
-        green = Color3.fromRGB(147, 215, 191),
-        onGreen = Color3.fromRGB(15, 35, 29),
-        amber = Color3.fromRGB(242, 190, 122),
-    }
+    -- La tarjeta flotante usa los tokens del tema de Mistake Hub (hubTheme):
+    -- se leen al usarlos, asi siempre son los del tema activo.
+    local hubTheme
+    local COLOR_TOKENS = { surface = "window", raised = "control", border = "separator", action = "accentStrong",
+        actionText = "onAccent", text = "text", muted = "secondary", credit = "accentText", accent = "accent",
+        green = "green", greenTint = "successTint", amber = "orange", tertiary = "tertiary" }
+    local COLORS = setmetatable({}, { __index = function(_, name) return hubTheme.colors[COLOR_TOKENS[name] or name] end })
+    local UI_FONT = "rbxasset://fonts/families/BuilderSans.json"
 
     -- ---------------------------------------------------------------- utilidades
     local session
@@ -939,6 +1010,94 @@ do
         local ok = store.Write(path, value)
         if not ok then warn("[EggFinder] No se pudo guardar " .. path) end
         return ok
+    end
+    -- Tema de Mistake Hub: Claro, Oscuro o Sistema (hora local del dispositivo,
+    -- porque Roblox no expone la apariencia del sistema). Se resuelve antes de
+    -- crear la interfaz para que no haya destello del tema equivocado; los
+    -- colores viven en hubTheme.colors y se actualizan en su sitio.
+    hubTheme = { listeners = {}, roots = {} }
+    do
+        local function palette(name)
+            local colors = {}
+            for token, rgb in pairs(support.THEMES[name]) do colors[token] = Color3.fromRGB(rgb[1], rgb[2], rgb[3]) end
+            return colors
+        end
+        function hubTheme.Hour()
+            local ok, now = pcall(os.date, "*t")
+            return ok and type(now) == "table" and now.hour or nil
+        end
+        hubTheme.preference = support.ThemePreference(readJson("chilli_egg_panel_ui.json", {}).theme)
+        hubTheme.name = support.ResolveTheme(hubTheme.preference, hubTheme.Hour())
+        hubTheme.colors = palette(hubTheme.name)
+        hubTheme.alpha = table.clone(support.THEME_ALPHA[hubTheme.name])
+        -- Cada color de la interfaz pasa al mismo token del tema nuevo. Las
+        -- imagenes no se tocan: su color blanco es el de la imagen original.
+        function hubTheme.Apply(name)
+            if name == hubTheme.name or not support.THEMES[name] then return false end
+            local map, key = support.ThemeRemap(hubTheme.name, name)
+            local function swap(object, property)
+                local color = object[property]
+                local rgb = map[key({math.round(color.R * 255), math.round(color.G * 255), math.round(color.B * 255)})]
+                if rgb then object[property] = Color3.fromRGB(rgb[1], rgb[2], rgb[3]) end
+            end
+            uiAccess()
+            for _, listener in ipairs(hubTheme.listeners) do if listener.before then pcall(listener.before) end end
+            uiAccess()
+            for _, root in ipairs(hubTheme.roots) do
+                if root.Parent ~= nil or root.Name == "FocusRing" then
+                    for _, object in ipairs({root, unpack(root:GetDescendants())}) do
+                        -- La tarjeta flotante conserva su paleta de manga.
+                        if hubTheme.fixed and (object == hubTheme.fixed or object:IsDescendantOf(hubTheme.fixed)) then continue end
+                        if object:IsA("UIStroke") then swap(object, "Color")
+                        elseif object:IsA("GuiObject") then
+                            swap(object, "BackgroundColor3")
+                            if object:IsA("TextLabel") or object:IsA("TextButton") or object:IsA("TextBox") then swap(object, "TextColor3") end
+                            if object:IsA("TextBox") then swap(object, "PlaceholderColor3") end
+                            if object:IsA("ScrollingFrame") then swap(object, "ScrollBarImageColor3") end
+                        end
+                    end
+                end
+            end
+            for token, color in pairs(palette(name)) do hubTheme.colors[token] = color end
+            hubTheme.name = name
+            for property, value in pairs(support.THEME_ALPHA[name]) do hubTheme.alpha[property] = value end
+            for _, listener in ipairs(hubTheme.listeners) do
+                if listener.after then
+                    local ok, err = pcall(listener.after)
+                    if not ok then warn("[MistakeHub] Tema: " .. tostring(err)) end
+                end
+            end
+            return true
+        end
+        -- Claro, Oscuro o Sistema; se guarda con las preferencias del hub.
+        function hubTheme.Set(preference)
+            hubTheme.preference = support.ThemePreference(preference)
+            hubTheme.Apply(support.ResolveTheme(hubTheme.preference, hubTheme.Hour()))
+            for _, listener in ipairs(hubTheme.listeners) do
+                if listener.preference then pcall(listener.preference) end
+            end
+            return hubTheme.name
+        end
+        -- Imagenes publicadas junto al script en stable: el icono del hub y la
+        -- vineta de la tarjeta flotante. Se guardan una vez en el workspace del
+        -- executor y se cargan con getcustomasset (Roblox no lee archivos
+        -- locales). Sin esas funciones, sin red o sin un JPEG valido: nil, y el
+        -- hub usa la M y la tarjeta queda sin vineta.
+        local function publishedImage(file)
+            local ok, image = pcall(function()
+                local custom = getcustomasset or getsynasset
+                if type(custom) ~= "function" or type(writefile) ~= "function" then return nil end
+                if not (type(isfile) == "function" and isfile(file)) then
+                    local body = game:HttpGet("https://raw.githubusercontent.com/diegotoruno/SAE-SCRIPT/stable/" .. file)
+                    if type(body) ~= "string" or #body < 1024 or string.sub(body, 1, 2) ~= "\255\216" then return nil end
+                    writefile(file, body)
+                end
+                return custom(file)
+            end)
+            return ok and type(image) == "string" and image ~= "" and image or nil
+        end
+        hubTheme.icon = publishedImage("mistake_hub_icon.jpg")
+        hubTheme.banner = publishedImage("mistake_hop_banner.jpg")
     end
     -- Plain text for people (the readable hunt report); failures stay silent.
     local function writeText(path, text)
@@ -1253,16 +1412,26 @@ do
         if session.alertSound then session.alertSound:Destroy() end
         if screenGui.Parent then screenGui:Destroy() end
     end
+    -- Con Sistema, el tema sigue la hora local: se revisa cada 30 s y el bucle
+    -- termina con la sesion.
+    table.insert(hubTheme.roots, screenGui)
+    task.spawn(function()
+        while session.alive do
+            task.wait(30)
+            if session.alive and hubTheme.preference == "system" then
+                uiAccess(); hubTheme.Apply(support.ResolveTheme("system", hubTheme.Hour()))
+            end
+        end
+    end)
 
-    -- Estado de la ventana: si esta plegada y donde la dejaste. Se recuerda
+    -- Estado de la tarjeta: AUTO, tamano y donde la dejaste. Se recuerda
     -- tambien entre saltos, porque vive en un archivo, no en memoria.
     local uiState = readJson(UI_FILE, {})
-    local collapsed = (uiState.collapsed == true)
     local autoEnabled = (uiState.auto == true)
     -- Acceso rapido: la tarjeta flotante se puede ocultar desde el hub.
     local quickVisible = (uiState.quick ~= false)
-    local EXPANDED_SIZE = Vector2.new(320, 116)
-    local COLLAPSED_SIZE = Vector2.new(232, 66)
+    -- Una sola fila: AUTO y el contador (boton Server Hop). Sin plegado.
+    local CARD_SIZE = Vector2.new(250, 60)
     local savedPosition = UDim2.new(0.5, 0, 0, 26)
     if type(uiState.pos) == "table" then
         local pos = uiState.pos
@@ -1272,28 +1441,35 @@ do
         end
     end
 
-    -- Tarjeta grafito: AUTO, accion principal y plegado comparten una fila;
-    -- estado y firma tienen filas propias para que ningun texto se encime.
+    -- Panel de manga: papel, tinta gruesa y sombra solida desplazada, con su
+    -- propia paleta (support.MANGA) que el tema del hub no cambia. AUTO, accion
+    -- principal y plegado comparten una fila; estado y firma tienen filas
+    -- propias para que ningun texto se encime.
+    local ink = {}
+    for token, rgb in pairs(support.MANGA) do ink[token] = Color3.fromRGB(rgb[1], rgb[2], rgb[3]) end
+    pcall(function() ink.title = Font.fromEnum(Enum.Font.Bangers) end)
+    ink.title = ink.title or Font.new(UI_FONT, Enum.FontWeight.Heavy)
     local holder = Instance.new("Frame")
     holder.Name = "Holder"
     holder.AnchorPoint = Vector2.new(0.5, 0)
     holder.Position = savedPosition
     holder.Size = UDim2.fromOffset(
-        collapsed and COLLAPSED_SIZE.X or EXPANDED_SIZE.X,
-        collapsed and COLLAPSED_SIZE.Y or EXPANDED_SIZE.Y
+        CARD_SIZE.X,
+        CARD_SIZE.Y
     )
-    holder.BackgroundColor3 = COLORS.surface
+    holder.BackgroundTransparency = 1
     holder.BorderSizePixel = 0
     holder.Active = true
     holder.Visible = quickVisible
     holder.Parent = screenGui
+    hubTheme.fixed = holder
 
     -- Tamano elegido con el asa: escala toda la tarjeta, plegada o no.
     local function fitScaleLimit()
         local camera = workspace.CurrentCamera
         local viewport = camera and camera.ViewportSize
         if not viewport or viewport.X <= 0 or viewport.Y <= 0 then return nil end
-        return math.min((viewport.X - 16) / EXPANDED_SIZE.X, (viewport.Y - 16) / EXPANDED_SIZE.Y)
+        return math.min((viewport.X - 16) / CARD_SIZE.X, (viewport.Y - 16) / CARD_SIZE.Y)
     end
     local holderScale = Instance.new("UIScale")
     holderScale.Name = "UserScale"
@@ -1314,11 +1490,11 @@ do
         stroke.Parent = object
         return stroke
     end
-    local function label(name, parent, size, color, bold)
+    local function label(name, parent, size, color, bold, font)
         local item = Instance.new("TextLabel")
         item.Name = name
         item.BackgroundTransparency = 1
-        item.Font = bold and Enum.Font.GothamBold or Enum.Font.GothamMedium
+        item.FontFace = font or Font.new(UI_FONT, bold and Enum.FontWeight.SemiBold or Enum.FontWeight.Regular)
         item.Text = ""
         item.TextSize = size
         item.TextColor3 = color
@@ -1327,24 +1503,52 @@ do
         item.Parent = parent
         return item
     end
-    -- Chevron de dos segmentos: no depende de glifos de la fuente.
-    local function chevronSegments(parent)
-        local segments = {}
-        for index = 1, 2 do
-            local segment = Instance.new("Frame")
-            segment.Name = "Chevron" .. index
-            segment.AnchorPoint = Vector2.new(0.5, 0.5)
-            segment.Size = UDim2.fromOffset(7, 1.5)
-            segment.BackgroundColor3 = COLORS.muted
-            segment.BorderSizePixel = 0
-            segment.Position = UDim2.new(0.5, index == 1 and -2.5 or 2.5, 0.5, 0)
-            segment.Parent = parent
-            segments[index] = segment
-        end
-        return segments
+    -- Sombra solida de vineta: un bloque violeta desplazado abajo a la derecha.
+    ink.shadow = Instance.new("Frame")
+    ink.shadow.Name = "Shadow"
+    ink.shadow.Position = UDim2.fromOffset(5, 5)
+    ink.shadow.Size = UDim2.fromScale(1, 1)
+    ink.shadow.BackgroundColor3 = ink.shade
+    ink.shadow.BorderSizePixel = 0
+    ink.shadow.Parent = holder
+    round(ink.shadow, 4)
+    local surface = Instance.new("Frame")
+    surface.Name = "Surface"
+    surface.Size = UDim2.fromScale(1, 1)
+    surface.BackgroundColor3 = ink.paper
+    surface.BorderSizePixel = 0
+    surface.Parent = holder
+    round(surface, 4)
+    outline(surface, ink.ink).Thickness = 3
+    -- Fondo: la vineta de los ojos, tenue y teñida de lavanda, cubre toda la
+    -- tarjeta (recortada al centro). Sin ella, una trama de puntos en la
+    -- esquina inferior izquierda, como el tono de un manga.
+    if hubTheme.banner then
+        ink.banner = Instance.new("ImageLabel")
+        ink.banner.Name = "Backdrop"
+        ink.banner.Size = UDim2.fromScale(1, 1)
+        ink.banner.BackgroundTransparency = 1
+        ink.banner.Image = hubTheme.banner
+        ink.banner.ImageColor3 = ink.backdrop
+        ink.banner.ImageTransparency = 0.78
+        ink.banner.ScaleType = Enum.ScaleType.Crop
+        ink.banner.Parent = surface
+        round(ink.banner, 4)
     end
-    round(holder, 14)
-    outline(holder, COLORS.border)
+    for row = 0, hubTheme.banner and -1 or 2 do
+        for column = 0, 5 - row * 2 do
+            local dot = Instance.new("Frame")
+            dot.Name = "Tone"
+            dot.AnchorPoint = Vector2.new(0.5, 0.5)
+            dot.Position = UDim2.new(0, 10 + column * 6 + (row % 2) * 3, 1, -8 - row * 5)
+            dot.Size = UDim2.fromOffset(3 - row * 0.5, 3 - row * 0.5)
+            dot.BackgroundColor3 = ink.dots
+            dot.BackgroundTransparency = 0.35 + row * 0.15
+            dot.BorderSizePixel = 0
+            dot.Parent = surface
+            round(dot, 2)
+        end
+    end
 
     -- Movimiento de la tarjeta: un tween por propiedad que parte del valor
     -- actual, cancela el anterior y se cancela al destruir su objeto.
@@ -1389,35 +1593,51 @@ do
         end
     end
 
+    -- Boton de accion: vineta azul a violeta con borde de tinta y rotulo de onomatopeya.
     local button = Instance.new("TextButton")
     button.Name = "ServerHop"
-    button.AutoButtonColor = true
+    button.AutoButtonColor = false
     button.Text = ""
-    button.BackgroundColor3 = COLORS.action
+    button.BackgroundColor3 = ink.onBlue
     button.BorderSizePixel = 0
-    button.Parent = holder
-    round(button, 10)
-    outline(button, COLORS.actionBorder, 0.55)
+    button.ClipsDescendants = true
+    button.Parent = surface
+    round(button, 3)
+    outline(button, ink.ink).Thickness = 2.5
+    do
+        local fill = Instance.new("UIGradient")
+        fill.Color = ColorSequence.new(ink.blue, ink.violet)
+        fill.Parent = button
+    end
 
-    local mainLabel = label("Label", button, 18, COLORS.text, true)
+    -- Lineas de velocidad: quietas y tenues en reposo; corren mientras salta.
+    -- Cada trazo se repite media capa despues para que el ciclo no tenga corte.
+    ink.lines = Instance.new("Frame")
+    ink.lines.Name = "SpeedLines"
+    ink.lines.Size = UDim2.fromScale(2, 1)
+    ink.lines.BackgroundTransparency = 1
+    ink.lines.Parent = button
+    for index, streak in ipairs({ {0.03, 0.22, 0.16}, {0.15, 0.44, 0.12}, {0.29, 0.7, 0.19}, {0.07, 0.84, 0.13}, {0.35, 0.3, 0.1} }) do
+        for half = 0, 1 do
+            local line = Instance.new("Frame")
+            line.Name = "Line" .. index
+            line.AnchorPoint = Vector2.new(0, 0.5)
+            line.Position = UDim2.fromScale(streak[1] + half * 0.5, streak[2])
+            line.Size = UDim2.new(streak[3], 0, 0, 2)
+            line.BackgroundColor3 = ink.onBlue
+            line.BackgroundTransparency = 0.72
+            line.BorderSizePixel = 0
+            line.Parent = ink.lines
+        end
+    end
+
+    local mainLabel = label("Label", button, 21, ink.onBlue, true, ink.title)
     mainLabel.Text = "Server Hop"
+    mainLabel.TextStrokeColor3 = ink.ink
+    mainLabel.TextStrokeTransparency = 0
+    mainLabel.ZIndex = 2
     mainLabel.Position = UDim2.fromOffset(8, 0)
     mainLabel.Size = UDim2.new(1, -16, 1, 0)
-
-    local statusLabel = label("Status", holder, 11, COLORS.muted)
-    statusLabel.Position = UDim2.fromOffset(14, 62)
-    statusLabel.Size = UDim2.new(1, -28, 0, 30)
-    statusLabel.TextWrapped = true
-
-    -- La firma tiene su propia fila en ambas versiones; no tapa AUTO ni estado.
-    local creditLabel = label("ByMistakeCredit", holder, 10, COLORS.gold)
-    creditLabel.AnchorPoint = Vector2.new(0.5, 1)
-    creditLabel.Position = UDim2.new(0.5, 0, 1, -6)
-    creditLabel.Size = UDim2.new(1, -24, 0, 12)
-    creditLabel.Text = "By Mistake"
-    creditLabel.TextTransparency = 0.25
-    creditLabel.Active = false
-    creditLabel.Selectable = false
 
     -- La seccion Server Hop del hub repite el texto, el estado y AUTO de la tarjeta.
     local hopView = {}
@@ -1431,8 +1651,8 @@ do
     local function setStatus(text, color)
         if not session.alive then return end
         uiAccess()
-        statusLabel.Text = text
-        statusLabel.TextColor3 = color or COLORS.muted
+        -- La tarjeta no muestra el estado: lo guarda para la seccion Server Hop del hub.
+        ink.statusText, ink.status = text, color or COLORS.muted
         if hopView.status then hopView.status.Text = text; hopView.status.TextColor3 = color or COLORS.muted end
     end
 
@@ -1441,14 +1661,34 @@ do
         if session.alive and busy then setStatus(support.NativeProgressMessage(state), COLORS.muted) end
     end
 
+    -- Mientras salta, las lineas de velocidad se aclaran y corren sin parar.
+    function ink.run(active)
+        if ink.flow then ink.flow:Cancel(); ink.flow = nil end
+        ink.lines.Position = UDim2.fromScale(0, 0)
+        for _, line in ipairs(ink.lines:GetChildren()) do line.BackgroundTransparency = active and 0.4 or 0.72 end
+        if active and not reducedMotion then
+            ink.flow = TweenService:Create(ink.lines, TweenInfo.new(0.45, Enum.EasingStyle.Linear,
+                Enum.EasingDirection.Out, -1), { Position = UDim2.fromScale(-1, 0) })
+            ink.flow:Play()
+        end
+    end
+
     local function setBusy(value)
         if not session.alive then return end
         uiAccess()
         busy = value
-        for _, target in ipairs({button, hopView.button}) do
-            cardTween(target, TweenInfo.new(0.15), { BackgroundTransparency = value and 0.5 or 0 })
-        end
+        cardTween(button, TweenInfo.new(0.15), { BackgroundTransparency = value and 0.15 or 0 })
+        if hopView.button then cardTween(hopView.button, TweenInfo.new(0.15), { BackgroundTransparency = value and 0.5 or 0 }) end
+        ink.run(value)
     end
+
+    -- Pulsar atenua el degradado al instante y hunde el rotulo un pixel.
+    connect(button:GetPropertyChangedSignal("GuiState"), function()
+        local pressed = button.GuiState == Enum.GuiState.Press
+        if pressed then cardPlace(button, { BackgroundColor3 = ink.press })
+        else cardTween(button, TweenInfo.new(0.14, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { BackgroundColor3 = ink.onBlue }) end
+        mainLabel.Position = UDim2.fromOffset(pressed and 9 or 8, pressed and 1 or 0)
+    end)
 
     -- ------------------------------------------------- estado de la ventana
     local DRAG_THRESHOLD = 6
@@ -1465,7 +1705,6 @@ do
     local function saveUi()
         uiAccess()
         local state = readJson(UI_FILE, {})
-        state.collapsed = collapsed
         state.auto = autoEnabled
         state.quick = quickVisible
         state.scale = holderScale.Scale
@@ -1482,85 +1721,75 @@ do
         return dragging or (os.clock() - lastDragAt) < 0.25
     end
 
-    -- Plegar/desplegar, a la derecha del boton principal.
-    local toggle = Instance.new("TextButton")
-    toggle.Name = "Toggle"
-    toggle.AutoButtonColor = true
-    toggle.AnchorPoint = Vector2.new(1, 0)
-    toggle.BackgroundColor3 = COLORS.raised
-    toggle.BorderSizePixel = 0
-    toggle.Text = ""
-    toggle.Parent = holder
-    round(toggle, 10)
-    outline(toggle, COLORS.border, 0.3)
-    local toggleChevron = chevronSegments(toggle)
-
-    -- Chip AUTO: enciende/apaga el encadenado automatico. Se guarda en
-    -- server_hop_button_ui.json para que siga encendido entre saltos.
+    -- AUTO: etiqueta e interruptor; enciende/apaga el encadenado automatico. Se
+    -- guarda en server_hop_button_ui.json para que siga encendido entre saltos.
     local autoChip = Instance.new("TextButton")
     autoChip.Name = "AutoChip"
     autoChip.AutoButtonColor = false
-    autoChip.BackgroundColor3 = COLORS.raised
+    autoChip.BackgroundColor3 = ink.dots
+    autoChip.BackgroundTransparency = 1
     autoChip.BorderSizePixel = 0
     autoChip.Text = ""
-    autoChip.Parent = holder
-    round(autoChip, 10)
-    local autoBorder = outline(autoChip, COLORS.border, 0.3)
+    autoChip.Parent = surface
+    round(autoChip, 3)
 
-    -- Sin AutoButtonColor (cambia de color con el estado): la pulsacion se ve
-    -- al instante como un tono mas oscuro y vuelve en 120 ms al soltar.
+    -- Pasar el raton da un fondo gris suave; pulsar, uno mas firme al instante.
     connect(autoChip:GetPropertyChangedSignal("GuiState"), function()
-        if autoChip.GuiState == Enum.GuiState.Press then cardPlace(autoChip, { BackgroundTransparency = 0.3 })
-        else cardTween(autoChip, TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { BackgroundTransparency = 0 }) end
+        local state = autoChip.GuiState
+        if state == Enum.GuiState.Press then cardPlace(autoChip, { BackgroundTransparency = 0.82 })
+        else cardTween(autoChip, TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+            { BackgroundTransparency = (state == Enum.GuiState.Hover and UserInputService.MouseEnabled) and 0.9 or 1 }) end
     end)
 
-    local autoLabel = label("AutoLabel", autoChip, 11, COLORS.muted, true)
-    autoLabel.Size = UDim2.fromScale(1, 1)
-    autoLabel.Text = "AUTO\nOFF"
+    local autoLabel = label("AutoLabel", autoChip, 14, ink.soft, true, ink.title)
+    autoLabel.Size = UDim2.new(1, 0, 0, 16)
+    autoLabel.Text = "AUTO"
     autoLabel.TextTruncate = Enum.TextTruncate.None
 
+    local autoTrack = Instance.new("Frame")
+    autoTrack.Name = "Switch"
+    autoTrack.AnchorPoint = Vector2.new(0.5, 1)
+    autoTrack.Position = UDim2.new(0.5, 0, 1, -3)
+    autoTrack.Size = UDim2.fromOffset(38, 20)
+    autoTrack.BackgroundColor3 = ink.trackOff
+    autoTrack.BorderSizePixel = 0
+    autoTrack.Parent = autoChip
+    round(autoTrack, 3)
+    outline(autoTrack, ink.ink).Thickness = 2
+    local autoKnob = Instance.new("Frame")
+    autoKnob.Name = "Knob"
+    autoKnob.AnchorPoint = Vector2.new(0, 0.5)
+    autoKnob.Position = UDim2.new(0, 3, 0.5, 0)
+    autoKnob.Size = UDim2.new(1, -6, 1, -6)
+    autoKnob.BackgroundColor3 = ink.ink
+    autoKnob.BorderSizePixel = 0
+    autoKnob.Parent = autoTrack
+    round(autoKnob, 2)
+    Instance.new("UIAspectRatioConstraint", autoKnob).DominantAxis = Enum.DominantAxis.Height
+
+    -- Interruptor: pista azul encendida, lavanda palida apagada; la perilla se desliza.
     local function updateAutoChip()
         uiAccess()
-        autoLabel.Text = autoEnabled and "AUTO\nON" or "AUTO\nOFF"
-        autoChip.BackgroundColor3 = autoEnabled and COLORS.green or COLORS.raised
-        autoLabel.TextColor3 = autoEnabled and COLORS.onGreen or COLORS.muted
-        autoBorder.Color = autoEnabled and COLORS.green or COLORS.border
+        local tween = TweenInfo.new(0.16, Enum.EasingStyle.Quint, Enum.EasingDirection.Out)
+        autoLabel.TextColor3 = autoEnabled and ink.blue or ink.soft
+        local track = { BackgroundColor3 = autoEnabled and ink.blue or ink.trackOff }
+        local knob = { AnchorPoint = Vector2.new(autoEnabled and 1 or 0, 0.5),
+            Position = autoEnabled and UDim2.new(1, -3, 0.5, 0) or UDim2.new(0, 3, 0.5, 0) }
+        if reducedMotion then cardPlace(autoTrack, track); cardPlace(autoKnob, knob)
+        else cardTween(autoTrack, tween, track); cardTween(autoKnob, tween, knob) end
         if hopView.setAuto then hopView.setAuto(autoEnabled) end
         if hopView.syncHub then hopView.syncHub(autoEnabled) end
     end
 
-    local function applyCollapsed(value, instant)
-        collapsed = value
-        local size = value and COLLAPSED_SIZE or EXPANDED_SIZE
-        local pad = value and 8 or 10
-        local row = value and 34 or 44
-        local chip = value and 52 or 60
-        local side = value and 28 or 32
-        instant = instant or reducedMotion
-        local tween = TweenInfo.new(0.22, Enum.EasingStyle.Quint, Enum.EasingDirection.Out)
-        local function place(object, properties, done)
-            if instant then cardPlace(object, properties); if done then done() end
-            else cardTween(object, tween, properties, done) end
-        end
-
-        -- El estado solo se ve con la tarjeta ya abierta: nunca sobresale.
-        if value then statusLabel.Visible = false end
-        place(holder, { Size = UDim2.fromOffset(size.X, size.Y) }, function()
-            if not collapsed then statusLabel.Visible = true end
-        end)
-        place(autoChip, { Position = UDim2.fromOffset(pad, pad), Size = UDim2.fromOffset(chip, row) })
-        place(button, { Position = UDim2.fromOffset(pad + chip + 6, pad),
-            Size = UDim2.new(1, -(2 * pad + chip + side + 12), 0, row) })
-        place(toggle, { Position = UDim2.new(1, -pad, 0, pad), Size = UDim2.fromOffset(side, row) })
-        mainLabel.TextSize = value and 14 or 18
-        autoLabel.TextSize = value and 10 or 11
-        -- Desplegado muestra "plegar" (chevron arriba); plegado, "desplegar".
-        toggleChevron[1].Rotation = value and 45 or -45
-        toggleChevron[2].Rotation = value and -45 or 45
-    end
+    -- Fila unica: AUTO a la izquierda y el contador a la derecha, dejando la
+    -- esquina inferior derecha libre para el asa de tamano.
+    autoChip.Position = UDim2.fromOffset(8, 8)
+    autoChip.Size = UDim2.fromOffset(56, 44)
+    button.Position = UDim2.fromOffset(70, 8)
+    button.Size = UDim2.new(1, -90, 0, 44)
 
     -- Los eventos del marco no reciben necesariamente los de sus controles.
-    -- Registrar toda la tarjeta, incluidos texto, AUTO y plegado.
+    -- Registrar toda la tarjeta, incluidos AUTO y el contador.
     local function beginDrag(input)
         if pendingDrag or resizeInput then return end
         if input.UserInputType == Enum.UserInputType.MouseButton1
@@ -1675,17 +1904,17 @@ do
     -- Asa de tamano en la esquina inferior derecha: tres trazos diagonales
     -- dentro del borde redondeado. Se crea despues de registrar el arrastre de
     -- la tarjeta, asi que tirar de ella redimensiona sin mover.
-    local GRIP_TRACES = { {11, 5}, {16, 11}, {21, 17} } -- distancia a la esquina, largo
+    local GRIP_TRACES = { {6, 3}, {10, 7}, {14, 11} } -- distancia a la esquina, largo
     local grip = Instance.new("TextButton")
     grip.Name = "ResizeGrip"
     grip.AutoButtonColor = false
     grip.AnchorPoint = Vector2.new(1, 1)
     grip.Position = UDim2.fromScale(1, 1)
-    grip.Size = UDim2.fromOffset(24, 24)
+    grip.Size = UDim2.fromOffset(18, 18)
     grip.BackgroundTransparency = 1
     grip.Text = ""
     grip.ZIndex = 3
-    grip.Parent = holder
+    grip.Parent = surface
     local gripTraces = {}
     for index, trace in ipairs(GRIP_TRACES) do
         local line = Instance.new("Frame")
@@ -1694,7 +1923,7 @@ do
         line.Position = UDim2.new(1, -trace[1] / 2, 1, -trace[1] / 2)
         line.Size = UDim2.fromOffset(trace[2], 1.5)
         line.Rotation = -45
-        line.BackgroundColor3 = COLORS.muted
+        line.BackgroundColor3 = ink.dots
         line.BackgroundTransparency = 0.4
         line.BorderSizePixel = 0
         line.ZIndex = 3
@@ -1709,7 +1938,7 @@ do
         local tween = TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
         for _, line in ipairs(gripTraces) do
             TweenService:Create(line, tween, {
-                BackgroundColor3 = active and COLORS.gold or COLORS.muted,
+                BackgroundColor3 = active and ink.blue or ink.dots,
                 BackgroundTransparency = active and 0 or 0.4,
             }):Play()
         end
@@ -1739,7 +1968,7 @@ do
         elseif input.UserInputType ~= Enum.UserInputType.MouseMovement then
             return
         end
-        local base = collapsed and COLLAPSED_SIZE or EXPANDED_SIZE
+        local base = CARD_SIZE
         local scale = support.ResizeHopperScale(resizeScale, base, input.Position - resizeStart, fitScaleLimit())
         holderScale.Scale = scale
         -- AnchorPoint centra la tarjeta en X: compensar para fijar el borde izquierdo.
@@ -1768,15 +1997,6 @@ do
     end)
     connect(UserInputService.WindowFocusReleased, finishResize)
 
-    connect(toggle.MouseButton1Click, function()
-        if draggedRecently() then
-            return
-        end
-        applyCollapsed(not collapsed)
-        saveUi()
-    end)
-
-    applyCollapsed(collapsed, true)
 
     local eggSearch = createMapEggSearch(readJson, writeJson, writeText)
     session.DisposeSearch = eggSearch.Dispose
@@ -1941,7 +2161,7 @@ do
     -- sola ventana. La tarjeta Server Hop es el unico acceso flotante.
     local filterPanel = mountEggFilterPanel({ search = eggSearch,
         api = hopperEnvironment.ChilliEggSearch, session = session, screenGui = screenGui,
-        readJson = readJson, writeJson = writeJson,
+        readJson = readJson, writeJson = writeJson, theme = hubTheme,
         scaling = { Drag = support.DragScale, Panel = support.PanelScale,
             Rubberband = support.Rubberband, Spring = support.SpringStep } })
     session.DisposePanel = filterPanel.Destroy
@@ -1962,13 +2182,12 @@ do
         uiAccess()
         ui.heading(hopPage, "Server Hop", "Cambia de servidor al momento o deja que AUTO salte hasta encontrar tu huevo.", 0)
         local card = ui.make("Frame", "HopStatus", hopPage, { Position = UDim2.fromOffset(0, 56), Size = UDim2.fromOffset(width, 68),
-            BackgroundColor3 = C.card, BorderSizePixel = 0 })
-        ui.corner(card, 10); ui.stroke(card).Transparency = 0.45
-        ui.text("Caption", card, "Estado", 16, 12, width - 220, 14, C.muted, 11, "semi")
-        hopView.status = ui.paragraph("Status", card, statusLabel.Text, 16, 28, width - 220, 30, statusLabel.TextColor3, 12)
+            BackgroundColor3 = C.raised, BorderSizePixel = 0 })
+        ui.corner(card, 10); ui.stroke(card); ui.ink(card, 10)
+        ui.text("Caption", card, "Estado", 16, 12, width - 220, 14, C.secondary, 11, "semi")
+        hopView.status = ui.paragraph("Status", card, ink.statusText or "", 16, 28, width - 220, 30, ink.status or COLORS.muted, 12)
         hopView.button = ui.button("ServerHop", card, mainLabel.Text, width - 188, 12, 172, 44)
-        hopView.button.BackgroundColor3 = COLORS.action; hopView.button.Border.Color = COLORS.actionBorder
-        hopView.button.Font = Enum.Font.GothamBold; hopView.button.TextSize = 15
+        ui.primary(hopView.button); hopView.button.TextSize = 15
         hopView.setAuto = ui.toggleRow(hopPage, "AutoSearch", "Búsqueda automática (AUTO)",
             "Salta de servidor hasta encontrar un huevo que cumpla tus filtros.", 136, autoEnabled, function()
                 setAuto(not autoEnabled)
@@ -1979,6 +2198,15 @@ do
             end)
     end
     hopperEnvironment.ChilliEggSearch.QuickHop = function() return quickVisible end
+    -- Tema del hub: "light", "dark" o "system" (hora local del dispositivo).
+    hopperEnvironment.ChilliEggSearch.Theme = function()
+        return { preference = hubTheme.preference, active = hubTheme.name }
+    end
+    hopperEnvironment.ChilliEggSearch.SetTheme = function(value)
+        assert(session.alive, "Esta sesion ya termino")
+        assert(value == "light" or value == "dark" or value == "system", "Usa light, dark o system")
+        uiAccess(); return hubTheme.Set(value)
+    end
     hopperEnvironment.ChilliEggSearch.SetQuickHop = function(value)
         assert(session.alive, "Esta sesion ya termino")
         assert(type(value) == "boolean", "Usa true o false")
@@ -1990,19 +2218,19 @@ do
     do
         local C, width, column = ui.colors, ui.content, ui.column
         uiAccess()
-        ui.text("AccountTitle", hopPage, "Cuenta y Best Ping", 0, 272, width - 180, 20, C.white, 15, true)
-        local badge = ui.text("AccountState", hopPage, "", width - 170, 272, 170, 20, C.muted, 12, true)
+        ui.text("AccountTitle", hopPage, "Cuenta y Best Ping", 0, 272, width - 180, 20, C.text, 19, true).FontFace = ui.manga
+        local badge = ui.text("AccountState", hopPage, "", width - 170, 272, 170, 20, C.secondary, 12, true)
         badge.TextXAlignment = Enum.TextXAlignment.Right
         ui.paragraph("Privacy", hopPage, "Con tu cookie, este dispositivo pide a Roblox los servidores con mejor ping. "
-            .. "El autor del script no la recibe.", 0, 294, width, 28, C.muted, 11)
+            .. "El autor del script no la recibe.", 0, 294, width, 28, C.secondary, 11)
         local input = ui.make("TextBox", "CookieInput", hopPage, { Position = UDim2.fromOffset(0, 326), Size = UDim2.fromOffset(width, 40),
-            BackgroundColor3 = C.input, BorderSizePixel = 0, Text = "", PlaceholderText = "", ClearTextOnFocus = false,
-            MultiLine = false, TextTransparency = 1, TextSize = 16, Font = Enum.Font.GothamMedium })
-        ui.corner(input, 8); ui.stroke(input)
-        local mask = ui.text("MaskedValue", input, "Toca aquí y pega la cookie completa", 14, 0, width - 28, 40, C.muted, 13)
+            BackgroundColor3 = C.field, BorderSizePixel = 0, Text = "", PlaceholderText = "", ClearTextOnFocus = false,
+            MultiLine = false, TextTransparency = 1, TextSize = 16, FontFace = ui.face("medium"), SelectionImageObject = ui.focusRing })
+        ui.corner(input, 8); ui.stroke(input); ui.halo(input)
+        local mask = ui.text("MaskedValue", input, "Toca aquí y pega la cookie completa", 14, 0, width - 28, 40, C.secondary, 13)
         ui.paragraph("StorageHelp", hopPage, "Guardar permite continuar entre saltos. Se guarda solo aquí, sin cifrado; "
-            .. "otros scripts del executor podrían leerla.", 0, 372, width, 28, C.muted, 11)
-        local message = ui.paragraph("ConnectionMessage", hopPage, "", 0, 404, width, 28, C.muted, 11)
+            .. "otros scripts del executor podrían leerla.", 0, 372, width, 28, C.secondary, 11)
+        local message = ui.paragraph("ConnectionMessage", hopPage, "", 0, 404, width, 28, C.secondary, 11)
         local save = ui.button("SaveAndAuto", hopPage, "Guardar y usar AUTO", 0, 436, column, 36); ui.primary(save)
         local once = ui.button("SessionOnly", hopPage, "Solo esta sesión", column + 8, 436, column, 36)
         local forget = ui.button("ForgetCookie", hopPage, "Borrar cookie", 2 * (column + 8), 436, column, 36)
@@ -2024,7 +2252,7 @@ do
             badge.Text = connecting and "Comprobando..."
                 or state.configured and (state.remembered and "Cuenta guardada" or "Solo esta sesión")
                 or "Sin cuenta"
-            badge.TextColor3 = connecting and C.gold or state.configured and C.green or C.muted
+            badge.TextColor3 = connecting and C.orange or state.configured and C.green or C.secondary
         end
         -- The form counts as open while the hub shows the Server Hop section.
         local function formOpen()

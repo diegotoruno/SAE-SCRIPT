@@ -1,5 +1,45 @@
 # Contexto del proyecto
 
+## Tarjeta flotante minima con la vineta de fondo (2026-10-15)
+
+La vineta de los ojos arriba (completa o en franja) no le gusto al usuario;
+eligio llevarla de fondo tenue de la tarjeta. Despues pidio quitar el plegado
+y dejar solo el boton de AUTO y el contador: la tarjeta pierde el estado y la
+firma By Mistake. El asa de tamano se conserva porque es la unica forma de
+cambiar su tamano.
+
+## Tarjeta flotante Server Hop con estetica de manga (2026-10-15)
+
+El usuario conserva el diseno de Mistake Hub y pidio un diseno nuevo y
+distinto para la tarjeta flotante del boton Server Hop, con estetica de
+anime. Eligio panel de manga, paleta propia fija (no sigue el tema del hub) y
+animaciones sutiles. Tras comparar con una version Gojo (vacio azul noche y
+aro Six Eyes), se quedo con el panel de manga pero en tonos de Gojo.
+
+## Estilo macOS del primer rediseno sobre el hub actual (2026-10-15)
+
+El usuario prefirio el lenguaje visual del primer rediseno (vidrio
+translucido con sombra, barra lateral a toda la altura con semaforo, filas
+agrupadas con lineas finas, desplegables con doble chevron, segmentados,
+interruptores y hojas con X circular) y pidio conservar exactamente las
+opciones del hub de `main`. Tambien pidio: su imagen como icono del hub (en
+lugar de la M), un boton minimizado con mejor aspecto y quitar del pie de la
+barra lateral el estado de AUTO, su modo y la firma, dejando solo el TikTok.
+
+## Mistake Hub con estilo macOS y temas (2026-10-15)
+
+El usuario pidio redisenar el menu de Mistake Hub como una aplicacion nativa de
+macOS (Finder y Ajustes del Sistema: barra lateral clara, acento azul,
+SF Symbols, foco de teclado) y despues un modo oscuro completo con selector
+Claro / Oscuro / Sistema, guardado y sin destello al cargar. Un primer intento
+partio de un `main` local desactualizado (sin el hub, la calculadora ni el
+boton M) y perdio opciones; el usuario confirmo que `main` actual tiene todas
+las opciones correctas y pidio exactamente las mismas, dentro y fuera de los
+menus: solo cambia la UI. Se rehizo sobre `main` 7fb7a44: mismas secciones,
+textos, acciones y piezas flotantes (acceso rapido y boton M); el selector de
+tema va en Ajustes > Apariencia. Roblox no expone la apariencia del sistema,
+asi que Sistema sigue la hora local del dispositivo.
+
 ## Mistake Hub (2026-10-14)
 
 Con la calculadora, el usuario pidio un hub llamado "Mistake Hub" que reuna

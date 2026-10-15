@@ -29,8 +29,13 @@ def build():
                 "sha256": sha, "bytes": len(bundle), "luau": "0.741"}
     (OUT / "version.json").write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
     chilli_sha = hashlib.sha256(chilli).hexdigest()
-    (OUT / "SHA256SUMS").write_text(
-        f"{sha}  chilli_hopper.luau\n{chilli_sha}  chilli_loader.luau\n", encoding="utf-8")
+    sums = f"{sha}  chilli_hopper.luau\n{chilli_sha}  chilli_loader.luau\n"
+    # Icono de Mistake Hub y vineta de la tarjeta: el runtime los descarga de stable una vez.
+    for image in ("mistake_hub_icon.jpg", "mistake_hop_banner.jpg"):
+        data = (ROOT / image).read_bytes()
+        (OUT / image).write_bytes(data)
+        sums += f"{hashlib.sha256(data).hexdigest()}  {image}\n"
+    (OUT / "SHA256SUMS").write_text(sums, encoding="utf-8")
     print(f"Built {len(bundle)} bytes; SHA256 {sha}")
 
 

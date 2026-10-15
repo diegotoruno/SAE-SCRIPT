@@ -1,5 +1,68 @@
 # Pruebas y validacion
 
+## 2026-10-15 - Tarjeta Server Hop minima
+
+Build, compilaciones y 227 regresiones. Potassium, solo lecturas: una sola
+GUI, tarjeta 250 x 60 a escala 1 con fondo, AUTO, contador y asa dentro de la
+superficie, sin solaparse y sin textos truncados. Pendiente a mano: aspecto
+del fondo, pulsar el contador, AUTO, arrastre y asa.
+
+## 2026-10-15 - Tarjeta Server Hop estilo manga
+
+Build, compilaciones y 227 regresiones (incluye contraste de `support.MANGA`).
+Potassium, solo lecturas: carga sin error, fuente Bangers activa, colores de
+papel, tinta, degradado azul a violeta y sombra violeta, una sola GUI, y en
+la tarjeta plegada ningun texto truncado ni control fuera
+de la superficie. Con la franja, abierta y plegada (recargando con la preferencia guardada, sin
+clics): franja, fila, estado y firma dentro de la superficie, sin textos
+truncados. `IsLoaded` de imagenes de
+`getcustomasset` informa false tambien para el icono, que si se ve: no sirve
+para verificar. Pendiente a mano: aspecto de la vineta, pulsar, lineas de
+velocidad durante un salto, AUTO, plegado, asa y cambio de tema del hub.
+
+## 2026-10-15 - Estilo macOS anterior e icono
+
+Build, compilaciones y 226 regresiones. Potassium, sin entradas simuladas
+(solo la API del hub y lecturas): una sola GUI; el icono carga como
+`ImageLabel` desde `mistake_hub_icon.jpg` del workspace; las cinco secciones
+en claro y en oscuro con 0 textos truncados, 0 contrastes por debajo de 4.5:1 y
+0 botones o campos fuera de la ventana; barra lateral con solo semaforo,
+secciones y TikTok; boton minimizado de 56 px con la imagen completa.
+Pendiente a mano: aspecto, pasar el raton y pulsar, teclado/mando, arrastre
+desde la barra lateral y el semaforo.
+
+## 2026-10-15 - Estilo macOS y temas
+
+Build, ocho compilaciones y 226 regresiones (3 nuevas: tokens iguales y
+correspondencia inequivoca entre temas; contraste AA de texto y estados sobre
+cada superficie en ambos temas; preferencia por defecto `system` y limites de
+la hora local).
+
+Inventario frente a `origin/main`: mismos literales de texto en ambos
+archivos salvo los del selector de tema; solo se retiran `Indicator` (barra
+champan, reemplazada por la capsula) y la fuente Gotham. Mismas conexiones de
+eventos salvo las del selector (un `Activated` y un `GuiState` mas) y el halo
+de foco de los campos, unificado en un helper.
+
+Potassium, sesion real, sin entradas simuladas ni teleports; solo la API del
+hub (`Select`, `SetTheme`, `GetStatus`) y lectura de propiedades:
+
+- Roblox no expone tema del sistema: `Theme`, `PreferredTheme`, `DarkMode`,
+  `UITheme` y `AppTheme` no existen en `UserGameSettings` ni en `GuiService`.
+- Un solo ScreenGui `ServerHopButton` tras montar y tras recargar.
+- Las cinco secciones y la tarjeta flotante, en claro y en oscuro: 0 textos
+  truncados, 0 textos por debajo de 4.5:1 (sin contar la `M` del logo, texto
+  grande), 0 botones o campos fuera de su pagina, cabecera, barra lateral u
+  hoja, y 0 solapes entre controles. La primera pasada encontro `Borrar
+  cookie` (4.4:1) y el selector de tema (3.7:1) en oscuro; se corrigieron.
+- Persistencia: con Claro guardado (`theme` en `chilli_egg_panel_ui.json`), al
+  recargar el hub nace en claro (`#F6F6F7`) sin pasar por otro tema.
+- Se restauraron la preferencia (Sistema) y la seccion del usuario.
+
+Pendiente a mano: aspecto general, pasar el raton y pulsar, foco con teclado
+o mando, Alt izquierdo, boton M minimizado, hojas modales, formulario de cuenta
+y el cambio automatico de Sistema a las 7:00 y a las 19:00.
+
 ## 2026-10-14 - Expansion del hub y marca de agua del TikTok
 
 El usuario noto que se perdio la animacion de abrir (subir 12 px apenas se

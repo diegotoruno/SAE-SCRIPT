@@ -1,5 +1,48 @@
 # Decisiones de producto e implementacion
 
+## Tarjeta flotante de una sola fila (2026-10-15)
+
+Sin plegado: un tamano unico (250 x 60) con AUTO y el contador. El estado se
+guarda en `ink.statusText` para la seccion Server Hop del hub, que lo sigue
+mostrando. La clave `collapsed` de `server_hop_button_ui.json` deja de leerse
+y de escribirse; si existe se ignora.
+
+## Tarjeta flotante con paleta propia de manga (2026-10-15)
+
+La tarjeta usa `support.MANGA` en lugar de los tokens del tema y queda fuera
+del cambio de tema (`hubTheme.fixed`). Mismos controles, nombres y acciones;
+solo cambia el aspecto. Las lineas de velocidad solo se mueven durante un
+salto y respetan el movimiento reducido. La firma pasa abajo a la derecha.
+
+## Vineta de la tarjeta publicada en stable (2026-10-15)
+
+`mistake_hop_banner.jpg` sigue el mismo camino que el icono (build, SHA256SUMS,
+CI y `publishedImage` en el runtime). Si no carga, la tarjeta vuelve al tamano
+sin vineta; no hay hueco vacio.
+
+## Icono del hub publicado en stable (2026-10-15)
+
+Roblox no carga imagenes locales: `mistake_hub_icon.jpg` se publica en
+`stable` (build lo copia a `dist` y a `SHA256SUMS`; CI lo sube) y el runtime lo
+guarda una vez en el workspace del executor y lo carga con `getcustomasset`.
+Sin esa funcion, sin red o si no llega un JPEG, el hub usa la M. Minimizar pasa
+al semaforo amarillo de la barra lateral; AUTO del hub y de la tarjeta flotante
+es un interruptor (dejan de mostrar el texto `AUTO ON/OFF`).
+
+## Temas por token y Sistema por hora local (2026-10-15)
+
+Los colores del hub y de la tarjeta flotante salen de `support.THEMES` (claro
+y oscuro con los mismos tokens). Cambiar de tema reemplaza en su sitio cada
+color por el del mismo token en lugar de reconstruir el hub: no se pierden la
+seccion, el formulario de cuenta, los filtros sin aplicar ni la posicion. CI
+exige que la correspondencia entre temas sea inequivoca (por eso hay blancos
+casi puros distintos para `onAccent` y `knob`) y los contrastes AA. Roblox no
+tiene propiedad de tema del sistema (`UserGameSettings` y `GuiService`
+inspeccionados en Potassium): `Sistema` sigue la hora local, claro de 7:00 a
+19:00, como el modo automatico de macOS. Server Hop pasa de rojo a azul
+(accion principal, no destructiva). No hay desenfoque de fondo en Roblox: el
+vidrio es una superficie al 4 % de transparencia.
+
 ## Mistake Hub: una ventana y un solo acceso flotante (2026-10-14)
 
 Pedido del usuario: todas las opciones en un hub, sin botones flotantes,

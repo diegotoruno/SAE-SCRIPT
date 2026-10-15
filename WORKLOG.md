@@ -1,5 +1,40 @@
 # Estado del trabajo
 
+## 2026-10-15 - Variante anime del hub (rama codex/hub-anime)
+
+Sobre el estilo macOS y con los mismos colores y opciones: titulos con
+Bangers, vineta de los ojos tenue en la cabecera con lineas de velocidad,
+trama de puntos en la barra lateral y bordes de tinta con sombra desplazada en
+la ventana y las tarjetas. Funciona en Claro y Oscuro. Build y 227 regresiones
+OK; cargada en Potassium y auditada solo con lecturas. Pendiente de
+comparacion por el usuario.
+
+## 2026-10-15 - Tarjeta Server Hop minima
+
+Una fila con AUTO y el contador sobre la vineta de los ojos de fondo; sin
+plegado, estado ni firma. Asa de tamano mas pequena fuera del contador.
+
+## 2026-10-15 - Tarjeta Server Hop estilo manga
+
+Nuevo aspecto de panel de manga en tonos de Gojo para la tarjeta flotante (ver
+DESIGN); el hub no cambia. La version Gojo descartada queda en la rama local
+`codex/hop-gojo`. La tarjeta muestra arriba, abierta o plegada, una franja
+con los ojos de la vineta que aporto el usuario (la vineta completa era
+demasiado grande). Regresion nueva de contraste de la paleta de manga.
+
+## 2026-10-15 - Estilo macOS anterior e icono propio
+
+Mismo hub y mismas opciones que `main`; vuelve el estilo del primer rediseno
+(ver DESIGN), con temas Claro / Oscuro / Sistema, icono de imagen, boton
+minimizado como icono de app y pie de barra lateral solo con el TikTok.
+
+## 2026-10-15 - Estilo macOS y temas Claro / Oscuro / Sistema
+
+Rama codex/hub-macos-temas sobre main 7fb7a44 (reemplaza el intento
+codex/rediseno-macos, basado en un main viejo y sin publicar). Mismas opciones
+que el hub de main; cambia solo la presentacion y se agrega Ajustes >
+Apariencia. Ver DESIGN, ARCHITECTURE y TESTING.
+
 ## 2026-10-14 - Expansion del hub y TikTok
 
 Rama codex/alt-keeps-button (PR #45). Abrir el hub vuelve a verse: se expande
