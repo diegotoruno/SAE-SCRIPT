@@ -7,6 +7,12 @@ del cambio de tema (`hubTheme.fixed`). Mismos controles, nombres y acciones;
 solo cambia el aspecto. Las lineas de velocidad solo se mueven durante un
 salto y respetan el movimiento reducido. La firma pasa abajo a la derecha.
 
+## Vineta de la tarjeta publicada en stable (2026-10-15)
+
+`mistake_hop_banner.jpg` sigue el mismo camino que el icono (build, SHA256SUMS,
+CI y `publishedImage` en el runtime). Si no carga, la tarjeta vuelve al tamano
+sin vineta; no hay hueco vacio.
+
 ## Icono del hub publicado en stable (2026-10-15)
 
 Roblox no carga imagenes locales: `mistake_hub_icon.jpg` se publica en

@@ -6,7 +6,10 @@ Build, compilaciones y 227 regresiones (incluye contraste de `support.MANGA`).
 Potassium, solo lecturas: carga sin error, fuente Bangers activa, colores de
 papel, tinta, degradado azul a violeta y sombra violeta, una sola GUI, y en
 la tarjeta plegada ningun texto truncado ni control fuera
-de la superficie. Pendiente a mano: vista desplegada, pulsar, lineas de
+de la superficie. Con vineta, desplegada a escala 1.35: vineta, fila, estado y firma dentro de
+la superficie, sin textos truncados. `IsLoaded` de imagenes de
+`getcustomasset` informa false tambien para el icono, que si se ve: no sirve
+para verificar. Pendiente a mano: aspecto de la vineta, pulsar, lineas de
 velocidad durante un salto, AUTO, plegado, asa y cambio de tema del hub.
 
 ## 2026-10-15 - Estilo macOS anterior e icono

@@ -87,7 +87,12 @@ y sombra violeta `#4C1D95`.
 - Superficie de papel con borde de tinta de 3 px, esquinas de 4 px y sombra
   solida violeta desplazada 5 px abajo a la derecha (sin sombra difusa).
   Trama de puntos lavanda en la esquina inferior izquierda.
-- Expandido 320 x 116. Fila superior de 44 px: AUTO (60 px), boton Server Hop
+- Vineta de los ojos (`mistake_hop_banner.jpg`, recorte 4:1 de un panel de
+  manga) arriba de la tarjeta abierta: 300 x 75 en (10, 10), borde de tinta de
+  2.5 px. Se descarga de `stable` como el icono; sin ella la tarjeta mide
+  320 x 116 y la fila queda arriba. Al plegar se oculta, como el estado.
+- Expandido 320 x 196 con vineta (fila en y = 95, estado en y = 147).
+  Fila de 44 px: AUTO (60 px), boton Server Hop
   (flexible) y plegado (32 px). Debajo, el estado en un recuadro de narracion
   (borde de tinta de 1.5 px, texto de 11 px alineado a la izquierda, dos
   lineas como maximo). Abajo a la derecha, junto al asa, la firma By Mistake

@@ -1077,21 +1077,26 @@ do
             end
             return hubTheme.name
         end
-        -- Icono del hub: la imagen publicada junto al script en stable. Se guarda
-        -- una vez en el workspace del executor y se carga con getcustomasset
-        -- (Roblox no lee archivos locales). Sin esas funciones o sin red, la M.
-        local ok, icon = pcall(function()
-            local custom = getcustomasset or getsynasset
-            if type(custom) ~= "function" or type(writefile) ~= "function" then return nil end
-            local file = "mistake_hub_icon.jpg"
-            if not (type(isfile) == "function" and isfile(file)) then
-                local body = game:HttpGet("https://raw.githubusercontent.com/diegotoruno/SAE-SCRIPT/stable/" .. file)
-                if type(body) ~= "string" or #body < 1024 or string.sub(body, 1, 2) ~= "\255\216" then return nil end
-                writefile(file, body)
-            end
-            return custom(file)
-        end)
-        hubTheme.icon = ok and type(icon) == "string" and icon ~= "" and icon or nil
+        -- Imagenes publicadas junto al script en stable: el icono del hub y la
+        -- vineta de la tarjeta flotante. Se guardan una vez en el workspace del
+        -- executor y se cargan con getcustomasset (Roblox no lee archivos
+        -- locales). Sin esas funciones, sin red o sin un JPEG valido: nil, y el
+        -- hub usa la M y la tarjeta queda sin vineta.
+        local function publishedImage(file)
+            local ok, image = pcall(function()
+                local custom = getcustomasset or getsynasset
+                if type(custom) ~= "function" or type(writefile) ~= "function" then return nil end
+                if not (type(isfile) == "function" and isfile(file)) then
+                    local body = game:HttpGet("https://raw.githubusercontent.com/diegotoruno/SAE-SCRIPT/stable/" .. file)
+                    if type(body) ~= "string" or #body < 1024 or string.sub(body, 1, 2) ~= "\255\216" then return nil end
+                    writefile(file, body)
+                end
+                return custom(file)
+            end)
+            return ok and type(image) == "string" and image ~= "" and image or nil
+        end
+        hubTheme.icon = publishedImage("mistake_hub_icon.jpg")
+        hubTheme.banner = publishedImage("mistake_hop_banner.jpg")
     end
     -- Plain text for people (the readable hunt report); failures stay silent.
     local function writeText(path, text)
@@ -1425,7 +1430,8 @@ do
     local autoEnabled = (uiState.auto == true)
     -- Acceso rapido: la tarjeta flotante se puede ocultar desde el hub.
     local quickVisible = (uiState.quick ~= false)
-    local EXPANDED_SIZE = Vector2.new(320, 116)
+    -- Con la vineta de los ojos, la tarjeta abierta crece para mostrarla arriba.
+    local EXPANDED_SIZE = hubTheme.banner and Vector2.new(320, 196) or Vector2.new(320, 116)
     local COLLAPSED_SIZE = Vector2.new(232, 66)
     local savedPosition = UDim2.new(0.5, 0, 0, 26)
     if type(uiState.pos) == "table" then
@@ -1590,6 +1596,22 @@ do
         end
     end
 
+    -- Vineta de los ojos arriba de la tarjeta abierta, con borde de tinta. Se
+    -- oculta al plegar, como el estado.
+    if hubTheme.banner then
+        ink.banner = Instance.new("ImageLabel")
+        ink.banner.Name = "Banner"
+        ink.banner.Position = UDim2.fromOffset(10, 10)
+        ink.banner.Size = UDim2.new(1, -20, 0, 75)
+        ink.banner.BackgroundColor3 = ink.paper
+        ink.banner.BorderSizePixel = 0
+        ink.banner.Image = hubTheme.banner
+        ink.banner.ScaleType = Enum.ScaleType.Crop
+        ink.banner.Parent = surface
+        round(ink.banner, 3)
+        outline(ink.banner, ink.ink).Thickness = 2.5
+    end
+
     -- Boton de accion: vineta azul a violeta con borde de tinta y rotulo de onomatopeya.
     local button = Instance.new("TextButton")
     button.Name = "ServerHop"
@@ -1638,7 +1660,7 @@ do
 
     -- Recuadro de narracion: el estado va en una caja con borde fino de tinta.
     local statusLabel = label("Status", surface, 11, ink.soft, true)
-    statusLabel.Position = UDim2.fromOffset(12, 62)
+    statusLabel.Position = UDim2.fromOffset(12, hubTheme.banner and 147 or 62)
     statusLabel.Size = UDim2.new(1, -24, 0, 30)
     statusLabel.TextWrapped = true
     statusLabel.TextXAlignment = Enum.TextXAlignment.Left
@@ -1836,14 +1858,16 @@ do
         end
 
         -- El estado solo se ve con la tarjeta ya abierta: nunca sobresale.
-        if value then statusLabel.Visible = false end
+        -- Abierta con vineta, la fila de controles baja debajo de ella.
+        local top = (value or not ink.banner) and pad or 95
+        if value then statusLabel.Visible = false; if ink.banner then ink.banner.Visible = false end end
         place(holder, { Size = UDim2.fromOffset(size.X, size.Y) }, function()
-            if not collapsed then statusLabel.Visible = true end
+            if not collapsed then statusLabel.Visible = true; if ink.banner then ink.banner.Visible = true end end
         end)
-        place(autoChip, { Position = UDim2.fromOffset(pad, pad), Size = UDim2.fromOffset(chip, row) })
-        place(button, { Position = UDim2.fromOffset(pad + chip + 6, pad),
+        place(autoChip, { Position = UDim2.fromOffset(pad, top), Size = UDim2.fromOffset(chip, row) })
+        place(button, { Position = UDim2.fromOffset(pad + chip + 6, top),
             Size = UDim2.new(1, -(2 * pad + chip + side + 12), 0, row) })
-        place(toggle, { Position = UDim2.new(1, -pad, 0, pad), Size = UDim2.fromOffset(side, row) })
+        place(toggle, { Position = UDim2.new(1, -pad, 0, top), Size = UDim2.fromOffset(side, row) })
         mainLabel.TextSize = value and 18 or 21
         autoLabel.TextSize = value and 12 or 14
         autoLabel.Size = UDim2.new(1, 0, 0, value and 13 or 16)

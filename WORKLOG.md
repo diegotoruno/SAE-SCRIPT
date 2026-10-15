@@ -4,7 +4,8 @@
 
 Nuevo aspecto de panel de manga en tonos de Gojo para la tarjeta flotante (ver
 DESIGN); el hub no cambia. La version Gojo descartada queda en la rama local
-`codex/hop-gojo`. Regresion nueva de contraste de la paleta de manga.
+`codex/hop-gojo`. La tarjeta abierta muestra arriba la vineta de los ojos que
+aporto el usuario. Regresion nueva de contraste de la paleta de manga.
 
 ## 2026-10-15 - Estilo macOS anterior e icono propio
 
