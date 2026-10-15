@@ -23,14 +23,18 @@ limite de 200 locales de Luau (el compilador del executor lo aplica; el
 salir de Egg Finder, despliega el hub si estaba plegado, guarda `tab` y
 ejecuta el renderer de la seccion: Filtros reconstruye los presets, Ajustes
 sus interruptores y Calculadora la pagina completa; el runtime registra el de
-Server Hop con `panel.OnSelect`. `panel.SetMinimized` encoge el hub a un
-boton de 56 x 56 con el logo: `Restore` (TextButton que lo cubre, toque abre,
-arrastre mueve) y `Header.AutoBadge` (punto de AUTO que pinta
-`paintControls`); `Open` despliega y muestra, `Close` oculta. Alt izquierdo
-encoge el hub abierto hasta el boton y lo oculta (guarda `open=false`,
-`minimized=true`); oculto o minimizado, llama a `Open`, que lo expande. Las tarjetas solo se construyen con
+Server Hop con `panel.OnSelect`. `panel.SetMinimized` oculta el hub en su
+sitio y muestra `MistakeLauncher`, un TextButton de 56 x 56 hermano de
+`MistakeHub` en el ScreenGui (logo `M` y `AutoBadge`, que pinta
+`paintControls`; toque abre, arrastre mueve). `applyMinimized` decide que se
+ve (hub con `open` y sin `minimized`; boton con `open` y `minimized`) y anima
+la entrada y salida en el sitio del hub; `motion.rest` guarda su posicion de
+reposo mientras se mueve. El arrastre comparte resorte y rubber-band entre el
+hub y el boton (`motion.dragObject`). `Open` abre el hub, `Close` oculta los
+dos. Alt izquierdo alterna `SetMinimized`; oculto, llama a `Open`. Las tarjetas solo se construyen con
 `finderVisible()` (abierto, desplegado y en Egg Finder). Se guardan `open`,
-`minimized` y `tab` en `chilli_egg_panel_ui.json`; `open=false` solo se
+`minimized`, `tab` y la posicion del boton (`button = {x, y}`, opcional) en
+`chilli_egg_panel_ui.json`; `open=false` solo se
 respeta con `UserInputService.KeyboardEnabled` y si el archivo ya tiene `tab`.
 `OpenCalculator`, `OpenOptions` (Ajustes), `OpenZones`, `OpenBestHistory` y
 `GetStatus` (agrega `tab` y `minimized`) se conservan.

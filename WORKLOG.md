@@ -1,5 +1,21 @@
 # Estado del trabajo
 
+## 2026-10-14 - Expansion del hub y TikTok
+
+Rama codex/alt-keeps-button (PR #45). Abrir el hub vuelve a verse: se expande
+desde el 85 % con el centro fijo y se encoge al minimizar. Marca de agua:
+tarjeta del TikTok al pie de la barra lateral con el enlace a la vista y
+`Copiar enlace`, que confirma con `Copiado`. Ver
+DESIGN y TESTING.
+
+## 2026-10-14 - Boton M independiente del hub
+
+Rama codex/alt-keeps-button (PR #45) sobre main 185f3e3. El boton M es
+independiente, como el de Chilli Hub: tiene su propia posicion (`button` en
+`chilli_egg_panel_ui.json`) y el hub se abre completo en su sitio, no desde el
+boton. Alt izquierdo minimiza y deja el boton, o abre el hub. Ver DESIGN y
+TESTING.
+
 ## 2026-10-14 - Hub minimizado como boton
 
 Rama codex/hub-minimize-button sobre main 08205dc. Minimizar encoge el hub a

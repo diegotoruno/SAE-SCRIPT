@@ -62,7 +62,7 @@ ni contornos duplicados del texto.
 ## Mistake Hub
 
 Una sola ventana reune todas las opciones; las unicas piezas flotantes son el
-acceso rapido de Server Hop y el propio hub minimizado (boton `M`). Estructura inspirada en Chilli Hub (cabecera,
+acceso rapido de Server Hop y el boton `M` del hub minimizado. Estructura inspirada en Chilli Hub (cabecera,
 pestanas laterales, secciones con interruptores), con la paleta propia.
 
 - 760 x 560, esquinas de 14 px. Cabecera de 56 px, barra lateral de 172 px y
@@ -72,14 +72,17 @@ pestanas laterales, secciones con interruptores), con la paleta propia.
   (punto + `AUTO ON/OFF`, 100 px) y minimizar (32 px, un menos). La cabecera
   arrastra el hub. Sin linea bajo la cabecera: el cambio de tono de la barra
   lateral y el margen de 16 px separan.
-- Minimizado: el hub se encoge hasta un boton de 56 x 56, esquinas de 14 px,
-  con el logo `M` centrado y un punto de 10 px en su esquina superior derecha
-  (verde con AUTO activo, gris apagado; borde del color del fondo). Sin
-  teclado (movil, iPad) no hay Alt izquierdo: este boton es la forma de
-  volver. Tocarlo abre el hub en la misma seccion; arrastrarlo lo mueve (un
-  recorrido de mas de 10 px es arrastre, no toque). Pasar el raton o pulsar
-  ilumina su borde en champan. Las tarjetas y modelos se liberan mientras
-  esta minimizado.
+- Minimizado: el hub se guarda y queda el boton `M`, independiente del hub
+  (como el boton de Chilli Hub): 56 x 56, esquinas de 14 px, logo `M` de
+  32 px centrado y un punto de 10 px en su esquina superior derecha (verde con
+  AUTO activo, gris apagado; borde del color del fondo). Tiene su propia
+  posicion (empieza al borde izquierdo, a media altura) y se arrastra solo.
+  Sin teclado (movil, iPad) no hay Alt izquierdo: este boton es la forma de
+  volver. Tocarlo abre el hub completo en su propio sitio, en la misma
+  seccion, no desde el boton; un recorrido de mas de 10 px es arrastre, no
+  toque. Pasar el raton o pulsar ilumina su borde en champan. Solo se ve con
+  el hub minimizado. Las tarjetas y modelos se liberan mientras esta
+  minimizado.
 - Barra lateral: superficie `Entrada` (#10141A), mas pesada que el contenido,
   sin borde lateral; solo su esquina inferior izquierda sigue la del hub.
   Entradas de 40 px separadas por 6 (Egg Finder, Filtros, Calculadora, Server
@@ -88,7 +91,15 @@ pestanas laterales, secciones con interruptores), con la paleta propia.
   su texto pasa a blanco y el resto queda secundario. Pasar el puntero da
   fondo al 40 % y pulsar al 70 %, al instante. Filtros muestra un punto
   champan con cambios sin aplicar. Al pie, el estado de AUTO (verde si esta
-  activo) con su modo (11 px) y la firma `By Mistake` en champan.
+  activo) con su modo (11 px), la tarjeta del TikTok y la firma `By
+  Mistake` en champan.
+- Tarjeta del TikTok (marca de agua): 148 x 92 en superficie con borde,
+  etiqueta `TIKTOK` (10 px Bold, secundaria), el enlace a la vista
+  `tiktok.com/@mistakeontt` (11 px, blanco) y `Copiar enlace` (primario
+  champan, 32 px). El boton copia `https://www.tiktok.com/@mistakeontt` con el
+  portapapeles del executor (`setclipboard`; Roblox no tiene API de
+  portapapeles) y dice `Copiado` en verde 1,6 s; sin portapapeles dice `Sin
+  portapapeles` y el enlace sigue escrito.
 - Egg Finder: tarjeta de estado (punto, titulo de 15 px, linea explicativa y
   reloj a la derecha), fila `Filtros` con el resumen guardado y `Editar
   filtros`, barra `Todos N` / `Cumplen N` / `Ver:` / `Orden:` en cuatro
@@ -144,7 +155,7 @@ pestanas laterales, secciones con interruptores), con la paleta propia.
 ## Interaccion
 
 La firma `By Mistake` vive al pie de la tarjeta de acceso rapido y de la
-barra lateral del hub. No hay etiqueta flotante en la pantalla (retirada el
+barra lateral del hub; la marca de agua del TikTok, solo en la barra lateral. No hay etiqueta flotante en la pantalla (retirada el
 2026-10-11) ni lanzadores flotantes del panel o de la cuenta (retirados con
 el hub, 2026-10-14).
 
@@ -190,7 +201,9 @@ donde esta.
 | Perilla y color del interruptor, en el mismo frame | 160 ms | Quint Out |
 | Pagina nueva: sube 8 px | 180 ms | Quint Out |
 | `ActiveTab` hasta la pestana activa | 200 ms | Quint Out |
-| Minimizar / abrir el hub, el logo y su posicion en pantalla | 240 ms | Quint Out |
+| Abrir el hub en su sitio: escala 0.85 a 1, centro fijo | 280 ms | Quint Out |
+| Minimizar el hub: escala 1 a 0.85 y se oculta | 180 ms | Quint In |
+| Volver el hub a la pantalla tras cambiar su tamano | 240 ms | Quint Out |
 | Hoja: entra desde su origen, escala 0.9 a 1, velo hasta 35 % | 220 ms | Quint Out |
 | Hoja: sale por el mismo camino | 160 ms | Quint In |
 | Tarjeta flotante: plegar / desplegar | 220 ms | Quint Out |
@@ -200,21 +213,22 @@ donde esta.
   instante (`GuiState` cubre raton, toque y mando); el cambio se confirma al
   soltar. `UIScale` escala desde el `AnchorPoint` y empuja a los hermanos de
   un `UIListLayout`, asi que no se usa para la pulsacion; solo en hojas,
-  que estan centradas.
+  que estan centradas, y en el hub al abrir y minimizar, con la posicion
+  compensada en el mismo tween para que el centro no se mueva.
 - Origen de las hojas: rareza, mutacion, zonas y especie salen de su boton;
   el detalle, de su tarjeta; el historial abierto desde el detalle entra por
   la derecha y `Detalle` vuelve por la izquierda. Sin origen, la hoja sube
   12 px. La hoja que sale ya no bloquea el hub (`Interactable`).
-- Minimizar encoge el hub hacia su logo con la esquina superior izquierda
-  fija; titulo, AUTO y minimizar se van al empezar, el logo se centra (16 a
-  12 px) en el mismo tween y la barra lateral y las paginas se ocultan al
-  terminar. Abrir es el camino inverso y, si el hub entero no cabe donde
-  estaba el boton, se desliza hasta caber en el mismo tiempo.
-- Alt izquierdo sigue el mismo camino: con el hub abierto lo encoge hasta el
-  boton y lo oculta al terminar; oculto o minimizado, lo muestra como boton y
-  lo expande igual que al tocarlo. Otro Alt a mitad de camino lo invierte. La tarjeta flotante muestra su estado solo cuando termina de
-  abrirse.
-- Arrastre del hub y de la tarjeta flotante: 1:1 desde el punto de agarre.
+- El hub aparece y se va en su propio sitio, nunca desde el boton `M`. Como
+  las hojas, abrir lo expande desde el 85 % con el centro fijo; minimizar lo
+  encoge al 85 % por el mismo camino y lo oculta al terminar, y el boton
+  aparece al empezar. Escala y posicion comparten curva y tiempo. Mientras se va no recibe toques (`Interactable`)
+  ni se puede arrastrar. Otro toque a mitad de camino lo invierte.
+- Alt izquierdo hace lo mismo que minimizar y tocar el boton: con el hub
+  abierto lo minimiza y deja el boton `M`; con el boton, abre el hub en su
+  sitio. Si estaba oculto (`Close`), lo abre.
+- La tarjeta flotante muestra su estado solo cuando termina de abrirse.
+- Arrastre del hub, del boton `M` y de la tarjeta flotante: 1:1 desde el punto de agarre.
   Pasado el margen de 8 px resiste cada vez mas (constante 0.55); al soltar
   fuera, un resorte criticamente amortiguado (respuesta 0.3 s, sin rebote)
   vuelve desde donde esta con la velocidad del dedo. Dentro de la pantalla no
