@@ -209,7 +209,10 @@ donde esta.
   fija; titulo, AUTO y minimizar se van al empezar, el logo se centra (16 a
   12 px) en el mismo tween y la barra lateral y las paginas se ocultan al
   terminar. Abrir es el camino inverso y, si el hub entero no cabe donde
-  estaba el boton, se desliza hasta caber en el mismo tiempo. La tarjeta flotante muestra su estado solo cuando termina de
+  estaba el boton, se desliza hasta caber en el mismo tiempo.
+- Alt izquierdo sigue el mismo camino: con el hub abierto lo encoge hasta el
+  boton y lo oculta al terminar; oculto o minimizado, lo muestra como boton y
+  lo expande igual que al tocarlo. Otro Alt a mitad de camino lo invierte. La tarjeta flotante muestra su estado solo cuando termina de
   abrirse.
 - Arrastre del hub y de la tarjeta flotante: 1:1 desde el punto de agarre.
   Pasado el margen de 8 px resiste cada vez mas (constante 0.55); al soltar

@@ -17,7 +17,10 @@ sin teleports; solo `SetMinimized`, `SyncAuto` y `GetStatus`:
   60 ms termina en 760 x 560 entero en pantalla (952, 391), cabecera completa,
   `Restore` y el punto ocultos, logo en 16 y borde normal.
 - La GUI de prueba y sus archivos del workspace se retiraron (restos 0).
-- Pendiente a mano: tocar el boton para abrir y arrastrarlo, en PC e iPad.
+- Alt izquierdo con la misma animacion: vista previa montada minimizada
+  para probarlo con el teclado real (no se simula la tecla).
+- Pendiente a mano: Alt para ocultar y mostrar, tocar el boton para abrir y
+  arrastrarlo, en PC e iPad.
 
 ## 2026-10-14 - Movimiento y respuesta de Mistake Hub
 

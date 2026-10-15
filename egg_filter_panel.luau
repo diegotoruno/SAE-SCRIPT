@@ -626,7 +626,7 @@ local function mountEggFilterPanel(context)
         local goal = { Position = UDim2.fromOffset(12, tabButtons[tab].y) }
         if animated and not motion.reduced then animate(activeTab, MOTION.indicator, goal) else place(activeTab, goal) end
     end
-    local function applyMinimized(animated)
+    local function applyMinimized(animated, done)
         access()
         local size = minimized and UDim2.fromOffset(MINI_WIDTH, HEADER) or UDim2.fromOffset(HUB_WIDTH, HUB_HEIGHT)
         local grip = root:FindFirstChild("ResizeGrip"); if grip then grip.Visible = not minimized end
@@ -634,7 +634,10 @@ local function mountEggFilterPanel(context)
         for _, name in ipairs({ "Title", "Subtitle", "ToggleSearch", "Minimize" }) do header[name].Visible = not minimized end
         mini.button.Visible, mini.badge.Visible = minimized, minimized
         if minimized then closePopup(true); releaseModels() else sidebar.Visible, pageArea.Visible = true, true; place(root.Border, { Color = C.border }) end
-        local function hideContent() if minimized then sidebar.Visible, pageArea.Visible = false, false end end
+        local function hideContent()
+            if minimized then sidebar.Visible, pageArea.Visible = false, false end
+            if done then done() end
+        end
         local mark = { Position = UDim2.fromOffset(minimized and 12 or 16, 12) }
         if animated and not motion.reduced then
             -- Minimizar encoge el hub hacia su logo (esquina superior izquierda
@@ -1527,11 +1530,18 @@ local function mountEggFilterPanel(context)
         end)
     end)
     connect(editFilters.Activated, function() panel.Select("filters") end)
-    -- Alt izquierdo oculta o muestra el hub tal como estaba (plegado o no).
+    -- Alt izquierdo recorre el camino del boton M: el hub abierto se encoge
+    -- hasta el boton y desaparece; oculto o minimizado, se expande como al
+    -- tocar el boton. Otro Alt a mitad de camino lo invierte desde ahi.
     connect(UIS.InputBegan, function(input)
-        if input.KeyCode == Enum.KeyCode.LeftAlt then
-            if panel.open then panel.Close()
-            else panel.open = true; root.Visible = true; signature = nil; fit(); save(); refreshSoon() end
+        if input.KeyCode ~= Enum.KeyCode.LeftAlt then return end
+        if panel.open and not minimized then
+            panel.open, minimized, signature = false, true, nil
+            applyMinimized(true, function() if not panel.open then root.Visible = false end end)
+            save()
+        else
+            if not panel.open and not minimized then minimized = true; applyMinimized() end
+            panel.Open()
         end
     end)
     connect(apply.Activated, panel.Apply)

@@ -5,7 +5,8 @@
 Rama codex/hub-minimize-button sobre main 08205dc. Minimizar encoge el hub a
 un boton `M` de 56 x 56 con el punto de AUTO, en lugar de la cabecera de
 340 x 56: sin teclado no hay Alt izquierdo y el boton es la forma de volver.
-Tocar abre, arrastrar mueve. Mismo `minimized` en `chilli_egg_panel_ui.json`;
+Tocar abre, arrastrar mueve; Alt izquierdo encoge hasta el boton y oculta, y
+al mostrar expande igual que el boton. Mismo `minimized` en `chilli_egg_panel_ui.json`;
 sin cambios en detector, filtros, AUTO, ciclo, teleports ni API. Ver DESIGN y
 TESTING.
 
