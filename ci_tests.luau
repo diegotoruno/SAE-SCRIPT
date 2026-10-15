@@ -2627,4 +2627,49 @@ test("egg finder scale keeps the chosen size but always fits the screen", functi
     assert(support.PanelScale(support.DragScale(1, base, {X = -108, Y = 0}), 1.4) == 0.8)
 end)
 
+local calculatorBonus = {Golden = 1.5, Rainbow = 2.5, Silver = 0.2}
+local calculatorModules = {
+    assets = {Directory = {divine = catalog.divine, other = catalog.other}},
+    rarities = {Rarities = rarities},
+    records = {ScaleHardCap = 150,
+        WeightKgForScale = function(category, scale) return (category == "other" and 5000 or 8) * scale ^ 3 end,
+        ToAssetItemData = function() error("Saved egg failed its schema check") end},
+    earnings = {MutationOnlyRatePerSecond = function(item)
+        local multiplier = 1
+        for _, id in ipairs(item.Mutations) do multiplier += calculatorBonus[id] end
+        return 1000 * item.Scale ^ 1.85 * multiplier
+    end},
+}
+test("calculator weight accepts the game label and decimals", function()
+    assert(search.ParseWeight("44,904Kg") == 44904 and search.ParseWeight("1,234,567.5 kg") == 1234567.5)
+    assert(search.ParseWeight("8,4") == 8.4 and search.ParseWeight("8.4") == 8.4 and search.ParseWeight("1.5m") == 1.5e6)
+    assert(search.ParseWeight("12,34") == 12.34, "a two-digit group is a decimal comma")
+    for _, invalid in ipairs({"", "0", "-3", "abc", "1,2,3", "nan", "inf"}) do
+        assert(search.ParseWeight(invalid) == nil, invalid)
+    end
+    assert(search.FormatWeight(44904.35) == "44,904" and search.FormatWeight(8.427) == "8.43" and search.FormatWeight(8) == "8")
+end)
+test("calculator finds the scale for the weight and sums mutations", function()
+    local plain = search.CalculateIncome("other", "40,000", {}, calculatorModules)
+    assert(math.abs(plain.scale - 2) < 1e-9 and math.abs(plain.income - 1000 * 2 ^ 1.85) < 1e-6)
+    local mutated = search.CalculateIncome("other", 40000, {"Golden", "Rainbow", "Golden"}, calculatorModules)
+    assert(#mutated.mutations == 2, "a repeated mutation is counted once")
+    assert(math.abs(mutated.multiplier - 5) < 1e-9 and math.abs(mutated.income - plain.income * 5) < 1e-6)
+    assert(mutated.base == plain.income)
+    local exact = search.CalculateAtScale("other", 2.0786, {"Rainbow"}, calculatorModules)
+    assert(exact.income == 1000 * 2.0786 ^ 1.85 * 3.5 and exact.weight == 5000 * 2.0786 ^ 3)
+end)
+test("calculator rejects unknown species and weights over the game cap", function()
+    assert(not pcall(search.CalculateIncome, "missing", 10, {}, calculatorModules))
+    assert(not pcall(search.CalculateIncome, "divine", "abc", {}, calculatorModules))
+    assert(pcall(search.CalculateIncome, "divine", 8 * 150 ^ 3, {}, calculatorModules))
+    local ok, err = pcall(search.CalculateIncome, "divine", 8 * 150 ^ 3 * 1.01, {}, calculatorModules)
+    assert(not ok and string.find(tostring(err), "peso máximo"))
+end)
+test("calculator lists every species by name with its rarity", function()
+    local options = search.PetOptions(calculatorModules.assets.Directory, rarities)
+    assert(#options == 2 and options[1].label == "Common Alpha" and options[2].label == "Divine Alpha")
+    assert(options[2].rarity == "Divine" and options[2].rank == 10 and options[1].rank == 1)
+end)
+
 print(string.format("%d regression tests passed", passed))

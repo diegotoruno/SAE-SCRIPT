@@ -1,5 +1,19 @@
 # Arquitectura
 
+## Calculadora de ingreso (2026-10-14)
+
+`search.CalculateIncome(category, weight, mutations)` convierte los kg en
+escala por biseccion sobre `EggRecords.WeightKgForScale` (hasta
+`ScaleHardCap`) y llama a `AssetEarnings.MutationOnlyRatePerSecond` con
+{Category, Scale, Mutations}; `ToAssetItemData` rechaza un huevo sin su
+esquema guardado completo. Devuelve income, base (sin mutaciones),
+multiplier, scale, weight y mutaciones sin repetir. `CalculateAtScale` usa la
+escala exacta de un huevo abierto desde el detalle, porque su etiqueta de peso
+esta redondeada. `ParseWeight` acepta "44,904Kg" (coma de miles solo en grupos
+de tres), "8,4", "8.4" y sufijos k/m/b. El panel guarda la ultima especie,
+peso y mutaciones en `chilli_egg_panel_ui.json` (`calc`) y muestra el bono de
+cada mutacion medido con el juego para la especie elegida.
+
 ## Captura del objetivo tras un match (2026-10-12)
 
 Identidad que sobrevive a la captura: `EggKey` = especie#`AssetColorSeed`
@@ -141,7 +155,7 @@ como hermanos en una fila; applyCollapsed coloca los tres y cambia el tamano
 se retiraron gradiente, Shine y las ocho copias Outline. Status es hijo de
 Holder con dos lineas y recorte. Las superficies de arrastre no cambian.
 
-egg_filter_panel: las hojas (Dropdown, ZonePicker, EggDetail, FinderOptions)
+egg_filter_panel: las hojas (Dropdown, ZonePicker, EggDetail, FinderOptions, Calculator, SpeciesPicker)
 son un TextButton de velo hijo de EggFilterPanel con ese nombre y una Frame
 Sheet activa dentro; `popup` apunta al velo y closePopup lo destruye. La barra
 ListBar agrupa MapTab/CatalogTab/VisualMode/Sort; layout mueve la barra y la
