@@ -2,8 +2,9 @@
 
 ## 2026-10-15 - Tarjeta Server Hop estilo manga
 
-Nuevo aspecto de panel de manga para la tarjeta flotante (ver DESIGN); el hub
-no cambia. Regresion nueva de contraste de la paleta de manga.
+Nuevo aspecto de panel de manga en tonos de Gojo para la tarjeta flotante (ver
+DESIGN); el hub no cambia. La version Gojo descartada queda en la rama local
+`codex/hop-gojo`. Regresion nueva de contraste de la paleta de manga.
 
 ## 2026-10-15 - Estilo macOS anterior e icono propio
 

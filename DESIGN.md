@@ -80,11 +80,13 @@ Server Hop la muestra u oculta; la preferencia se guarda como `quick` en
 
 Panel de manga con paleta propia (`support.MANGA`), igual con cualquier tema
 del hub: `hubTheme.fixed` apunta a la tarjeta y el cambio de tema la salta. CI
-comprueba sus contrastes. Papel `#FAF8F0`, tinta `#121214`, rojo `#D61F34`.
+comprueba sus contrastes. Tonos de Gojo: papel blanco frio `#F6F8FF`, tinta
+azul noche `#0E1024`, acento azul `#2563EB` a violeta `#7C3AED`, trama lavanda
+y sombra violeta `#4C1D95`.
 
 - Superficie de papel con borde de tinta de 3 px, esquinas de 4 px y sombra
-  solida de tinta desplazada 5 px abajo a la derecha (sin sombra difusa).
-  Trama de puntos grises en la esquina inferior izquierda.
+  solida violeta desplazada 5 px abajo a la derecha (sin sombra difusa).
+  Trama de puntos lavanda en la esquina inferior izquierda.
 - Expandido 320 x 116. Fila superior de 44 px: AUTO (60 px), boton Server Hop
   (flexible) y plegado (32 px). Debajo, el estado en un recuadro de narracion
   (borde de tinta de 1.5 px, texto de 11 px alineado a la izquierda, dos
@@ -92,20 +94,20 @@ comprueba sus contrastes. Papel `#FAF8F0`, tinta `#121214`, rojo `#D61F34`.
   en Bangers 13 y tinta.
 - Plegado 232 x 66. La misma fila con 34 px de alto (AUTO 52, plegado 28,
   rotulo 18) y la firma debajo. El estado se oculta.
-- Boton Server Hop: vineta roja con borde de tinta de 2.5 px y rotulo en
+- Boton Server Hop: vineta con degradado azul a violeta, borde de tinta de 2.5 px y rotulo en
   Bangers 21, blanco con contorno de tinta. Lineas de velocidad blancas,
   quietas y tenues en reposo; mientras hay un salto se aclaran y corren en
   bucle (0.45 s, lineal), y el boton baja al 85 % de opacidad. Con movimiento
-  reducido no corren. Pulsar oscurece el rojo al instante y baja el rotulo
+  reducido no corren. Pulsar atenua el degradado al instante y baja el rotulo
   1 px.
-- AUTO: etiqueta en Bangers 14 (roja si esta activo, gris si no) e interruptor
-  cuadrado de 38 x 20 (plegado 32 x 16) con borde de tinta: pista roja o papel
-  gris y perilla de tinta.
+- AUTO: etiqueta en Bangers 14 (azul si esta activo, azul gris si no) e interruptor
+  cuadrado de 38 x 20 (plegado 32 x 16) con borde de tinta: pista azul o lavanda
+  palida y perilla de tinta.
 - Plegado: cuadro de papel con borde de tinta y chevron de tinta de 2 px.
 - Colores del estado sobre el papel: avisos en `alert`, exito en `go` y el
   resto en `soft`. La seccion Server Hop del hub conserva los colores del tema.
 - Asa de tamano en la esquina inferior derecha: tres trazos diagonales de
-  1.5 px dentro del borde, trama gris al 60 % y rojo al pasar o
+  1.5 px dentro del borde, trama lavanda al 60 % y azul al pasar o
   arrastrar (120 ms, Quad Out). Escala la tarjeta entera (UIScale) entre
   0.75 y 1.75, sin pasar del ancho/alto de la pantalla, y fija el borde
   izquierdo. Las medidas de arriba son a escala 1.

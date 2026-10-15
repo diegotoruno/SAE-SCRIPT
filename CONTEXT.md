@@ -5,7 +5,8 @@
 El usuario conserva el diseno de Mistake Hub y pidio un diseno nuevo y
 distinto para la tarjeta flotante del boton Server Hop, con estetica de
 anime. Eligio panel de manga, paleta propia fija (no sigue el tema del hub) y
-animaciones sutiles.
+animaciones sutiles. Tras comparar con una version Gojo (vacio azul noche y
+aro Six Eyes), se quedo con el panel de manga pero en tonos de Gojo.
 
 ## Estilo macOS del primer rediseno sobre el hub actual (2026-10-15)
 

@@ -2729,7 +2729,7 @@ test("manga hop card keeps its own legible palette", function()
     end
     legible("ink", "paper", 7); legible("soft", "paper", 7)
     legible("alert", "paper", 4.5); legible("go", "paper", 4.5)
-    legible("red", "paper", 4.5); legible("onRed", "red", 4.5); legible("onRed", "redDeep", 4.5)
+    legible("blue", "paper", 4.5); legible("onBlue", "blue", 4.5); legible("onBlue", "violet", 4.5)
 end)
 test("theme preference defaults to the system and follows the local hour", function()
     assert(support.ThemePreference(nil) == "system" and support.ThemePreference("blue") == "system")

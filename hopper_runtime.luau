@@ -442,12 +442,13 @@ local function createFinderSupport()
     }
     -- Transparencia de los materiales de vidrio en cada tema: ventana y barra lateral.
     support.THEME_ALPHA = { light = { window = 0.04, sidebar = 0.12 }, dark = { window = 0.04, sidebar = 0.12 } }
-    -- Tarjeta flotante de Server Hop: panel de manga con paleta propia, igual
-    -- con cualquier tema del hub. Papel, tinta, trama gris y un rojo de acento.
+    -- Tarjeta flotante de Server Hop: panel de manga en tonos de Gojo, igual
+    -- con cualquier tema del hub. Papel blanco frio, tinta azul noche, trama
+    -- lavanda, acento azul a violeta y sombra violeta.
     support.MANGA = {
-        paper = {250, 248, 240}, ink = {18, 18, 20}, soft = {62, 62, 66}, dots = {120, 120, 124},
-        red = {214, 31, 52}, redDeep = {160, 18, 36}, onRed = {255, 255, 255}, trackOff = {216, 212, 202},
-        alert = {176, 24, 40}, go = {20, 110, 56},
+        paper = {246, 248, 255}, ink = {14, 16, 36}, soft = {58, 62, 92}, dots = {150, 140, 210},
+        blue = {37, 99, 235}, violet = {124, 58, 237}, shade = {76, 29, 149}, onBlue = {255, 255, 255},
+        press = {205, 210, 230}, trackOff = {218, 220, 236}, alert = {176, 24, 40}, go = {20, 110, 56},
     }
     function support.ThemePreference(value)
         return (value == "light" or value == "dark" or value == "system") and value or "system"
@@ -1513,12 +1514,12 @@ do
         end
         return segments
     end
-    -- Sombra solida de vineta: un bloque de tinta desplazado abajo a la derecha.
+    -- Sombra solida de vineta: un bloque violeta desplazado abajo a la derecha.
     ink.shadow = Instance.new("Frame")
     ink.shadow.Name = "Shadow"
     ink.shadow.Position = UDim2.fromOffset(5, 5)
     ink.shadow.Size = UDim2.fromScale(1, 1)
-    ink.shadow.BackgroundColor3 = ink.ink
+    ink.shadow.BackgroundColor3 = ink.shade
     ink.shadow.BorderSizePixel = 0
     ink.shadow.Parent = holder
     round(ink.shadow, 4)
@@ -1589,17 +1590,22 @@ do
         end
     end
 
-    -- Boton de accion: vineta roja con borde de tinta y rotulo de onomatopeya.
+    -- Boton de accion: vineta azul a violeta con borde de tinta y rotulo de onomatopeya.
     local button = Instance.new("TextButton")
     button.Name = "ServerHop"
     button.AutoButtonColor = false
     button.Text = ""
-    button.BackgroundColor3 = ink.red
+    button.BackgroundColor3 = ink.onBlue
     button.BorderSizePixel = 0
     button.ClipsDescendants = true
     button.Parent = surface
     round(button, 3)
     outline(button, ink.ink).Thickness = 2.5
+    do
+        local fill = Instance.new("UIGradient")
+        fill.Color = ColorSequence.new(ink.blue, ink.violet)
+        fill.Parent = button
+    end
 
     -- Lineas de velocidad: quietas y tenues en reposo; corren mientras salta.
     -- Cada trazo se repite media capa despues para que el ciclo no tenga corte.
@@ -1615,14 +1621,14 @@ do
             line.AnchorPoint = Vector2.new(0, 0.5)
             line.Position = UDim2.fromScale(streak[1] + half * 0.5, streak[2])
             line.Size = UDim2.new(streak[3], 0, 0, 2)
-            line.BackgroundColor3 = ink.onRed
+            line.BackgroundColor3 = ink.onBlue
             line.BackgroundTransparency = 0.72
             line.BorderSizePixel = 0
             line.Parent = ink.lines
         end
     end
 
-    local mainLabel = label("Label", button, 21, ink.onRed, true, ink.title)
+    local mainLabel = label("Label", button, 21, ink.onBlue, true, ink.title)
     mainLabel.Text = "Server Hop"
     mainLabel.TextStrokeColor3 = ink.ink
     mainLabel.TextStrokeTransparency = 0
@@ -1670,7 +1676,7 @@ do
         uiAccess()
         statusLabel.Text = text
         ink.status = color or COLORS.muted
-        -- Sobre el papel: avisos en rojo tinta, exito en verde y el resto en gris.
+        -- Sobre el papel: avisos en rojo tinta, exito en verde y el resto en azul gris.
         statusLabel.TextColor3 = color == COLORS.amber and ink.alert or color == COLORS.green and ink.go or ink.soft
         if hopView.status then hopView.status.Text = text; hopView.status.TextColor3 = color or COLORS.muted end
     end
@@ -1701,11 +1707,11 @@ do
         ink.run(value)
     end
 
-    -- Pulsar oscurece la vineta y hunde el rotulo un pixel.
+    -- Pulsar atenua el degradado al instante y hunde el rotulo un pixel.
     connect(button:GetPropertyChangedSignal("GuiState"), function()
         local pressed = button.GuiState == Enum.GuiState.Press
-        if pressed then cardPlace(button, { BackgroundColor3 = ink.redDeep })
-        else cardTween(button, TweenInfo.new(0.14, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { BackgroundColor3 = ink.red }) end
+        if pressed then cardPlace(button, { BackgroundColor3 = ink.press })
+        else cardTween(button, TweenInfo.new(0.14, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { BackgroundColor3 = ink.onBlue }) end
         mainLabel.Position = UDim2.fromOffset(pressed and 9 or 8, pressed and 1 or 0)
     end)
 
@@ -1801,12 +1807,12 @@ do
     round(autoKnob, 2)
     Instance.new("UIAspectRatioConstraint", autoKnob).DominantAxis = Enum.DominantAxis.Height
 
-    -- Interruptor: pista roja encendida, papel gris apagada; la perilla se desliza.
+    -- Interruptor: pista azul encendida, lavanda palida apagada; la perilla se desliza.
     local function updateAutoChip()
         uiAccess()
         local tween = TweenInfo.new(0.16, Enum.EasingStyle.Quint, Enum.EasingDirection.Out)
-        autoLabel.TextColor3 = autoEnabled and ink.red or ink.soft
-        local track = { BackgroundColor3 = autoEnabled and ink.red or ink.trackOff }
+        autoLabel.TextColor3 = autoEnabled and ink.blue or ink.soft
+        local track = { BackgroundColor3 = autoEnabled and ink.blue or ink.trackOff }
         local knob = { AnchorPoint = Vector2.new(autoEnabled and 1 or 0, 0.5),
             Position = autoEnabled and UDim2.new(1, -3, 0.5, 0) or UDim2.new(0, 3, 0.5, 0) }
         if reducedMotion then cardPlace(autoTrack, track); cardPlace(autoKnob, knob)
@@ -1997,7 +2003,7 @@ do
         local tween = TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
         for _, line in ipairs(gripTraces) do
             TweenService:Create(line, tween, {
-                BackgroundColor3 = active and ink.red or ink.dots,
+                BackgroundColor3 = active and ink.blue or ink.dots,
                 BackgroundTransparency = active and 0 or 0.4,
             }):Play()
         end

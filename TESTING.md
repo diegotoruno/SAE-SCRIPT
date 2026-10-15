@@ -4,7 +4,8 @@
 
 Build, compilaciones y 227 regresiones (incluye contraste de `support.MANGA`).
 Potassium, solo lecturas: carga sin error, fuente Bangers activa, colores de
-papel y tinta, y en la tarjeta plegada ningun texto truncado ni control fuera
+papel, tinta, degradado azul a violeta y sombra violeta, una sola GUI, y en
+la tarjeta plegada ningun texto truncado ni control fuera
 de la superficie. Pendiente a mano: vista desplegada, pulsar, lineas de
 velocidad durante un salto, AUTO, plegado, asa y cambio de tema del hub.
 
