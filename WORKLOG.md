@@ -1,5 +1,11 @@
 # Estado del trabajo
 
+## 2026-10-14 - Alt deja el boton M
+
+Rama codex/alt-keeps-button sobre main 185f3e3. Alt izquierdo minimiza al
+boton M (que se queda en pantalla) y lo vuelve a abrir, igual que el boton de
+minimizar y el toque; ya no oculta el hub. Ver DESIGN y TESTING.
+
 ## 2026-10-14 - Hub minimizado como boton
 
 Rama codex/hub-minimize-button sobre main 08205dc. Minimizar encoge el hub a

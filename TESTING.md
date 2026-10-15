@@ -1,5 +1,12 @@
 # Pruebas y validacion
 
+## 2026-10-14 - Alt deja el boton M
+
+Build-110 en el cliente del usuario: Alt encogia el hub y lo ocultaba, sin
+dejar el boton. Ahora Alt alterna minimizado (boton visible) y abierto. Build,
+ocho compilaciones y 223 regresiones; el bundle compila con `loadstring` en
+Potassium. Pendiente a mano: Alt para minimizar y abrir con el teclado real.
+
 ## 2026-10-14 - Hub minimizado como boton
 
 Build, ocho compilaciones y 223 regresiones Luau (solo UI; el detector no
