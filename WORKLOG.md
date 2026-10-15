@@ -1,10 +1,12 @@
 # Estado del trabajo
 
-## 2026-10-14 - Alt deja el boton M
+## 2026-10-14 - Boton M independiente del hub
 
-Rama codex/alt-keeps-button sobre main 185f3e3. Alt izquierdo minimiza al
-boton M (que se queda en pantalla) y lo vuelve a abrir, igual que el boton de
-minimizar y el toque; ya no oculta el hub. Ver DESIGN y TESTING.
+Rama codex/alt-keeps-button (PR #45) sobre main 185f3e3. El boton M es
+independiente, como el de Chilli Hub: tiene su propia posicion (`button` en
+`chilli_egg_panel_ui.json`) y el hub se abre completo en su sitio, no desde el
+boton. Alt izquierdo minimiza y deja el boton, o abre el hub. Ver DESIGN y
+TESTING.
 
 ## 2026-10-14 - Hub minimizado como boton
 

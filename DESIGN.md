@@ -62,7 +62,7 @@ ni contornos duplicados del texto.
 ## Mistake Hub
 
 Una sola ventana reune todas las opciones; las unicas piezas flotantes son el
-acceso rapido de Server Hop y el propio hub minimizado (boton `M`). Estructura inspirada en Chilli Hub (cabecera,
+acceso rapido de Server Hop y el boton `M` del hub minimizado. Estructura inspirada en Chilli Hub (cabecera,
 pestanas laterales, secciones con interruptores), con la paleta propia.
 
 - 760 x 560, esquinas de 14 px. Cabecera de 56 px, barra lateral de 172 px y
@@ -72,14 +72,17 @@ pestanas laterales, secciones con interruptores), con la paleta propia.
   (punto + `AUTO ON/OFF`, 100 px) y minimizar (32 px, un menos). La cabecera
   arrastra el hub. Sin linea bajo la cabecera: el cambio de tono de la barra
   lateral y el margen de 16 px separan.
-- Minimizado: el hub se encoge hasta un boton de 56 x 56, esquinas de 14 px,
-  con el logo `M` centrado y un punto de 10 px en su esquina superior derecha
-  (verde con AUTO activo, gris apagado; borde del color del fondo). Sin
-  teclado (movil, iPad) no hay Alt izquierdo: este boton es la forma de
-  volver. Tocarlo abre el hub en la misma seccion; arrastrarlo lo mueve (un
-  recorrido de mas de 10 px es arrastre, no toque). Pasar el raton o pulsar
-  ilumina su borde en champan. Las tarjetas y modelos se liberan mientras
-  esta minimizado.
+- Minimizado: el hub se guarda y queda el boton `M`, independiente del hub
+  (como el boton de Chilli Hub): 56 x 56, esquinas de 14 px, logo `M` de
+  32 px centrado y un punto de 10 px en su esquina superior derecha (verde con
+  AUTO activo, gris apagado; borde del color del fondo). Tiene su propia
+  posicion (empieza al borde izquierdo, a media altura) y se arrastra solo.
+  Sin teclado (movil, iPad) no hay Alt izquierdo: este boton es la forma de
+  volver. Tocarlo abre el hub completo en su propio sitio, en la misma
+  seccion, no desde el boton; un recorrido de mas de 10 px es arrastre, no
+  toque. Pasar el raton o pulsar ilumina su borde en champan. Solo se ve con
+  el hub minimizado. Las tarjetas y modelos se liberan mientras esta
+  minimizado.
 - Barra lateral: superficie `Entrada` (#10141A), mas pesada que el contenido,
   sin borde lateral; solo su esquina inferior izquierda sigue la del hub.
   Entradas de 40 px separadas por 6 (Egg Finder, Filtros, Calculadora, Server
@@ -190,7 +193,9 @@ donde esta.
 | Perilla y color del interruptor, en el mismo frame | 160 ms | Quint Out |
 | Pagina nueva: sube 8 px | 180 ms | Quint Out |
 | `ActiveTab` hasta la pestana activa | 200 ms | Quint Out |
-| Minimizar / abrir el hub, el logo y su posicion en pantalla | 240 ms | Quint Out |
+| Abrir el hub en su sitio: sube 12 px | 220 ms | Quint Out |
+| Minimizar el hub: baja 12 px y se oculta | 160 ms | Quint In |
+| Volver el hub a la pantalla tras cambiar su tamano | 240 ms | Quint Out |
 | Hoja: entra desde su origen, escala 0.9 a 1, velo hasta 35 % | 220 ms | Quint Out |
 | Hoja: sale por el mismo camino | 160 ms | Quint In |
 | Tarjeta flotante: plegar / desplegar | 220 ms | Quint Out |
@@ -205,17 +210,16 @@ donde esta.
   el detalle, de su tarjeta; el historial abierto desde el detalle entra por
   la derecha y `Detalle` vuelve por la izquierda. Sin origen, la hoja sube
   12 px. La hoja que sale ya no bloquea el hub (`Interactable`).
-- Minimizar encoge el hub hacia su logo con la esquina superior izquierda
-  fija; titulo, AUTO y minimizar se van al empezar, el logo se centra (16 a
-  12 px) en el mismo tween y la barra lateral y las paginas se ocultan al
-  terminar. Abrir es el camino inverso y, si el hub entero no cabe donde
-  estaba el boton, se desliza hasta caber en el mismo tiempo.
+- El hub aparece y se va en su propio sitio, nunca desde el boton `M`. Sin
+  origen sigue la regla de las hojas: abrir lo muestra 12 px por debajo y
+  sube a su sitio; minimizar lo baja 12 px y lo oculta al terminar, y el
+  boton aparece al empezar. Mientras se va no recibe toques (`Interactable`)
+  ni se puede arrastrar. Otro toque a mitad de camino lo invierte.
 - Alt izquierdo hace lo mismo que minimizar y tocar el boton: con el hub
-  abierto lo encoge hasta el boton M, que se queda en pantalla; con el boton,
-  expande el hub. Si estaba oculto (`Close`), aparece como boton y se expande.
-  Otro Alt a mitad de camino lo invierte. La tarjeta flotante muestra su estado solo cuando termina de
-  abrirse.
-- Arrastre del hub y de la tarjeta flotante: 1:1 desde el punto de agarre.
+  abierto lo minimiza y deja el boton `M`; con el boton, abre el hub en su
+  sitio. Si estaba oculto (`Close`), lo abre.
+- La tarjeta flotante muestra su estado solo cuando termina de abrirse.
+- Arrastre del hub, del boton `M` y de la tarjeta flotante: 1:1 desde el punto de agarre.
   Pasado el margen de 8 px resiste cada vez mas (constante 0.55); al soltar
   fuera, un resorte criticamente amortiguado (respuesta 0.3 s, sin rebote)
   vuelve desde donde esta con la velocidad del dedo. Dentro de la pantalla no

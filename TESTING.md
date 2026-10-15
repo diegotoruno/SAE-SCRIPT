@@ -1,11 +1,31 @@
 # Pruebas y validacion
 
-## 2026-10-14 - Alt deja el boton M
+## 2026-10-14 - Boton M independiente del hub
 
 Build-110 en el cliente del usuario: Alt encogia el hub y lo ocultaba, sin
-dejar el boton. Ahora Alt alterna minimizado (boton visible) y abierto. Build,
-ocho compilaciones y 223 regresiones; el bundle compila con `loadstring` en
-Potassium. Pendiente a mano: Alt para minimizar y abrir con el teclado real.
+dejar el boton, y el hub se abria desde la esquina del boton. El usuario pidio
+que, como Chilli Hub, el boton fuera independiente y el hub se abriera
+completo en su sitio. Build, ocho compilaciones y 223 regresiones. Potassium,
+GUI de prueba aparte con archivos en memoria, sin entradas simuladas ni
+teleports; solo `SetMinimized`, `Open`, `Close`, `SyncAuto` y `GetStatus`.
+17 de 17 comprobaciones:
+
+- El bundle completo compila con `loadstring` (limite de 200 locales).
+- Abierto: hub visible e interactivo, boton oculto. Al minimizar el hub deja
+  de recibir toques al instante; al terminar queda oculto en su sitio de
+  reposo y el boton visible, 56 x 56 y en pantalla, lejos del hub (16, 600).
+- Se guardan `minimized`, la posicion de reposo del hub y `button`.
+- El punto del boton se pinta verde y gris con `SyncAuto`.
+- Abrir empieza 12 px por debajo de su sitio, en la misma x; minimizar y
+  abrir de nuevo a mitad de camino termina en su sitio, entero en pantalla,
+  sin acercarse al boton.
+- `Close` oculta hub y boton; `Open` abre el hub en su sitio.
+- La vista previa escucha Alt: una ejecucion en la que el usuario probaba a la
+  vez dio fallos sueltos distintos en cada intento; sin interferencia pasan
+  todas. Ningun bucle llama a `Open`, `Select` ni `SetMinimized`.
+- Version candidata montada en la sesion real (un hub, un boton) con un
+  autoexec temporal para que el usuario la pruebe.
+- Pendiente a mano: Alt, tocar y arrastrar el boton, en PC e iPad.
 
 ## 2026-10-14 - Hub minimizado como boton
 
