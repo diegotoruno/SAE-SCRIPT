@@ -1,5 +1,14 @@
 # Estado del trabajo
 
+## 2026-10-14 - Hub minimizado como boton
+
+Rama codex/hub-minimize-button sobre main 08205dc. Minimizar encoge el hub a
+un boton `M` de 56 x 56 con el punto de AUTO, en lugar de la cabecera de
+340 x 56: sin teclado no hay Alt izquierdo y el boton es la forma de volver.
+Tocar abre, arrastrar mueve. Mismo `minimized` en `chilli_egg_panel_ui.json`;
+sin cambios en detector, filtros, AUTO, ciclo, teleports ni API. Ver DESIGN y
+TESTING.
+
 ## 2026-10-14 - Movimiento y respuesta de Mistake Hub
 
 Rama codex/mistake-hub (PR #43). Solo UI y movimiento: controles que se

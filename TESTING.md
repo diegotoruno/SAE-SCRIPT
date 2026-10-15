@@ -1,5 +1,24 @@
 # Pruebas y validacion
 
+## 2026-10-14 - Hub minimizado como boton
+
+Build, ocho compilaciones y 223 regresiones Luau (solo UI; el detector no
+cambia). Potassium, cliente real, GUI de prueba aparte (`MistakeHubPreview`)
+con archivos en memoria, sin entradas simuladas ni conexiones disparadas y
+sin teleports; solo `SetMinimized`, `SyncAuto` y `GetStatus`:
+
+- El bundle completo compila con `loadstring` (limite de 200 locales).
+- Minimizado: 56 x 56, `Restore` visible, titulo, subtitulo, AUTO y
+  minimizar ocultos, logo en (12, 12), barra lateral y paginas ocultas,
+  nada fuera del boton ni de la pantalla, `minimized` en el estado.
+- `SyncAuto(true/false)` pinta el punto verde y gris.
+- Abrir y volver a minimizar a los 80 ms termina en 56 x 56. Desde la esquina
+  inferior derecha (1720 x 1017), abrir, minimizar a los 80 ms y abrir a los
+  60 ms termina en 760 x 560 entero en pantalla (952, 391), cabecera completa,
+  `Restore` y el punto ocultos, logo en 16 y borde normal.
+- La GUI de prueba y sus archivos del workspace se retiraron (restos 0).
+- Pendiente a mano: tocar el boton para abrir y arrastrarlo, en PC e iPad.
+
 ## 2026-10-14 - Movimiento y respuesta de Mistake Hub
 
 Build, ocho compilaciones y 223 regresiones Luau (dos nuevas: el arrastre
