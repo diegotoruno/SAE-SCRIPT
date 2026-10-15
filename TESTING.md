@@ -1,5 +1,13 @@
 # Pruebas y validacion
 
+## 2026-10-15 - Tarjeta Server Hop estilo manga
+
+Build, compilaciones y 227 regresiones (incluye contraste de `support.MANGA`).
+Potassium, solo lecturas: carga sin error, fuente Bangers activa, colores de
+papel y tinta, y en la tarjeta plegada ningun texto truncado ni control fuera
+de la superficie. Pendiente a mano: vista desplegada, pulsar, lineas de
+velocidad durante un salto, AUTO, plegado, asa y cambio de tema del hub.
+
 ## 2026-10-15 - Estilo macOS anterior e icono
 
 Build, compilaciones y 226 regresiones. Potassium, sin entradas simuladas

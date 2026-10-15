@@ -1,5 +1,12 @@
 # Decisiones de producto e implementacion
 
+## Tarjeta flotante con paleta propia de manga (2026-10-15)
+
+La tarjeta usa `support.MANGA` en lugar de los tokens del tema y queda fuera
+del cambio de tema (`hubTheme.fixed`). Mismos controles, nombres y acciones;
+solo cambia el aspecto. Las lineas de velocidad solo se mueven durante un
+salto y respetan el movimiento reducido. La firma pasa abajo a la derecha.
+
 ## Icono del hub publicado en stable (2026-10-15)
 
 Roblox no carga imagenes locales: `mistake_hub_icon.jpg` se publica en

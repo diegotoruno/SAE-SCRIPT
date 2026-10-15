@@ -2721,6 +2721,16 @@ test("hub themes keep text and states legible on every surface", function()
         legible("tertiary", "raised", 2.5)
     end
 end)
+test("manga hop card keeps its own legible palette", function()
+    local manga = support.MANGA
+    local function legible(fore, back, minimum)
+        local ratio = support.ThemeContrast(manga[fore], manga[back])
+        assert(ratio >= minimum, string.format("manga: %s on %s is %.2f:1", fore, back, ratio))
+    end
+    legible("ink", "paper", 7); legible("soft", "paper", 7)
+    legible("alert", "paper", 4.5); legible("go", "paper", 4.5)
+    legible("red", "paper", 4.5); legible("onRed", "red", 4.5); legible("onRed", "redDeep", 4.5)
+end)
 test("theme preference defaults to the system and follows the local hour", function()
     assert(support.ThemePreference(nil) == "system" and support.ThemePreference("blue") == "system")
     assert(support.ThemePreference("dark") == "dark" and support.ThemePreference("light") == "light")

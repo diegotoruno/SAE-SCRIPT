@@ -1,5 +1,10 @@
 # Estado del trabajo
 
+## 2026-10-15 - Tarjeta Server Hop estilo manga
+
+Nuevo aspecto de panel de manga para la tarjeta flotante (ver DESIGN); el hub
+no cambia. Regresion nueva de contraste de la paleta de manga.
+
 ## 2026-10-15 - Estilo macOS anterior e icono propio
 
 Mismo hub y mismas opciones que `main`; vuelve el estilo del primer rediseno

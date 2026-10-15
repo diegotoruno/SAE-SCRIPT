@@ -442,6 +442,13 @@ local function createFinderSupport()
     }
     -- Transparencia de los materiales de vidrio en cada tema: ventana y barra lateral.
     support.THEME_ALPHA = { light = { window = 0.04, sidebar = 0.12 }, dark = { window = 0.04, sidebar = 0.12 } }
+    -- Tarjeta flotante de Server Hop: panel de manga con paleta propia, igual
+    -- con cualquier tema del hub. Papel, tinta, trama gris y un rojo de acento.
+    support.MANGA = {
+        paper = {250, 248, 240}, ink = {18, 18, 20}, soft = {62, 62, 66}, dots = {120, 120, 124},
+        red = {214, 31, 52}, redDeep = {160, 18, 36}, onRed = {255, 255, 255}, trackOff = {216, 212, 202},
+        alert = {176, 24, 40}, go = {20, 110, 56},
+    }
     function support.ThemePreference(value)
         return (value == "light" or value == "dark" or value == "system") and value or "system"
     end
@@ -1037,6 +1044,8 @@ do
             for _, root in ipairs(hubTheme.roots) do
                 if root.Parent ~= nil or root.Name == "FocusRing" then
                     for _, object in ipairs({root, unpack(root:GetDescendants())}) do
+                        -- La tarjeta flotante conserva su paleta de manga.
+                        if hubTheme.fixed and (object == hubTheme.fixed or object:IsDescendantOf(hubTheme.fixed)) then continue end
                         if object:IsA("UIStroke") then swap(object, "Color")
                         elseif object:IsA("GuiObject") then
                             swap(object, "BackgroundColor3")
@@ -1426,9 +1435,14 @@ do
         end
     end
 
-    -- Tarjeta de vidrio con sombra suave: AUTO, accion principal y plegado
-    -- comparten una fila; estado y firma tienen filas propias para que ningun
-    -- texto se encime.
+    -- Panel de manga: papel, tinta gruesa y sombra solida desplazada, con su
+    -- propia paleta (support.MANGA) que el tema del hub no cambia. AUTO, accion
+    -- principal y plegado comparten una fila; estado y firma tienen filas
+    -- propias para que ningun texto se encime.
+    local ink = {}
+    for token, rgb in pairs(support.MANGA) do ink[token] = Color3.fromRGB(rgb[1], rgb[2], rgb[3]) end
+    pcall(function() ink.title = Font.fromEnum(Enum.Font.Bangers) end)
+    ink.title = ink.title or Font.new(UI_FONT, Enum.FontWeight.Heavy)
     local holder = Instance.new("Frame")
     holder.Name = "Holder"
     holder.AnchorPoint = Vector2.new(0.5, 0)
@@ -1442,6 +1456,7 @@ do
     holder.Active = true
     holder.Visible = quickVisible
     holder.Parent = screenGui
+    hubTheme.fixed = holder
 
     -- Tamano elegido con el asa: escala toda la tarjeta, plegada o no.
     local function fitScaleLimit()
@@ -1469,11 +1484,11 @@ do
         stroke.Parent = object
         return stroke
     end
-    local function label(name, parent, size, color, bold)
+    local function label(name, parent, size, color, bold, font)
         local item = Instance.new("TextLabel")
         item.Name = name
         item.BackgroundTransparency = 1
-        item.FontFace = Font.new(UI_FONT, bold and Enum.FontWeight.SemiBold or Enum.FontWeight.Regular)
+        item.FontFace = font or Font.new(UI_FONT, bold and Enum.FontWeight.SemiBold or Enum.FontWeight.Regular)
         item.Text = ""
         item.TextSize = size
         item.TextColor3 = color
@@ -1498,28 +1513,38 @@ do
         end
         return segments
     end
-    -- Sombra suave: capas negras muy transparentes detras de la superficie.
-    for index, layer in ipairs({ {2, 0.9}, {6, 0.94}, {14, 0.965} }) do
-        local shade = Instance.new("Frame")
-        shade.Name = "Shadow" .. index
-        shade.AnchorPoint = Vector2.new(0.5, 0.5)
-        shade.Position = UDim2.new(0.5, 0, 0.5, math.floor(layer[1] / 2))
-        shade.Size = UDim2.new(1, layer[1] * 2, 1, layer[1] * 2)
-        shade.BackgroundColor3 = COLORS.scrim
-        shade.BackgroundTransparency = layer[2]
-        shade.BorderSizePixel = 0
-        shade.Parent = holder
-        round(shade, 14 + layer[1])
-    end
+    -- Sombra solida de vineta: un bloque de tinta desplazado abajo a la derecha.
+    ink.shadow = Instance.new("Frame")
+    ink.shadow.Name = "Shadow"
+    ink.shadow.Position = UDim2.fromOffset(5, 5)
+    ink.shadow.Size = UDim2.fromScale(1, 1)
+    ink.shadow.BackgroundColor3 = ink.ink
+    ink.shadow.BorderSizePixel = 0
+    ink.shadow.Parent = holder
+    round(ink.shadow, 4)
     local surface = Instance.new("Frame")
     surface.Name = "Surface"
     surface.Size = UDim2.fromScale(1, 1)
-    surface.BackgroundColor3 = COLORS.surface
-    surface.BackgroundTransparency = hubTheme.alpha.window
+    surface.BackgroundColor3 = ink.paper
     surface.BorderSizePixel = 0
     surface.Parent = holder
-    round(surface, 14)
-    outline(surface, COLORS.border, 0.78)
+    round(surface, 4)
+    outline(surface, ink.ink).Thickness = 3
+    -- Trama de puntos en la esquina inferior izquierda, como el tono de un manga.
+    for row = 0, 2 do
+        for column = 0, 5 - row * 2 do
+            local dot = Instance.new("Frame")
+            dot.Name = "Tone"
+            dot.AnchorPoint = Vector2.new(0.5, 0.5)
+            dot.Position = UDim2.new(0, 10 + column * 6 + (row % 2) * 3, 1, -8 - row * 5)
+            dot.Size = UDim2.fromOffset(3 - row * 0.5, 3 - row * 0.5)
+            dot.BackgroundColor3 = ink.dots
+            dot.BackgroundTransparency = 0.35 + row * 0.15
+            dot.BorderSizePixel = 0
+            dot.Parent = surface
+            round(dot, 2)
+        end
+    end
 
     -- Movimiento de la tarjeta: un tween por propiedad que parte del valor
     -- actual, cancela el anterior y se cancela al destruir su objeto.
@@ -1564,32 +1589,70 @@ do
         end
     end
 
+    -- Boton de accion: vineta roja con borde de tinta y rotulo de onomatopeya.
     local button = Instance.new("TextButton")
     button.Name = "ServerHop"
-    button.AutoButtonColor = true
+    button.AutoButtonColor = false
     button.Text = ""
-    button.BackgroundColor3 = COLORS.action
+    button.BackgroundColor3 = ink.red
     button.BorderSizePixel = 0
+    button.ClipsDescendants = true
     button.Parent = surface
-    round(button, 10)
+    round(button, 3)
+    outline(button, ink.ink).Thickness = 2.5
 
-    local mainLabel = label("Label", button, 16, COLORS.actionText, true)
+    -- Lineas de velocidad: quietas y tenues en reposo; corren mientras salta.
+    -- Cada trazo se repite media capa despues para que el ciclo no tenga corte.
+    ink.lines = Instance.new("Frame")
+    ink.lines.Name = "SpeedLines"
+    ink.lines.Size = UDim2.fromScale(2, 1)
+    ink.lines.BackgroundTransparency = 1
+    ink.lines.Parent = button
+    for index, streak in ipairs({ {0.03, 0.22, 0.16}, {0.15, 0.44, 0.12}, {0.29, 0.7, 0.19}, {0.07, 0.84, 0.13}, {0.35, 0.3, 0.1} }) do
+        for half = 0, 1 do
+            local line = Instance.new("Frame")
+            line.Name = "Line" .. index
+            line.AnchorPoint = Vector2.new(0, 0.5)
+            line.Position = UDim2.fromScale(streak[1] + half * 0.5, streak[2])
+            line.Size = UDim2.new(streak[3], 0, 0, 2)
+            line.BackgroundColor3 = ink.onRed
+            line.BackgroundTransparency = 0.72
+            line.BorderSizePixel = 0
+            line.Parent = ink.lines
+        end
+    end
+
+    local mainLabel = label("Label", button, 21, ink.onRed, true, ink.title)
     mainLabel.Text = "Server Hop"
+    mainLabel.TextStrokeColor3 = ink.ink
+    mainLabel.TextStrokeTransparency = 0
+    mainLabel.ZIndex = 2
     mainLabel.Position = UDim2.fromOffset(8, 0)
     mainLabel.Size = UDim2.new(1, -16, 1, 0)
 
-    local statusLabel = label("Status", surface, 11, COLORS.muted)
-    statusLabel.Position = UDim2.fromOffset(14, 62)
-    statusLabel.Size = UDim2.new(1, -28, 0, 30)
+    -- Recuadro de narracion: el estado va en una caja con borde fino de tinta.
+    local statusLabel = label("Status", surface, 11, ink.soft, true)
+    statusLabel.Position = UDim2.fromOffset(12, 62)
+    statusLabel.Size = UDim2.new(1, -24, 0, 30)
     statusLabel.TextWrapped = true
+    statusLabel.TextXAlignment = Enum.TextXAlignment.Left
+    statusLabel.BackgroundColor3 = ink.paper
+    statusLabel.BackgroundTransparency = 0
+    outline(statusLabel, ink.ink).Thickness = 1.5
+    do
+        local padding = Instance.new("UIPadding")
+        padding.PaddingLeft = UDim.new(0, 8)
+        padding.PaddingRight = UDim.new(0, 8)
+        padding.Parent = statusLabel
+    end
 
-    -- La firma tiene su propia fila en ambas versiones; no tapa AUTO ni estado.
-    local creditLabel = label("ByMistakeCredit", surface, 10, COLORS.credit, true)
-    creditLabel.AnchorPoint = Vector2.new(0.5, 1)
-    creditLabel.Position = UDim2.new(0.5, 0, 1, -6)
-    creditLabel.Size = UDim2.new(1, -24, 0, 12)
+    -- La firma del autor va abajo a la derecha, junto al asa, en ambas versiones.
+    local creditLabel = label("ByMistakeCredit", surface, 13, ink.ink, true, ink.title)
+    creditLabel.AnchorPoint = Vector2.new(1, 1)
+    creditLabel.Position = UDim2.new(1, -26, 1, -3)
+    creditLabel.Size = UDim2.fromOffset(110, 15)
+    creditLabel.TextXAlignment = Enum.TextXAlignment.Right
     creditLabel.Text = "By Mistake"
-    creditLabel.TextTransparency = 0.25
     creditLabel.Active = false
     creditLabel.Selectable = false
 
@@ -1606,7 +1669,9 @@ do
         if not session.alive then return end
         uiAccess()
         statusLabel.Text = text
-        statusLabel.TextColor3 = color or COLORS.muted
+        ink.status = color or COLORS.muted
+        -- Sobre el papel: avisos en rojo tinta, exito en verde y el resto en gris.
+        statusLabel.TextColor3 = color == COLORS.amber and ink.alert or color == COLORS.green and ink.go or ink.soft
         if hopView.status then hopView.status.Text = text; hopView.status.TextColor3 = color or COLORS.muted end
     end
 
@@ -1615,14 +1680,34 @@ do
         if session.alive and busy then setStatus(support.NativeProgressMessage(state), COLORS.muted) end
     end
 
+    -- Mientras salta, las lineas de velocidad se aclaran y corren sin parar.
+    function ink.run(active)
+        if ink.flow then ink.flow:Cancel(); ink.flow = nil end
+        ink.lines.Position = UDim2.fromScale(0, 0)
+        for _, line in ipairs(ink.lines:GetChildren()) do line.BackgroundTransparency = active and 0.4 or 0.72 end
+        if active and not reducedMotion then
+            ink.flow = TweenService:Create(ink.lines, TweenInfo.new(0.45, Enum.EasingStyle.Linear,
+                Enum.EasingDirection.Out, -1), { Position = UDim2.fromScale(-1, 0) })
+            ink.flow:Play()
+        end
+    end
+
     local function setBusy(value)
         if not session.alive then return end
         uiAccess()
         busy = value
-        for _, target in ipairs({button, hopView.button}) do
-            cardTween(target, TweenInfo.new(0.15), { BackgroundTransparency = value and 0.5 or 0 })
-        end
+        cardTween(button, TweenInfo.new(0.15), { BackgroundTransparency = value and 0.15 or 0 })
+        if hopView.button then cardTween(hopView.button, TweenInfo.new(0.15), { BackgroundTransparency = value and 0.5 or 0 }) end
+        ink.run(value)
     end
+
+    -- Pulsar oscurece la vineta y hunde el rotulo un pixel.
+    connect(button:GetPropertyChangedSignal("GuiState"), function()
+        local pressed = button.GuiState == Enum.GuiState.Press
+        if pressed then cardPlace(button, { BackgroundColor3 = ink.redDeep })
+        else cardTween(button, TweenInfo.new(0.14, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { BackgroundColor3 = ink.red }) end
+        mainLabel.Position = UDim2.fromOffset(pressed and 9 or 8, pressed and 1 or 0)
+    end)
 
     -- ------------------------------------------------- estado de la ventana
     local DRAG_THRESHOLD = 6
@@ -1661,25 +1746,26 @@ do
     toggle.Name = "Toggle"
     toggle.AutoButtonColor = true
     toggle.AnchorPoint = Vector2.new(1, 0)
-    toggle.BackgroundColor3 = COLORS.fill
-    toggle.BackgroundTransparency = 0.9
+    toggle.BackgroundColor3 = ink.paper
     toggle.BorderSizePixel = 0
     toggle.Text = ""
     toggle.Parent = surface
-    round(toggle, 8)
+    round(toggle, 3)
+    outline(toggle, ink.ink).Thickness = 2
     local toggleChevron = chevronSegments(toggle)
+    for _, segment in ipairs(toggleChevron) do segment.BackgroundColor3 = ink.ink; segment.Size = UDim2.fromOffset(8, 2) end
 
     -- AUTO: etiqueta e interruptor; enciende/apaga el encadenado automatico. Se
     -- guarda en server_hop_button_ui.json para que siga encendido entre saltos.
     local autoChip = Instance.new("TextButton")
     autoChip.Name = "AutoChip"
     autoChip.AutoButtonColor = false
-    autoChip.BackgroundColor3 = COLORS.fill
+    autoChip.BackgroundColor3 = ink.dots
     autoChip.BackgroundTransparency = 1
     autoChip.BorderSizePixel = 0
     autoChip.Text = ""
     autoChip.Parent = surface
-    round(autoChip, 8)
+    round(autoChip, 3)
 
     -- Pasar el raton da un fondo gris suave; pulsar, uno mas firme al instante.
     connect(autoChip:GetPropertyChangedSignal("GuiState"), function()
@@ -1689,8 +1775,8 @@ do
             { BackgroundTransparency = (state == Enum.GuiState.Hover and UserInputService.MouseEnabled) and 0.9 or 1 }) end
     end)
 
-    local autoLabel = label("AutoLabel", autoChip, 10, COLORS.muted, true)
-    autoLabel.Size = UDim2.new(1, 0, 0, 14)
+    local autoLabel = label("AutoLabel", autoChip, 14, ink.soft, true, ink.title)
+    autoLabel.Size = UDim2.new(1, 0, 0, 16)
     autoLabel.Text = "AUTO"
     autoLabel.TextTruncate = Enum.TextTruncate.None
 
@@ -1698,31 +1784,31 @@ do
     autoTrack.Name = "Switch"
     autoTrack.AnchorPoint = Vector2.new(0.5, 1)
     autoTrack.Position = UDim2.new(0.5, 0, 1, -3)
-    autoTrack.Size = UDim2.fromOffset(36, 20)
-    autoTrack.BackgroundColor3 = COLORS.trackOff
+    autoTrack.Size = UDim2.fromOffset(38, 20)
+    autoTrack.BackgroundColor3 = ink.trackOff
     autoTrack.BorderSizePixel = 0
     autoTrack.Parent = autoChip
-    round(autoTrack, 10)
+    round(autoTrack, 3)
+    outline(autoTrack, ink.ink).Thickness = 2
     local autoKnob = Instance.new("Frame")
     autoKnob.Name = "Knob"
     autoKnob.AnchorPoint = Vector2.new(0, 0.5)
-    autoKnob.Position = UDim2.new(0, 2, 0.5, 0)
-    autoKnob.Size = UDim2.new(1, -4, 1, -4)
-    autoKnob.BackgroundColor3 = COLORS.knob
+    autoKnob.Position = UDim2.new(0, 3, 0.5, 0)
+    autoKnob.Size = UDim2.new(1, -6, 1, -6)
+    autoKnob.BackgroundColor3 = ink.ink
     autoKnob.BorderSizePixel = 0
     autoKnob.Parent = autoTrack
-    round(autoKnob, 9)
-    outline(autoKnob, COLORS.border, 0.85)
+    round(autoKnob, 2)
     Instance.new("UIAspectRatioConstraint", autoKnob).DominantAxis = Enum.DominantAxis.Height
 
-    -- Interruptor: pista azul encendida, gris apagada; la perilla se desliza.
+    -- Interruptor: pista roja encendida, papel gris apagada; la perilla se desliza.
     local function updateAutoChip()
         uiAccess()
         local tween = TweenInfo.new(0.16, Enum.EasingStyle.Quint, Enum.EasingDirection.Out)
-        autoLabel.TextColor3 = autoEnabled and COLORS.credit or COLORS.muted
-        local track = { BackgroundColor3 = autoEnabled and COLORS.accent or COLORS.trackOff }
+        autoLabel.TextColor3 = autoEnabled and ink.red or ink.soft
+        local track = { BackgroundColor3 = autoEnabled and ink.red or ink.trackOff }
         local knob = { AnchorPoint = Vector2.new(autoEnabled and 1 or 0, 0.5),
-            Position = autoEnabled and UDim2.new(1, -2, 0.5, 0) or UDim2.new(0, 2, 0.5, 0) }
+            Position = autoEnabled and UDim2.new(1, -3, 0.5, 0) or UDim2.new(0, 3, 0.5, 0) }
         if reducedMotion then cardPlace(autoTrack, track); cardPlace(autoKnob, knob)
         else cardTween(autoTrack, tween, track); cardTween(autoKnob, tween, knob) end
         if hopView.setAuto then hopView.setAuto(autoEnabled) end
@@ -1752,10 +1838,10 @@ do
         place(button, { Position = UDim2.fromOffset(pad + chip + 6, pad),
             Size = UDim2.new(1, -(2 * pad + chip + side + 12), 0, row) })
         place(toggle, { Position = UDim2.new(1, -pad, 0, pad), Size = UDim2.fromOffset(side, row) })
-        mainLabel.TextSize = value and 14 or 16
-        autoLabel.TextSize = value and 9 or 10
-        autoLabel.Size = UDim2.new(1, 0, 0, value and 12 or 14)
-        autoTrack.Size = value and UDim2.fromOffset(30, 16) or UDim2.fromOffset(36, 20)
+        mainLabel.TextSize = value and 18 or 21
+        autoLabel.TextSize = value and 12 or 14
+        autoLabel.Size = UDim2.new(1, 0, 0, value and 13 or 16)
+        autoTrack.Size = value and UDim2.fromOffset(32, 16) or UDim2.fromOffset(38, 20)
         -- Desplegado muestra "plegar" (chevron arriba); plegado, "desplegar".
         toggleChevron[1].Rotation = value and 45 or -45
         toggleChevron[2].Rotation = value and -45 or 45
@@ -1896,7 +1982,7 @@ do
         line.Position = UDim2.new(1, -trace[1] / 2, 1, -trace[1] / 2)
         line.Size = UDim2.fromOffset(trace[2], 1.5)
         line.Rotation = -45
-        line.BackgroundColor3 = COLORS.tertiary
+        line.BackgroundColor3 = ink.dots
         line.BackgroundTransparency = 0.4
         line.BorderSizePixel = 0
         line.ZIndex = 3
@@ -1911,7 +1997,7 @@ do
         local tween = TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
         for _, line in ipairs(gripTraces) do
             TweenService:Create(line, tween, {
-                BackgroundColor3 = active and COLORS.accent or COLORS.tertiary,
+                BackgroundColor3 = active and ink.red or ink.dots,
                 BackgroundTransparency = active and 0 or 0.4,
             }):Play()
         end
@@ -2167,7 +2253,7 @@ do
             BackgroundColor3 = C.raised, BorderSizePixel = 0 })
         ui.corner(card, 10); ui.stroke(card).Transparency = 0.8
         ui.text("Caption", card, "Estado", 16, 12, width - 220, 14, C.secondary, 11, "semi")
-        hopView.status = ui.paragraph("Status", card, statusLabel.Text, 16, 28, width - 220, 30, statusLabel.TextColor3, 12)
+        hopView.status = ui.paragraph("Status", card, statusLabel.Text, 16, 28, width - 220, 30, ink.status or COLORS.muted, 12)
         hopView.button = ui.button("ServerHop", card, mainLabel.Text, width - 188, 12, 172, 44)
         ui.primary(hopView.button); hopView.button.TextSize = 15
         hopView.setAuto = ui.toggleRow(hopPage, "AutoSearch", "Búsqueda automática (AUTO)",

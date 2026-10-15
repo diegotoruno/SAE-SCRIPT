@@ -14,8 +14,8 @@ hub; el rediseno solo cambia la presentacion y agrega el selector de tema.
 
 `support.THEMES` en `hopper_runtime.luau` es la unica fuente de color: los
 mismos tokens en claro y oscuro (RGB). El runtime los convierte en
-`hubTheme.colors`; el hub los usa como `C` y la tarjeta flotante como
-`COLORS` (alias que leen el token en el momento). CI comprueba que ambos temas
+`hubTheme.colors`; el hub los usa como `C` y el runtime como `COLORS` (alias
+que leen el token en el momento). La tarjeta flotante usa su paleta de manga. CI comprueba que ambos temas
 tienen los mismos tokens, que el cambio de tema es inequivoco y los contrastes
 de la tabla.
 
@@ -78,21 +78,34 @@ Unica pieza flotante. El interruptor `Acceso rapido flotante` de la seccion
 Server Hop la muestra u oculta; la preferencia se guarda como `quick` en
 `server_hop_button_ui.json`.
 
-Tarjeta de vidrio (`window`) con borde fino, esquinas de 14 px y la misma
-sombra suave del hub. Sin degradado, brillo ni contornos duplicados del texto.
+Panel de manga con paleta propia (`support.MANGA`), igual con cualquier tema
+del hub: `hubTheme.fixed` apunta a la tarjeta y el cambio de tema la salta. CI
+comprueba sus contrastes. Papel `#FAF8F0`, tinta `#121214`, rojo `#D61F34`.
 
-- Expandido 320 x 116. Fila superior de 44 px: AUTO (60 px), boton azul
-  Server Hop (flexible, Builder Sans SemiBold 16, texto blanco) y plegado
-  (32 px, relleno gris suave). Debajo, el estado en dos lineas de 11 px como maximo y, al pie, la
-  firma By Mistake en `accentText`.
+- Superficie de papel con borde de tinta de 3 px, esquinas de 4 px y sombra
+  solida de tinta desplazada 5 px abajo a la derecha (sin sombra difusa).
+  Trama de puntos grises en la esquina inferior izquierda.
+- Expandido 320 x 116. Fila superior de 44 px: AUTO (60 px), boton Server Hop
+  (flexible) y plegado (32 px). Debajo, el estado en un recuadro de narracion
+  (borde de tinta de 1.5 px, texto de 11 px alineado a la izquierda, dos
+  lineas como maximo). Abajo a la derecha, junto al asa, la firma By Mistake
+  en Bangers 13 y tinta.
 - Plegado 232 x 66. La misma fila con 34 px de alto (AUTO 52, plegado 28,
-  texto 14) y la firma debajo. El estado se oculta.
-- AUTO es la etiqueta `AUTO` con un interruptor debajo (36 x 20; plegado
-  30 x 16): pista azul y etiqueta en `accentText` si esta activo, gris si no.
-- El plegado usa un chevron geometrico: arriba para plegar, abajo para abrir.
-- Mientras hay un salto en curso el boton baja al 50 % de opacidad.
+  rotulo 18) y la firma debajo. El estado se oculta.
+- Boton Server Hop: vineta roja con borde de tinta de 2.5 px y rotulo en
+  Bangers 21, blanco con contorno de tinta. Lineas de velocidad blancas,
+  quietas y tenues en reposo; mientras hay un salto se aclaran y corren en
+  bucle (0.45 s, lineal), y el boton baja al 85 % de opacidad. Con movimiento
+  reducido no corren. Pulsar oscurece el rojo al instante y baja el rotulo
+  1 px.
+- AUTO: etiqueta en Bangers 14 (roja si esta activo, gris si no) e interruptor
+  cuadrado de 38 x 20 (plegado 32 x 16) con borde de tinta: pista roja o papel
+  gris y perilla de tinta.
+- Plegado: cuadro de papel con borde de tinta y chevron de tinta de 2 px.
+- Colores del estado sobre el papel: avisos en `alert`, exito en `go` y el
+  resto en `soft`. La seccion Server Hop del hub conserva los colores del tema.
 - Asa de tamano en la esquina inferior derecha: tres trazos diagonales de
-  1.5 px dentro del borde redondeado, terciario al 60 % y azul al pasar o
+  1.5 px dentro del borde, trama gris al 60 % y rojo al pasar o
   arrastrar (120 ms, Quad Out). Escala la tarjeta entera (UIScale) entre
   0.75 y 1.75, sin pasar del ancho/alto de la pantalla, y fija el borde
   izquierdo. Las medidas de arriba son a escala 1.

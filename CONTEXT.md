@@ -1,5 +1,12 @@
 # Contexto del proyecto
 
+## Tarjeta flotante Server Hop con estetica de manga (2026-10-15)
+
+El usuario conserva el diseno de Mistake Hub y pidio un diseno nuevo y
+distinto para la tarjeta flotante del boton Server Hop, con estetica de
+anime. Eligio panel de manga, paleta propia fija (no sigue el tema del hub) y
+animaciones sutiles.
+
 ## Estilo macOS del primer rediseno sobre el hub actual (2026-10-15)
 
 El usuario prefirio el lenguaje visual del primer rediseno (vidrio
