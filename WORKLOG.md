@@ -1,5 +1,11 @@
 # Estado del trabajo
 
+## 2026-10-15 - Estilo macOS anterior e icono propio
+
+Mismo hub y mismas opciones que `main`; vuelve el estilo del primer rediseno
+(ver DESIGN), con temas Claro / Oscuro / Sistema, icono de imagen, boton
+minimizado como icono de app y pie de barra lateral solo con el TikTok.
+
 ## 2026-10-15 - Estilo macOS y temas Claro / Oscuro / Sistema
 
 Rama codex/hub-macos-temas sobre main 7fb7a44 (reemplaza el intento

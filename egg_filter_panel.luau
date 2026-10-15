@@ -37,7 +37,7 @@ local function mountEggFilterPanel(context)
     local PAGE_H = HUB_HEIGHT - PAGE_Y - 16
     -- Las hojas modales ocupan el area de paginas, nunca mas alto.
     local SHEET_TOP, SHEET_SPACE = HEADER + 12, HUB_HEIGHT - HEADER - 24
-    local ROW_HEIGHT, ROW_GAP = 100, 8
+    local ROW_HEIGHT, ROW_GAP = 100, 0
     local function access() if type(setthreadidentity) == "function" then setthreadidentity(8) end end
     access()
     local function make(class, name, parent, properties)
@@ -71,7 +71,7 @@ local function mountEggFilterPanel(context)
             box.SelectionImageObject = look.ring
             box.Focused:Connect(function()
                 if not panel.alive or not session.alive then return end
-                access(); box.Border.Color = C.accent; box.Border.Transparency = 0.3; box.Border.Thickness = 2
+                access(); box.Border.Color = C.accent; box.Border.Transparency = 0.45; box.Border.Thickness = 3
             end)
             box.FocusLost:Connect(function()
                 if not panel.alive or not session.alive then return end
@@ -112,6 +112,14 @@ local function mountEggFilterPanel(context)
                 for _, y in ipairs({4, 8, 12}) do segment(f, 2, y, 14, y, c) end
                 dot(f, 10.5, 4, 4.5, c); dot(f, 5.5, 8, 4.5, c); dot(f, 9, 12, 4.5, c)
             end,
+            -- Doble chevron de los desplegables, X de las hojas, marca y menos.
+            updown = function(f, c)
+                segment(f, 5.5, 6.2, 8, 3.7, c); segment(f, 8, 3.7, 10.5, 6.2, c)
+                segment(f, 5.5, 9.8, 8, 12.3, c); segment(f, 8, 12.3, 10.5, 9.8, c)
+            end,
+            xmark = function(f, c) segment(f, 4.5, 4.5, 11.5, 11.5, c); segment(f, 11.5, 4.5, 4.5, 11.5, c) end,
+            check = function(f, c) segment(f, 4, 8.6, 6.7, 11.3, c); segment(f, 6.7, 11.3, 12, 5, c) end,
+            minus = function(f, c) segment(f, 5.5, 8, 10.5, 8, c) end,
         }
         function look.icon(parent, kind, position, color)
             local frame = make("Frame", "Icon", parent, { AnchorPoint = Vector2.new(0.5, 0.5), Position = position,
@@ -124,6 +132,43 @@ local function mountEggFilterPanel(context)
                 if piece:IsA("UIStroke") then piece.Color = color
                 elseif piece:IsA("Frame") and piece.BackgroundTransparency < 1 then piece.BackgroundColor3 = color end
             end
+        end
+        -- Sombra suave: capas negras muy transparentes detras de la superficie.
+        function look.shadow(parent, radius)
+            for index, layer in ipairs({ {2, 0.9}, {6, 0.94}, {14, 0.965} }) do
+                local spread = layer[1]
+                corner(make("Frame", "Shadow" .. index, parent, { AnchorPoint = Vector2.new(0.5, 0.5),
+                    Position = UDim2.new(0.5, 0, 0.5, math.floor(spread / 2)), Size = UDim2.new(1, spread * 2, 1, spread * 2),
+                    BackgroundColor3 = C.scrim, BackgroundTransparency = layer[2], BorderSizePixel = 0, ZIndex = -1 }), radius + spread)
+            end
+        end
+        -- Vidrio con esquinas redondeadas solo donde toca el borde de la ventana.
+        -- Las piezas no se solapan: la translucidez es uniforme hasta las esquinas.
+        function look.pane(name, parent, color, transparency, left, right, radius)
+            local frame = make("Frame", name, parent, { BackgroundTransparency = 1, BorderSizePixel = 0, ZIndex = 0 })
+            local l, r = left and radius or 0, right and radius or 0
+            local function piece(id, position, size)
+                make("Frame", id, frame, { Position = position, Size = size, BackgroundColor3 = color,
+                    BackgroundTransparency = transparency, BorderSizePixel = 0 })
+            end
+            piece("Body", UDim2.fromOffset(0, radius), UDim2.new(1, 0, 1, -2 * radius))
+            piece("Top", UDim2.fromOffset(l, 0), UDim2.new(1, -l - r, 0, radius))
+            piece("Bottom", UDim2.new(0, l, 1, -radius), UDim2.new(1, -l - r, 0, radius))
+            for _, spot in ipairs({ {left, 0, 0}, {left, 0, 1}, {right, 1, 0}, {right, 1, 1} }) do
+                if spot[1] then
+                    local clip = make("Frame", "Corner", frame, { Position = UDim2.new(spot[2], -spot[2] * radius, spot[3], -spot[3] * radius),
+                        Size = UDim2.fromOffset(radius, radius), BackgroundTransparency = 1, ClipsDescendants = true })
+                    corner(make("Frame", "Disc", clip, { Position = UDim2.fromOffset(-spot[2] * radius, -spot[3] * radius),
+                        Size = UDim2.fromOffset(radius * 2, radius * 2), BackgroundColor3 = color,
+                        BackgroundTransparency = transparency, BorderSizePixel = 0 }), radius)
+                end
+            end
+            return frame
+        end
+        -- Linea fina de separacion entre filas y zonas.
+        function look.hairline(parent, name, x, y, width, height)
+            return make("Frame", name, parent, { Position = UDim2.fromOffset(x, y), Size = UDim2.fromOffset(width, height),
+                BackgroundColor3 = C.separator, BackgroundTransparency = 0.86, BorderSizePixel = 0 })
         end
     end
     -- Movimiento: solo feedback y contexto, nunca decoracion. Duraciones cortas;
@@ -292,18 +337,12 @@ local function mountEggFilterPanel(context)
         update(selected)
         return update, mark
     end
-    -- Selector desplegable: texto a la izquierda y chevron en su propio margen.
+    -- Boton desplegable de macOS: valor a la izquierda y doble chevron en su margen.
     local function chevron(object)
-        for index, rotation in ipairs({45, -45}) do
-            local segment = line(object, "Chevron" .. index, 0, 0, 6, rotation, C.secondary)
-            -- Las posiciones son relativas al area con padding: el chevron vive en el margen.
-            segment.Position = UDim2.new(1, index == 1 and 12 or 16, 0.5, 0)
-        end
-        object.TextXAlignment = Enum.TextXAlignment.Left
-        make("UIPadding", "ChevronSpace", object, { PaddingRight = UDim.new(0, 30), PaddingLeft = UDim.new(0, 12) })
-    end
-    local function crossIcon(object)
-        line(object, "Cross1", 16, 16, 12, 45, C.secondary); line(object, "Cross2", 16, 16, 12, -45, C.secondary)
+        object.TextXAlignment = Enum.TextXAlignment.Left; object.FontFace = look.face("regular"); object.TextSize = 13
+        make("UIPadding", "ChevronSpace", object, { PaddingRight = UDim.new(0, 26), PaddingLeft = UDim.new(0, 10) })
+        -- Las posiciones son relativas al area con padding: el icono vive en el margen.
+        look.icon(object, "updown", UDim2.new(1, 13, 0.5, 0), C.secondary)
     end
     local function connect(signal, callback)
         local c = signal:Connect(function(...)
@@ -377,81 +416,160 @@ local function mountEggFilterPanel(context)
     local tab = "finder"
     for _, item in ipairs(TABS) do if item.id == saved.tab then tab = item.id end end
     local minimized = saved.minimized == true
+    -- Ventana de vidrio: sombra suave, barra lateral translucida a toda la
+    -- altura y area principal, con un contorno fino por encima de ambas.
     local root = make("Frame", "MistakeHub", context.screenGui, {
         Size = UDim2.fromOffset(HUB_WIDTH, HUB_HEIGHT), Position = UDim2.fromOffset(80, 70),
-        BackgroundColor3 = C.window, BackgroundTransparency = THEME.alpha.window, BorderSizePixel = 0,
-        Visible = panel.open and not minimized, Active = true, ClipsDescendants = true, ZIndex = 10,
+        BackgroundTransparency = 1, BorderSizePixel = 0,
+        Visible = panel.open and not minimized, Active = true, ZIndex = 10,
     })
-    corner(root, 14); stroke(root)
     local scale = make("UIScale", "ResponsiveScale", root, { Scale = 1 })
+    do
+        look.shadow(root, 14)
+        look.pane("SidebarGlass", root, C.sidebar, THEME.alpha.sidebar, true, false, 14).Size = UDim2.fromOffset(SIDEBAR, HUB_HEIGHT)
+        local glass = look.pane("MainGlass", root, C.window, THEME.alpha.window, false, true, 14)
+        glass.Position = UDim2.fromOffset(SIDEBAR, 0); glass.Size = UDim2.fromOffset(HUB_WIDTH - SIDEBAR, HUB_HEIGHT)
+        look.hairline(root, "SidebarDivider", SIDEBAR, 0, 1, HUB_HEIGHT)
+        local outline = make("Frame", "Outline", root, { Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, BorderSizePixel = 0, ZIndex = 2 })
+        corner(outline, 14); stroke(outline)
+        -- Las hojas modales se recortan a la ventana mientras entran y salen.
+        look.overlay = make("Frame", "Overlay", root, { Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1,
+            BorderSizePixel = 0, ClipsDescendants = true, ZIndex = 50 })
+    end
+    -- Icono del hub: la imagen que prepara el runtime o, sin ella, la M.
+    function look.logo(parent, x, y, zIndex, size, radius)
+        size = size or 32
+        local logo
+        if THEME.icon then
+            logo = make("ImageLabel", "Logo", parent, { Position = UDim2.fromOffset(x, y), Size = UDim2.fromOffset(size, size),
+                BackgroundColor3 = C.accent, BorderSizePixel = 0, Image = THEME.icon, ScaleType = Enum.ScaleType.Crop, ZIndex = zIndex })
+        else
+            logo = make("TextLabel", "Logo", parent, { Position = UDim2.fromOffset(x, y), Size = UDim2.fromOffset(size, size),
+                BackgroundColor3 = C.accent, BorderSizePixel = 0, Text = "M", TextColor3 = C.onAccent, TextSize = math.floor(size * 0.56),
+                FontFace = look.face("bold"), TextStrokeTransparency = 1, ZIndex = zIndex })
+        end
+        corner(logo, radius or 8)
+        return logo
+    end
 
-    -- Cabecera: marca a la izquierda, AUTO y minimizar a la derecha. Arrastra el
-    -- hub.
-    local header = make("Frame", "Header", root, { Size = UDim2.new(1, 0, 0, HEADER), BackgroundTransparency = 1, BorderSizePixel = 0, Active = true })
-    local logo = make("TextLabel", "Logo", header, { Position = UDim2.fromOffset(16, 12), Size = UDim2.fromOffset(32, 32),
-        BackgroundColor3 = C.accent, BorderSizePixel = 0, Text = "M", TextColor3 = C.onAccent, TextSize = 18,
-        FontFace = look.face("bold"), TextStrokeTransparency = 1 })
-    corner(logo, 8)
-    text("Title", header, "Mistake Hub", 58, 10, 120, 22, C.text, 17, true)
-    text("Subtitle", header, "Steal An Egg", 58, 31, 120, 14, C.secondary, 11)
-    local minimize = button("Minimize", header, "", 0, 12, 32, 32)
-    minimize.Position = UDim2.new(1, -48, 0, 12)
-    line(minimize, "Minus", 16, 16, 12, 0, C.secondary)
+    -- Barra de herramientas sobre el area principal: marca a la izquierda y AUTO
+    -- a la derecha. Arrastra el hub.
+    local header = make("Frame", "Header", root, { Position = UDim2.fromOffset(SIDEBAR, 0), Size = UDim2.fromOffset(HUB_WIDTH - SIDEBAR, HEADER),
+        BackgroundTransparency = 1, BorderSizePixel = 0, Active = true })
+    look.logo(header, PAD, 12)
+    text("Title", header, "Mistake Hub", PAD + 42, 10, 160, 22, C.text, 17, true)
+    text("Subtitle", header, "Steal An Egg", PAD + 42, 31, 160, 14, C.secondary, 11)
+    look.hairline(header, "HeaderDivider", 0, HEADER - 1, HUB_WIDTH - SIDEBAR, 1)
     -- Minimizado, el hub se guarda y queda el boton M, independiente: tiene su
     -- propia posicion y se arrastra solo. Sin teclado (movil, iPad) no hay Alt
     -- izquierdo y es la forma de volver: tocarlo abre el hub en su sitio, en la
-    -- misma seccion. El punto dice si AUTO esta activo.
+    -- misma seccion. Es un icono de app: la imagen llena el boton redondeado,
+    -- con sombra suave y un brillo fino en el borde. El punto dice si AUTO esta
+    -- activo.
     local mini = { button = make("TextButton", "MistakeLauncher", context.screenGui, { Size = UDim2.fromOffset(LAUNCHER, LAUNCHER),
-        BackgroundColor3 = C.window, BorderSizePixel = 0, Text = "", AutoButtonColor = false, Visible = false, Active = true, ZIndex = 10,
-        SelectionImageObject = look.ring }) }
+        BackgroundColor3 = C.window, BackgroundTransparency = 1, BorderSizePixel = 0, Text = "", AutoButtonColor = false,
+        Visible = false, Active = true, ZIndex = 10, SelectionImageObject = look.ring }) }
     corner(mini.button, 14); stroke(mini.button)
-    corner(make("TextLabel", "Logo", mini.button, { Position = UDim2.fromOffset(12, 12), Size = UDim2.fromOffset(32, 32),
-        BackgroundColor3 = C.accent, BorderSizePixel = 0, Text = "M", TextColor3 = C.onAccent, TextSize = 18,
-        FontFace = look.face("bold"), TextStrokeTransparency = 1, ZIndex = 11 }), 8)
-    mini.badge = make("Frame", "AutoBadge", mini.button, { Position = UDim2.fromOffset(38, 6), Size = UDim2.fromOffset(10, 10),
+    look.shadow(mini.button, 14)
+    make("UIStroke", "Shine", look.logo(mini.button, 0, 0, 11, LAUNCHER, 14), { Color = C.knob, Transparency = 0.7,
+        Thickness = 1, ApplyStrokeMode = Enum.ApplyStrokeMode.Border })
+    mini.badge = make("Frame", "AutoBadge", mini.button, { Position = UDim2.fromOffset(LAUNCHER - 13, -1), Size = UDim2.fromOffset(14, 14),
         BackgroundColor3 = C.tertiary, BorderSizePixel = 0, ZIndex = 12 })
-    corner(mini.badge, 5); stroke(mini.badge, C.window, 2).Transparency = 0
-    local auto = button("ToggleSearch", header, "AUTO OFF", 0, 12, 100, 32)
-    auto.Position = UDim2.new(1, -156, 0, 12); auto.FontFace = look.face("semibold")
-    make("UIPadding", "DotSpace", auto, { PaddingLeft = UDim.new(0, 16) })
-    local autoDot = make("Frame", "Dot", auto, { Position = UDim2.new(0, -2, 0.5, -4), Size = UDim2.fromOffset(8, 8), BackgroundColor3 = C.secondary, BorderSizePixel = 0 })
-    corner(autoDot, 4)
+    corner(mini.badge, 7); stroke(mini.badge, C.window, 2).Transparency = 0
+    -- Controles sin borde (AUTO, segmentos, X de las hojas): pasar el raton da
+    -- un relleno gris suave y pulsar uno mas firme, al instante.
+    function look.hover(object, base, skip)
+        base = base or 1
+        object:GetPropertyChangedSignal("GuiState"):Connect(function()
+            if not panel.alive or not session.alive or (skip and skip()) then return end
+            local state = object.GuiState
+            local goal = { BackgroundTransparency = state == Enum.GuiState.Press and base - 0.18
+                or (state == Enum.GuiState.Hover and UIS.MouseEnabled) and base - 0.1 or base }
+            if state == Enum.GuiState.Press then place(object, goal) else animate(object, MOTION.color, goal) end
+        end)
+    end
+    -- Interruptor: pista azul encendida, gris apagada; la perilla viaja y la
+    -- pista cambia de color en el mismo frame. Un toque a medio camino la
+    -- devuelve desde donde esta.
+    function look.switch(parent, position, anchor)
+        local track = make("Frame", "Switch", parent, { AnchorPoint = anchor or Vector2.zero, Position = position,
+            Size = UDim2.fromOffset(44, 24), BackgroundColor3 = C.trackOff, BorderSizePixel = 0 })
+        corner(track, 12)
+        local knob = make("Frame", "Knob", track, { AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.new(0, 3, 0.5, 0),
+            Size = UDim2.fromOffset(18, 18), BackgroundColor3 = C.knob, BorderSizePixel = 0 })
+        corner(knob, 9); stroke(knob).Transparency = 0.85
+        local current
+        return function(on, instant)
+            on = on == true
+            if on == current and not instant then return end
+            current = on
+            local slide = { Position = UDim2.new(0, on and 23 or 3, 0.5, 0) }
+            local color = { BackgroundColor3 = on and C.accent or C.trackOff }
+            if instant or motion.reduced then place(knob, slide) else animate(knob, MOTION.toggle, slide) end
+            if instant then place(track, color) else animate(track, motion.reduced and MOTION.fade or MOTION.toggle, color) end
+        end, track
+    end
+    -- AUTO en la barra de herramientas: etiqueta e interruptor.
+    local auto = make("TextButton", "ToggleSearch", header, { AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -12, 0, 12),
+        Size = UDim2.fromOffset(108, 32), BackgroundColor3 = C.fill, BackgroundTransparency = 1, BorderSizePixel = 0,
+        Text = "", AutoButtonColor = false, SelectionImageObject = look.ring })
+    corner(auto, 8); look.hover(auto)
+    text("Label", auto, "AUTO", 12, 0, 40, 32, C.text, 12, "semi")
+    look.autoSwitch = look.switch(auto, UDim2.new(1, -52, 0.5, 0), Vector2.new(0, 0.5))
 
-    -- Barra lateral: superficie mas pesada que el contenido (tono de entrada)
-    -- en lugar de lineas. Solo su esquina inferior izquierda sigue la del hub.
-    local sidebar = make("Frame", "Sidebar", root, { Position = UDim2.fromOffset(0, HEADER),
-        Size = UDim2.fromOffset(SIDEBAR, HUB_HEIGHT - HEADER), BackgroundColor3 = C.sidebar, BorderSizePixel = 0 })
-    corner(sidebar, 14)
-    make("Frame", "SquareTop", sidebar, { Size = UDim2.new(1, 0, 1, -14), BackgroundColor3 = C.sidebar, BorderSizePixel = 0, ZIndex = 0 })
-    make("Frame", "SquareRight", sidebar, { Position = UDim2.new(1, -14, 1, -14), Size = UDim2.fromOffset(14, 14),
-        BackgroundColor3 = C.sidebar, BorderSizePixel = 0, ZIndex = 0 })
+    -- Barra lateral de vidrio a toda la altura, como Finder: arriba el semaforo
+    -- (minimizar), luego las secciones y al pie el estado, el TikTok y la firma.
+    local sidebar = make("Frame", "Sidebar", root, { Size = UDim2.fromOffset(SIDEBAR, HUB_HEIGHT), BackgroundTransparency = 1, BorderSizePixel = 0 })
+    -- Lo alto de la barra lateral tambien arrastra el hub.
+    look.titleBar = make("Frame", "TitleBar", sidebar, { Size = UDim2.new(1, 0, 0, 48), BackgroundTransparency = 1, BorderSizePixel = 0, Active = true })
+    -- Semaforo amarillo: minimizar deja el boton M, como Alt izquierdo. El
+    -- simbolo aparece al pasar el raton o con el foco; en tactil siempre.
+    local minimize = make("TextButton", "Minimize", look.titleBar, { Position = UDim2.fromOffset(10, 12), Size = UDim2.fromOffset(28, 28),
+        BackgroundTransparency = 1, Text = "", AutoButtonColor = false, SelectionImageObject = look.ring })
+    do
+        local light = make("Frame", "Light", minimize, { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5),
+            Size = UDim2.fromOffset(12, 12), BackgroundColor3 = C.yellow, BorderSizePixel = 0 })
+        corner(light, 6); stroke(light, C.yellowEdge).Transparency = 0.2
+        local glyph = look.icon(light, "minus", UDim2.fromScale(0.5, 0.5), C.yellowGlyph)
+        local focused = false
+        local function show()
+            if not panel.alive then return end
+            access()
+            local state = minimize.GuiState
+            glyph.Visible = focused or not UIS.MouseEnabled or state == Enum.GuiState.Hover or state == Enum.GuiState.Press
+            light.BackgroundColor3 = state == Enum.GuiState.Press and C.yellowEdge or C.yellow
+        end
+        minimize:GetPropertyChangedSignal("GuiState"):Connect(show)
+        minimize.SelectionGained:Connect(function() focused = true; show() end)
+        minimize.SelectionLost:Connect(function() focused = false; show() end)
+        show()
+    end
     -- Una sola capsula azul suave que se desliza a la pestana activa: dice de
     -- donde viene el cambio. Las pestanas solo marcan paso y pulsacion.
-    local activeTab = make("Frame", "ActiveTab", sidebar, { Position = UDim2.fromOffset(12, 16), Size = UDim2.fromOffset(SIDEBAR - 24, 40),
+    local activeTab = make("Frame", "ActiveTab", sidebar, { Position = UDim2.fromOffset(10, 52), Size = UDim2.fromOffset(SIDEBAR - 20, 32),
         BackgroundColor3 = C.selection, BorderSizePixel = 0 })
-    corner(activeTab, 8)
+    corner(activeTab, 7)
     local tabButtons = {}
     for index, item in ipairs(TABS) do
-        local b = make("TextButton", "Tab_" .. item.id, sidebar, { Position = UDim2.fromOffset(12, 16 + (index - 1) * 46),
-            Size = UDim2.fromOffset(SIDEBAR - 24, 40), BackgroundColor3 = C.controlHover, BackgroundTransparency = 1,
+        local y = 52 + (index - 1) * 36
+        local b = make("TextButton", "Tab_" .. item.id, sidebar, { Position = UDim2.fromOffset(10, y),
+            Size = UDim2.fromOffset(SIDEBAR - 20, 32), BackgroundColor3 = C.fill, BackgroundTransparency = 1,
             BorderSizePixel = 0, Text = "", AutoButtonColor = false, ZIndex = 2, SelectionImageObject = look.ring })
-        corner(b, 8)
-        local glyph = look.icon(b, item.id, UDim2.fromOffset(22, 20), C.secondary)
-        local label = text("Label", b, item.label, 40, 0, SIDEBAR - 88, 40, C.text, 13)
+        corner(b, 7)
+        local glyph = look.icon(b, item.id, UDim2.fromOffset(20, 16), C.secondary)
+        local label = text("Label", b, item.label, 38, 0, SIDEBAR - 82, 32, C.text, 13)
         -- Punto naranja: hay cambios de filtros sin aplicar.
         local dot = make("Frame", "Pending", b, { Position = UDim2.new(1, -18, 0.5, -4), Size = UDim2.fromOffset(8, 8),
             BackgroundColor3 = C.orangeDot, BorderSizePixel = 0, Visible = false })
         corner(dot, 4)
-        tabButtons[item.id] = { button = b, label = label, icon = glyph, dot = dot, y = 16 + (index - 1) * 46, text = item.label }
+        tabButtons[item.id] = { button = b, label = label, icon = glyph, dot = dot, y = y, text = item.label }
     end
-    local sideState = text("AutoState", sidebar, "AUTO apagado", 16, HUB_HEIGHT - HEADER - 194, SIDEBAR - 32, 16, C.secondary, 11, true)
-    local sideMode = paragraph("AutoMode", sidebar, "", 16, HUB_HEIGHT - HEADER - 176, SIDEBAR - 32, 28, C.secondary, 11)
     -- Marca de agua: el TikTok del autor, con el enlace a la vista y un boton
     -- que dice lo que hizo. Copia con el portapapeles del executor (Roblox no
     -- lo expone); sin el, el enlace sigue escrito en la tarjeta.
     do
         local LINK = "https://www.tiktok.com/@mistakeontt"
-        local card = make("Frame", "TikTok", sidebar, { Position = UDim2.fromOffset(12, HUB_HEIGHT - HEADER - 136),
+        local card = make("Frame", "TikTok", sidebar, { Position = UDim2.fromOffset(12, HUB_HEIGHT - 104),
             Size = UDim2.fromOffset(SIDEBAR - 24, 92), BackgroundColor3 = C.raised, BorderSizePixel = 0 })
         corner(card, 10); stroke(card)
         text("Label", card, "TIKTOK", 10, 10, SIDEBAR - 44, 12, C.secondary, 10, true)
@@ -472,8 +590,6 @@ local function mountEggFilterPanel(context)
             end)
         end)
     end
-    local credit = text("ByMistakeCredit", sidebar, "By Mistake", 16, HUB_HEIGHT - HEADER - 34, SIDEBAR - 32, 14, C.accentText, 11, true)
-    credit.TextTransparency = 0.25
 
     -- Paginas: una por seccion, en el area a la derecha de la barra lateral.
     local pageArea = make("Frame", "Pages", root, { Position = UDim2.fromOffset(PAGE_X, PAGE_Y),
@@ -487,13 +603,25 @@ local function mountEggFilterPanel(context)
         text("Heading", parent, title, 0, y, CONTENT, 20, C.text, 15, true)
         if detail then return paragraph("HeadingDetail", parent, detail, 0, y + 22, CONTENT, 28, C.secondary, 11) end
     end
-    local function listFrame(parent, y, height, x, width)
+    -- Lista desplazable; agrupada es un grupo blanco con filas separadas por
+    -- lineas finas, como los menus y listas de Ajustes del Sistema.
+    local function listFrame(parent, y, height, x, width, grouped)
         local list = make("ScrollingFrame", "Options", parent, { Position = UDim2.fromOffset(x or 14, y), Size = UDim2.fromOffset(width or CONTENT - 28, height),
-            CanvasSize = UDim2.new(), AutomaticCanvasSize = Enum.AutomaticSize.Y, BackgroundTransparency = 1,
-            ScrollBarThickness = 4, ScrollBarImageColor3 = C.tertiary, BorderSizePixel = 0 })
-        make("UIPadding", "Padding", list, { PaddingTop = UDim.new(0, 2), PaddingLeft = UDim.new(0, 2), PaddingRight = UDim.new(0, 10), PaddingBottom = UDim.new(0, 2) })
-        make("UIListLayout", "Layout", list, { Padding = UDim.new(0, 6), SortOrder = Enum.SortOrder.LayoutOrder })
+            CanvasSize = UDim2.new(), AutomaticCanvasSize = Enum.AutomaticSize.Y, BackgroundColor3 = C.raised,
+            BackgroundTransparency = grouped and 0 or 1, ScrollBarThickness = 4, ScrollBarImageColor3 = C.tertiary, BorderSizePixel = 0 })
+        if grouped then corner(list, 10); stroke(list) end
+        local inset = grouped and 4 or 2
+        make("UIPadding", "Padding", list, { PaddingTop = UDim.new(0, inset), PaddingLeft = UDim.new(0, inset), PaddingRight = UDim.new(0, 10), PaddingBottom = UDim.new(0, inset) })
+        make("UIListLayout", "Layout", list, { Padding = UDim.new(0, grouped and 0 or 6), SortOrder = Enum.SortOrder.LayoutOrder })
         return list
+    end
+    -- Fila de una lista agrupada: sin borde propio, linea fina al pie y el
+    -- oscurecido de AutoButtonColor al pasar y pulsar.
+    function look.row(object)
+        object.BackgroundColor3 = C.raised; object.Border.Enabled = false; object.Round.CornerRadius = UDim.new(0, 6)
+        local separator = look.hairline(object, "Separator", 12, 0, 0, 1)
+        separator.Position = UDim2.new(0, 12, 1, -1); separator.Size = UDim2.new(1, -24, 0, 1)
+        return object
     end
     -- Fila con interruptor: toda la fila lo cambia; el estado se lee en el color.
     local function toggleRow(parent, name, title, detail, y, value, onToggle)
@@ -502,37 +630,55 @@ local function mountEggFilterPanel(context)
         corner(row, 10); stroke(row); interaction(row)
         text("Title", row, title, 14, 9, CONTENT - 96, 18, C.text, 14, true)
         text("Detail", row, detail, 14, 28, CONTENT - 96, 14, C.secondary, 11)
-        local track = make("Frame", "Switch", row, { AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -14, 0.5, 0),
-            Size = UDim2.fromOffset(44, 24), BackgroundColor3 = C.trackOff, BorderSizePixel = 0 })
-        corner(track, 12)
-        local knob = make("Frame", "Knob", track, { AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.new(0, 3, 0.5, 0),
-            Size = UDim2.fromOffset(18, 18), BackgroundColor3 = C.knob, BorderSizePixel = 0 })
-        corner(knob, 9); stroke(knob).Transparency = 0.85
-        -- La perilla viaja y el carril cambia de color en el mismo frame; un
-        -- toque a medio camino la devuelve desde donde esta.
-        local function set(on, instant)
-            local slide = { Position = UDim2.new(0, on and 23 or 3, 0.5, 0) }
-            local colors = { { track, { BackgroundColor3 = on and C.accent or C.trackOff } } }
-            if instant or motion.reduced then place(knob, slide) else animate(knob, MOTION.toggle, slide) end
-            for _, item in ipairs(colors) do
-                if instant then place(item[1], item[2]) else animate(item[1], motion.reduced and MOTION.fade or MOTION.toggle, item[2]) end
-            end
-        end
+        local set = look.switch(row, UDim2.new(1, -14, 0.5, 0), Vector2.new(1, 0.5))
         set(value, true)
         row.Activated:Connect(function() access(); onToggle() end)
         return set, row
     end
+    -- Control segmentado: la pastilla se desliza hasta la opcion activa.
+    function look.segmented(name, parent, x, y, width, height, options)
+        local track = make("Frame", name, parent, { Position = UDim2.fromOffset(x, y), Size = UDim2.fromOffset(width, height),
+            BackgroundColor3 = C.fill, BackgroundTransparency = 0.88, BorderSizePixel = 0 })
+        corner(track, 8)
+        local each = (width - 4) / #options
+        local thumb = make("Frame", "Thumb", track, { Position = UDim2.fromOffset(2, 2), Size = UDim2.fromOffset(each, height - 4),
+            BackgroundColor3 = C.control, BorderSizePixel = 0 })
+        corner(thumb, 6); stroke(thumb).Transparency = 0.85
+        local control = { buttons = {} }
+        for index, option in ipairs(options) do
+            local item = make("TextButton", option.name, track, { Position = UDim2.fromOffset(2 + (index - 1) * each, 2),
+                Size = UDim2.fromOffset(each, height - 4), BackgroundColor3 = C.fill, BackgroundTransparency = 1, BorderSizePixel = 0,
+                Text = option.label, TextSize = 13, FontFace = look.face("medium"), TextColor3 = C.secondary,
+                TextTruncate = Enum.TextTruncate.AtEnd, AutoButtonColor = false, SelectionImageObject = look.ring, ZIndex = 2 })
+            corner(item, 6); look.hover(item, 1, function() return control.index == index end)
+            control.buttons[index] = item
+        end
+        function control.select(index, animated)
+            if control.index == index then return end
+            control.index = index
+            for position, item in ipairs(control.buttons) do
+                item.TextColor3 = position == index and C.text or C.secondary
+                item.FontFace = look.face(position == index and "semibold" or "medium")
+                if position == index then place(item, { BackgroundTransparency = 1 }) end
+            end
+            local goal = { Position = UDim2.fromOffset(2 + (index - 1) * each, 2) }
+            if animated and not motion.reduced then animate(thumb, MOTION.indicator, goal) else place(thumb, goal) end
+        end
+        return control
+    end
 
     -- Egg Finder: estado de la busqueda, filtros guardados y huevos del mapa.
     local finderPage = pages.finder
-    local statusCard = make("Frame", "Status", finderPage, { Size = UDim2.fromOffset(CONTENT, 60), BackgroundColor3 = C.raised, BorderSizePixel = 0 })
-    corner(statusCard, 10); stroke(statusCard).Transparency = 0.8
-    local stateDot = make("Frame", "StateDot", statusCard, { Position = UDim2.fromOffset(14, 16), Size = UDim2.fromOffset(8, 8), BackgroundColor3 = C.secondary, BorderSizePixel = 0 })
+    -- Estado de la busqueda sin caja: punto de color, titulo, explicacion y
+    -- reloj del ciclo a la derecha.
+    local statusCard = make("Frame", "Status", finderPage, { Size = UDim2.fromOffset(CONTENT, 60), BackgroundTransparency = 1, BorderSizePixel = 0 })
+    local stateDot = make("Frame", "StateDot", statusCard, { Position = UDim2.fromOffset(0, 16), Size = UDim2.fromOffset(8, 8), BackgroundColor3 = C.secondary, BorderSizePixel = 0 })
     corner(stateDot, 4)
-    local stateTitle = text("SearchState", statusCard, "Conectando detector...", 30, 9, CONTENT - 170, 22, C.text, 15, true)
-    local stateDetail = text("SearchDetail", statusCard, "", 14, 33, CONTENT - 154, 18, C.secondary, 11)
-    local clockCaption = text("ResetCaption", statusCard, "Renovación", CONTENT - 124, 10, 110, 14, C.secondary, 10)
-    local clock = text("ResetClock", statusCard, "--:--", CONTENT - 124, 26, 110, 24, C.text, 18, true)
+    local stateTitle = text("SearchState", statusCard, "Conectando detector...", 16, 9, CONTENT - 150, 22, C.text, 15, true)
+    local stateDetail = text("SearchDetail", statusCard, "", 16, 33, CONTENT - 150, 18, C.secondary, 12)
+    local clockCaption = text("ResetCaption", statusCard, "Renovación", CONTENT - 120, 10, 120, 14, C.secondary, 11)
+    local clock = text("ResetClock", statusCard, "--:--", CONTENT - 120, 26, 120, 24, C.text, 19, true)
+    look.hairline(statusCard, "Divider", 0, 63, CONTENT, 1)
     clockCaption.TextXAlignment = Enum.TextXAlignment.Right; clock.TextXAlignment = Enum.TextXAlignment.Right
     local summaryBar = make("Frame", "FiltersBar", finderPage, { Position = UDim2.fromOffset(0, 70), Size = UDim2.fromOffset(CONTENT, 32), BackgroundTransparency = 1 })
     text("FiltersCaption", summaryBar, "Filtros", 0, 0, 52, 32, C.text, 13, true)
@@ -541,45 +687,54 @@ local function mountEggFilterPanel(context)
     -- Barra de la lista: alcance segmentado, vista y orden.
     local toolbar = make("Frame", "ListBar", finderPage, { Position = UDim2.fromOffset(0, 112), Size = UDim2.fromOffset(CONTENT, 32), BackgroundTransparency = 1 })
     local toolWidth = (CONTENT - 24) / 4
-    local tabMap = button("MapTab", toolbar, "Todos", 0, 0, toolWidth, 32)
-    local tabCatalog = button("CatalogTab", toolbar, "Cumplen", toolWidth + 8, 0, toolWidth, 32)
+    -- Todos / Cumplen es un control segmentado; Ver y Orden cambian al pulsar.
+    look.scope = look.segmented("Scope", toolbar, 0, 0, 2 * toolWidth + 8, 32,
+        { {name = "MapTab", label = "Todos"}, {name = "CatalogTab", label = "Cumplen"} })
+    local tabMap, tabCatalog = look.scope.buttons[1], look.scope.buttons[2]
     local visualButton = button("VisualMode", toolbar, "Ver: Huevos", 2 * (toolWidth + 8), 0, toolWidth, 32)
     local sortButton = button("Sort", toolbar, "Orden: Rareza", 3 * (toolWidth + 8), 0, toolWidth, 32)
+    -- Lista agrupada: filas separadas por lineas finas dentro de un grupo blanco.
     local scroll = make("ScrollingFrame", "EggCards", finderPage, {
-        Position = UDim2.fromOffset(-2, 152), Size = UDim2.fromOffset(CONTENT + 4, PAGE_H - 152), BackgroundTransparency = 1,
+        Position = UDim2.fromOffset(0, 152), Size = UDim2.fromOffset(CONTENT, PAGE_H - 152), BackgroundColor3 = C.raised,
         BorderSizePixel = 0, ScrollBarThickness = 4, ScrollBarImageColor3 = C.tertiary,
         CanvasSize = UDim2.new(), AutomaticCanvasSize = Enum.AutomaticSize.None, ScrollingDirection = Enum.ScrollingDirection.Y,
     })
-    make("UIPadding", "Padding", scroll, { PaddingTop = UDim.new(0, 2), PaddingLeft = UDim.new(0, 2), PaddingRight = UDim.new(0, 10), PaddingBottom = UDim.new(0, 4) })
+    corner(scroll, 10); stroke(scroll)
+    make("UIPadding", "Padding", scroll, { PaddingTop = UDim.new(0, 4), PaddingLeft = UDim.new(0, 4), PaddingRight = UDim.new(0, 10), PaddingBottom = UDim.new(0, 4) })
 
     -- Filtros: cada control con su etiqueta encima; abajo los presets.
     local filtersPage = pages.filters
     heading(filtersPage, "Filtros de búsqueda", "AUTO usa los filtros guardados. Los cambios esperan a que pulses Aplicar filtros.", 0)
-    local third, half = math.floor((CONTENT - 16) / 3), (CONTENT - 8) / 2
-    local filters = make("Frame", "Filters", filtersPage, { Position = UDim2.fromOffset(0, 50), Size = UDim2.fromOffset(CONTENT, 178), BackgroundTransparency = 1, BorderSizePixel = 0 })
-    text("RarityLabel", filters, "Rareza mínima", 0, 0, third, 16, C.secondary, 11)
-    text("IncomeLabel", filters, "Ingreso mínimo /s", third + 8, 0, third, 16, C.secondary, 11)
-    text("MutationLabel", filters, "Mutación", 2 * (third + 8), 0, third, 16, C.secondary, 11)
-    local rarityButton = button("Rarity", filters, draft.rarity, 0, 20, third, 38)
-    rarityButton.TextSize = 14; chevron(rarityButton)
-    local income = field("MinimumIncome", filters, search.FormatMinimum(draft.minIncome), "Ej. 7b o 500m", third + 8, 20, third, 38)
+    local third, half = math.floor((CONTENT - 16) / 3), CONTENT / 2
+    local filters = make("Frame", "Filters", filtersPage, { Position = UDim2.fromOffset(0, 50), Size = UDim2.fromOffset(CONTENT, 168), BackgroundTransparency = 1, BorderSizePixel = 0 })
+    -- Grupo de filas como en Ajustes del Sistema: etiqueta a la izquierda y
+    -- control a la derecha, separados por lineas finas.
+    look.group = make("Frame", "Group", filters, { Size = UDim2.fromOffset(CONTENT, 120), BackgroundColor3 = C.raised, BorderSizePixel = 0 })
+    corner(look.group, 10); stroke(look.group)
+    look.hairline(look.group, "RowDivider1", 12, 40, CONTENT - 24, 1); look.hairline(look.group, "RowDivider2", 12, 80, CONTENT - 24, 1)
+    look.hairline(look.group, "ColumnDivider", half, 8, 1, 64)
+    for _, cell in ipairs({ {"RarityLabel", "Rareza mínima", 0, 0}, {"IncomeLabel", "Ingreso mínimo /s", half, 0},
+        {"MutationLabel", "Mutación", 0, 40}, {"ZonesLabel", "Zonas", half, 40}, {"NameLabel", "Nombre contiene", 0, 80} }) do
+        text(cell[1], look.group, cell[2], cell[3] + 12, cell[4], 112, 40, C.text, 13)
+    end
+    local rarityButton = button("Rarity", look.group, draft.rarity, 128, 7, half - 138, 26)
+    chevron(rarityButton)
+    local income = field("MinimumIncome", look.group, search.FormatMinimum(draft.minIncome), "Ej. 7b o 500m", half + 128, 7, half - 138, 26)
     income.FontFace = look.face("semibold")
-    local mutationButton = button("Mutation", filters, draft.mutation == "" and "Todas" or draft.mutation, 2 * (third + 8), 20, third, 38)
-    mutationButton.TextSize = 14; chevron(mutationButton)
-    text("ZonesLabel", filters, "Zonas", 0, 70, half, 16, C.secondary, 11)
-    text("NameLabel", filters, "Nombre contiene", half + 8, 70, half, 16, C.secondary, 11)
-    local chooseZones = button("ChooseZones", filters, "Todas las zonas", 0, 90, half, 38)
-    chooseZones.TextSize = 14; chevron(chooseZones)
-    local nameBox = field("NameFilter", filters, draft.nameContains, "Cualquier nombre", half + 8, 90, half, 38)
-    local changeLabel = text("Changes", filters, "Filtros guardados", 0, 140, CONTENT - third - 16, 38, C.secondary, 11)
+    local mutationButton = button("Mutation", look.group, draft.mutation == "" and "Todas" or draft.mutation, 128, 47, half - 138, 26)
+    chevron(mutationButton)
+    local chooseZones = button("ChooseZones", look.group, "Todas las zonas", half + 128, 47, half - 138, 26)
+    chevron(chooseZones)
+    local nameBox = field("NameFilter", look.group, draft.nameContains, "Cualquier nombre", 128, 87, CONTENT - 138, 26)
+    local changeLabel = text("Changes", filters, "Filtros guardados", 0, 130, CONTENT - third - 16, 34, C.secondary, 11)
     changeLabel.TextWrapped = true
-    local apply = button("ApplyFilters", filters, "Aplicar filtros", CONTENT - third, 140, third, 38)
+    local apply = button("ApplyFilters", filters, "Aplicar filtros", CONTENT - third, 130, third, 34)
     primary(apply); apply.TextSize = 13
-    text("PresetsTitle", filtersPage, "Presets", 0, 256, CONTENT, 20, C.text, 15, true)
-    local presetMessage = paragraph("PresetMessage", filtersPage, "", 0, 278, CONTENT, 16, C.secondary, 11)
-    local presetName = field("PresetName", filtersPage, "", "Nombre del preset", 0, 300, CONTENT - third - 8, 36)
-    local savePreset = button("SavePreset", filtersPage, "Guardar actuales", CONTENT - third, 300, third, 36); primary(savePreset)
-    local presetList = listFrame(filtersPage, 346, PAGE_H - 346, -2, CONTENT + 4)
+    text("PresetsTitle", filtersPage, "Presets", 0, 236, CONTENT, 20, C.text, 15, true)
+    local presetMessage = paragraph("PresetMessage", filtersPage, "", 0, 258, CONTENT, 16, C.secondary, 11)
+    local presetName = field("PresetName", filtersPage, "", "Nombre del preset", 0, 280, CONTENT - third - 8, 34)
+    local savePreset = button("SavePreset", filtersPage, "Guardar actuales", CONTENT - third, 280, third, 34); primary(savePreset)
+    local presetList = listFrame(filtersPage, 324, PAGE_H - 324, 0, CONTENT, true)
 
     local function save()
         access()
@@ -644,16 +799,24 @@ local function mountEggFilterPanel(context)
         if popup then popup:Destroy(); popup = nil end
         if closing then closing:Destroy(); closing = nil end
         height = math.min(height, SHEET_SPACE)
-        local scrim = make("TextButton", name, root, { Size = UDim2.fromScale(1, 1), BackgroundColor3 = C.scrim,
+        local scrim = make("TextButton", name, look.overlay, { Size = UDim2.fromScale(1, 1), BackgroundColor3 = C.scrim,
             BackgroundTransparency = carried or 1, BorderSizePixel = 0, Text = "", AutoButtonColor = false, ZIndex = 50 })
         corner(scrim, 14)
         local center = sheetCenter(height)
+        -- La hoja se mueve entera con su sombra; el contenido vive en Body.
         local card = make("Frame", "Sheet", scrim, { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromOffset(center.X, center.Y),
-            Size = UDim2.fromOffset(CONTENT, height), BackgroundColor3 = C.window, BorderSizePixel = 0, Active = true, ZIndex = 51 })
-        corner(card, 12); stroke(card)
+            Size = UDim2.fromOffset(CONTENT, height), BackgroundTransparency = 1, BorderSizePixel = 0, Active = true, ZIndex = 51 })
         local zoom = make("UIScale", "Zoom", card, { Scale = 1 })
-        local heading = text("Title", card, title, 18, 16, CONTENT - 86, 24, C.text, 17, true)
-        local dismiss = button("Dismiss", card, "", CONTENT - 50, 12, 32, 32); crossIcon(dismiss)
+        look.shadow(card, 12)
+        local body = make("Frame", "Body", card, { Size = UDim2.fromScale(1, 1), BackgroundColor3 = C.window, BorderSizePixel = 0, Active = true })
+        corner(body, 12); stroke(body)
+        local heading = text("Title", body, title, 20, 16, CONTENT - 86, 24, C.text, 17, true)
+        -- X circular gris, como las hojas de macOS.
+        local dismiss = make("TextButton", "Dismiss", body, { Position = UDim2.fromOffset(CONTENT - 44, 15), Size = UDim2.fromOffset(26, 26),
+            BackgroundColor3 = C.fill, BackgroundTransparency = 0.9, BorderSizePixel = 0, Text = "", AutoButtonColor = false,
+            SelectionImageObject = look.ring })
+        corner(dismiss, 13); look.hover(dismiss, 0.9)
+        look.icon(dismiss, "xmark", UDim2.fromScale(0.5, 0.5), C.secondary)
         scrim.Activated:Connect(function() access(); closePopup() end)
         dismiss.Activated:Connect(function() access(); closePopup() end)
         popup = scrim
@@ -669,7 +832,7 @@ local function mountEggFilterPanel(context)
             animate(card, MOTION.sheetIn, { Position = UDim2.fromOffset(center.X, center.Y) })
             animate(zoom, MOTION.sheetIn, { Scale = 1 })
         end
-        return card, heading
+        return body, heading
     end
     end
     local initializedPosition = false
@@ -724,8 +887,8 @@ local function mountEggFilterPanel(context)
         local entry = tabButtons[id]
         local state = entry.button.GuiState
         -- Pulsar se ve al instante; la seleccion la lleva ActiveTab.
-        local fill = state == Enum.GuiState.Press and 0.4 or id == tab and 1
-            or (state == Enum.GuiState.Hover and UIS.MouseEnabled) and 0.55 or 1
+        local fill = state == Enum.GuiState.Press and 0.82 or id == tab and 1
+            or (state == Enum.GuiState.Hover and UIS.MouseEnabled) and 0.9 or 1
         if state == Enum.GuiState.Press then place(entry.button, { BackgroundTransparency = fill })
         else animate(entry.button, MOTION.color, { BackgroundTransparency = fill }) end
     end
@@ -735,10 +898,10 @@ local function mountEggFilterPanel(context)
             paintTab(id)
             local color = { TextColor3 = id == tab and C.accentText or C.text }
             if animated then animate(entry.label, MOTION.color, color) else place(entry.label, color) end
-            entry.label.FontFace = look.face(id == tab and "semibold" or "medium")
+            entry.label.FontFace = look.face(id == tab and "semibold" or "regular")
             look.tint(entry.icon, id == tab and C.accentText or C.secondary)
         end
-        local goal = { Position = UDim2.fromOffset(12, tabButtons[tab].y) }
+        local goal = { Position = UDim2.fromOffset(10, tabButtons[tab].y) }
         if animated and not motion.reduced then animate(activeTab, MOTION.indicator, goal) else place(activeTab, goal) end
     end
     -- El hub aparece y se va en su propio sitio, no desde el boton M. Como las
@@ -872,19 +1035,11 @@ local function mountEggFilterPanel(context)
     function paintControls(active)
         access()
         if active ~= nil then autoActive = active == true end
-        auto.Text = autoActive and "AUTO ON" or "AUTO OFF"
-        -- Activo es un estado: verde suave; apagado es neutro, nunca error.
-        paint(auto, autoActive and C.successTint or C.control, autoActive and C.green or C.secondary, autoActive and C.green or C.separator)
-        autoDot.BackgroundColor3 = autoActive and C.greenDot or C.tertiary
+        look.autoSwitch(autoActive)
         mini.badge.BackgroundColor3 = autoActive and C.greenDot or C.tertiary
-        sideState.Text = autoActive and "AUTO activo" or "AUTO apagado"
-        sideState.TextColor3 = autoActive and C.green or C.secondary
         visualButton.Text = visual == "eggs" and "Ver: Huevos" or visual == "pets" and "Ver: Criaturas" or "Ver: Modelos 3D"
         sortButton.Text = sortBest and "Orden: Rareza" or "Orden: Nombre"
-        paint(tabCatalog, onlyMatches and C.selection or C.control, onlyMatches and C.accentText or C.text, onlyMatches and C.accent or C.separator)
-        paint(tabMap, not onlyMatches and C.selection or C.control, not onlyMatches and C.accentText or C.text, not onlyMatches and C.accent or C.separator)
-        tabCatalog.FontFace = look.face(onlyMatches and "semibold" or "medium")
-        tabMap.FontFace = look.face(onlyMatches and "medium" or "semibold")
+        look.scope.select(onlyMatches and 2 or 1, true)
     end
     end
     function panel.SetVisual(mode)
@@ -926,17 +1081,15 @@ local function mountEggFilterPanel(context)
         local card = sheet("Dropdown", kind == "rarity" and "Rareza mínima" or "Mutación", 452, origin)
         text("Hint", card, kind == "rarity" and "Incluye la rareza elegida y todas las superiores."
             or "Muestra solo huevos que tengan esta mutación.", 18, 44, CONTENT - 36, 16, C.secondary, 11)
-        local list = listFrame(card, 72, 364)
+        local list = listFrame(card, 72, 364, nil, nil, true)
         for index, item in ipairs(options) do
             local selected = item.id == current
-            local b = button("Option_" .. index, list, "", 0, 0, 0, 40)
-            b.Size = UDim2.new(1, -2, 0, 40); b.LayoutOrder = index
-            local label = text("Label", b, item.label, 14, 0, 0, 40, item.color or C.text, 14, selected)
-            label.Size = UDim2.new(1, -56, 1, 0)
-            if selected then
-                paint(b, C.selection, C.text, C.accent)
-                local _, mark = selectionIcon(b, true, 0, 0); mark.Position = UDim2.new(1, -38, 0.5, -12)
-            end
+            local b = look.row(button("Option_" .. index, list, "", 0, 0, 0, 40))
+            b.Size = UDim2.new(1, 0, 0, 40); b.LayoutOrder = index
+            -- Marca a la izquierda de la opcion elegida, como los menus de macOS.
+            local label = text("Label", b, item.label, 36, 0, 0, 40, item.color or C.text, 14, selected and "semi")
+            label.Size = UDim2.new(1, -48, 1, 0)
+            if selected then look.icon(b, "check", UDim2.fromOffset(19, 20), C.accentText) end
             b.Activated:Connect(function() access(); select(item.id); closePopup(); markDirty() end)
         end
     end
@@ -954,7 +1107,7 @@ local function mountEggFilterPanel(context)
         local counter = text("Hint", card, "", 18, 44, CONTENT - 36, 16, C.secondary, 11)
         local selectAll = button("SelectAll", card, "Todas", 18, 72, 110, 32)
         local clearZones = button("ClearSelection", card, "Ninguna", 136, 72, 110, 32)
-        local list = listFrame(card, 116, 296)
+        local list = listFrame(card, 116, 296, nil, nil, true)
         text("Footer", card, "Se guardan al pulsar Aplicar filtros.", 18, 426, 300, 36, C.secondary, 11)
         local done = button("Done", card, "Listo", CONTENT - 18 - 120, 426, 120, 36); primary(done)
         done.Activated:Connect(function() access(); closePopup() end)
@@ -968,14 +1121,14 @@ local function mountEggFilterPanel(context)
             for id, entry in pairs(checks) do
                 local selected = allZones or selection[id] == true
                 entry.check(selected)
-                paint(entry.button, selected and C.selection or C.control, C.text, selected and C.accent or C.separator)
             end
         end
+        -- Casillas azules a la izquierda de cada zona.
         for index, option in ipairs(options) do
-            local b = button("Zone_" .. option.id, list, "", 0, 0, 0, 44)
-            b.Size = UDim2.new(1, -2, 0, 44); b.LayoutOrder = index
-            text("Name", b, option.label, 14, 0, 0, 44, C.text, 14, true).Size = UDim2.new(1, -60, 1, 0)
-            local update, mark = selectionIcon(b, false, 0, 0, nil, true); mark.Position = UDim2.new(1, -38, 0.5, -12)
+            local b = look.row(button("Zone_" .. option.id, list, "", 0, 0, 0, 44))
+            b.Size = UDim2.new(1, 0, 0, 44); b.LayoutOrder = index
+            text("Name", b, option.label, 46, 0, 0, 44, C.text, 14).Size = UDim2.new(1, -58, 1, 0)
+            local update = selectionIcon(b, false, 12, 10, nil, true)
             checks[option.id] = {button = b, check = update}
             b.Activated:Connect(function()
                 access(); panel.SelectZone(option.id); refreshChecks()
@@ -1033,7 +1186,7 @@ local function mountEggFilterPanel(context)
         for _, item in ipairs(search.BestHistory(nil, HISTORY_CYCLES)) do
             table.insert(cycles, {best = item.best, label = ageText(item.age)})
         end
-        local list = listFrame(card, 84, 344)
+        local list = listFrame(card, 84, 344, nil, nil, true)
         local minimum = search.config.minIncome
         for index, item in ipairs(cycles) do
             local best = item.best
@@ -1045,9 +1198,11 @@ local function mountEggFilterPanel(context)
                 label = ok and tostring(label) or tostring(id)
                 if not table.find(labels, label) then table.insert(labels, label) end
             end
-            local row = make("Frame", "Cycle_" .. index, list, {Size = UDim2.new(1, -2, 0, 58), LayoutOrder = index,
-                BackgroundColor3 = C.raised, BorderSizePixel = 0})
-            corner(row); stroke(row, index == 1 and current and C.orange or C.separator).Transparency = index == 1 and current and 0.3 or 0.8
+            -- Fila del grupo; este ciclo resaltado en naranja suave.
+            local row = make("Frame", "Cycle_" .. index, list, {Size = UDim2.new(1, 0, 0, 58), LayoutOrder = index,
+                BackgroundColor3 = index == 1 and current and C.orangeTint or C.raised, BorderSizePixel = 0})
+            corner(row, 6)
+            local separator = look.hairline(row, "Separator", 12, 57, 0, 1); separator.Size = UDim2.new(1, -24, 0, 1)
             text("When", row, item.label, 14, 8, 0, 14, index == 1 and current and C.orange or C.secondary, 10, true).Size = UDim2.new(1, -150, 0, 14)
             text("Name", row, tostring(best.name or best.category), 14, 22, 0, 18, C.text, 14, true).Size = UDim2.new(1, -150, 0, 18)
             local tags = text("Tags", row, "", 14, 40, 0, 14, C.secondary, 10)
@@ -1095,11 +1250,15 @@ local function mountEggFilterPanel(context)
             {"Zona", zoneName(row.area)},
         }
         if row.best then table.insert(facts, {"Filtros", row.match and "Cumple todos los filtros" or row.reason}) end
+        -- Grupo de filas etiqueta / valor separadas por lineas finas.
+        local group = make("Frame", "Facts", card, { Position = UDim2.fromOffset(18, 122), Size = UDim2.fromOffset(CONTENT - 36, #facts * 36),
+            BackgroundColor3 = C.raised, BorderSizePixel = 0 })
+        corner(group, 10); stroke(group)
         for index, fact in ipairs(facts) do
-            local y = 126 + (index - 1) * 36
-            -- Filas de 36 sin lineas: el alto y la alineacion bastan para leerlas.
-            text("Label" .. index, card, fact[1], 18, y, 150, 36, C.secondary, 12)
-            text("Value" .. index, card, fact[2], 172, y, CONTENT - 190, 36, C.text, 14, "semi")
+            local y = (index - 1) * 36
+            if index > 1 then look.hairline(group, "Divider" .. index, 14, y, CONTENT - 64, 1) end
+            text("Label" .. index, group, fact[1], 14, y, 140, 36, C.secondary, 12)
+            text("Value" .. index, group, fact[2], 154, y, CONTENT - 204, 36, C.text, 14, "semi")
         end
         local actionWidth = row.best and (CONTENT - 44) / 2 or CONTENT - 36
         if row.best then
@@ -1113,9 +1272,13 @@ local function mountEggFilterPanel(context)
     end
     local function createCard(row)
         local entry = {row = row}
-        local card = make("TextButton", "Card_" .. row.uid, scroll, {Size = UDim2.new(1, -2, 0, ROW_HEIGHT),
-            BackgroundColor3 = C.raised, BorderSizePixel = 0, Text = "", AutoButtonColor = true})
-        entry.card = card; corner(card, 10); entry.border = stroke(card); interaction(card)
+        -- Fila del grupo: el fondo solo cambia para comunicar estado (cumple o
+        -- mejor del ciclo); una linea fina la separa de la siguiente.
+        local card = make("TextButton", "Card_" .. row.uid, scroll, {Size = UDim2.new(1, 0, 0, ROW_HEIGHT),
+            BackgroundColor3 = C.raised, BorderSizePixel = 0, Text = "", AutoButtonColor = true, SelectionImageObject = look.ring})
+        entry.card = card; corner(card, 6)
+        entry.separator = look.hairline(card, "Separator", 100, ROW_HEIGHT - 1, 0, 1)
+        entry.separator.Size = UDim2.new(1, -112, 0, 1)
         entry.box = make("Frame", "Visual", card, {Position = UDim2.fromOffset(12, 12), Size = UDim2.fromOffset(76, 76), BackgroundTransparency = 1, BorderSizePixel = 0})
         entry.image = make("ImageLabel", "EggImage", entry.box, {Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, ScaleType = Enum.ScaleType.Fit})
         entry.name = text("Name", card, "", 100, 10, 0, 20, C.text, 15, true)
@@ -1139,15 +1302,13 @@ local function mountEggFilterPanel(context)
     local function updateCard(entry, row, index)
         access(); entry.row = row
         entry.card.LayoutOrder = index; entry.card.Position = UDim2.fromOffset(0, (index - 1) * (ROW_HEIGHT + ROW_GAP))
+        entry.separator.Visible = index < #orderedRows
         local key = row.key .. tostring(row.match) .. row.reason .. row.mutations
             .. tostring(row.weight) .. tostring(row.eggIcon) .. visual .. tostring(row.best) .. tostring(row.age)
         if entry.key == key and (visual ~= "models" or entry.viewport or not data.assetModels) then return end
         entry.key = key; panel.stats.updated += 1
         entry.card.Name = "Card_" .. row.uid
-        local marked = row.match or (row.best and row.best ~= "previous")
         entry.card.BackgroundColor3 = row.match and C.successTint or row.best and row.best ~= "previous" and C.orangeTint or C.raised
-        entry.border.Color = row.best == "previous" and C.separator or row.best and C.orange or row.match and C.green or C.separator
-        entry.border.Thickness = marked and 1.5 or 1
         entry.name.Text = row.name; entry.name.TextColor3 = C.text
         entry.income.Text = (row.income and number(row.income) or "?") .. "/s"
         entry.income.TextColor3 = row.match and C.green or row.best and bestColor(row) or C.text
@@ -1352,8 +1513,8 @@ local function mountEggFilterPanel(context)
         local presets = api.Presets()
         access()
         for index, preset in ipairs(presets) do
-            local row = make("Frame", "Preset_" .. index, presetList, {Size = UDim2.new(1, -2, 0, 52), BackgroundColor3 = C.raised, BorderSizePixel = 0, LayoutOrder = index})
-            corner(row); stroke(row).Transparency = 0.8
+            local row = make("Frame", "Preset_" .. index, presetList, {Size = UDim2.new(1, 0, 0, 52), BackgroundTransparency = 1, BorderSizePixel = 0, LayoutOrder = index})
+            local separator = look.hairline(row, "Separator", 12, 51, 0, 1); separator.Size = UDim2.new(1, -24, 0, 1)
             text("Name", row, preset.name, 14, 8, 0, 18, C.text, 14, true).Size = UDim2.new(1, -196, 0, 18)
             local minimum = tonumber(preset.config.minIncome)
             local summary = minimum and minimum > 0 and minimum < math.huge and search.FormatMinimum(minimum) .. "/s" or "ingreso inválido"
@@ -1386,25 +1547,12 @@ local function mountEggFilterPanel(context)
         -- Apariencia: control segmentado Claro / Oscuro / Sistema dentro de su
         -- seccion. Cambia el hub y la tarjeta flotante al instante y se guarda.
         heading(settingsPage, "Apariencia", nil, 0)
-        local track = make("Frame", "Theme", settingsPage, { Position = UDim2.fromOffset(0, 28), Size = UDim2.fromOffset(292, 32),
-            BackgroundColor3 = C.window, BorderSizePixel = 0 })
-        corner(track, 8); stroke(track)
-        for index, choice in ipairs({ {id = "light", label = "Claro"}, {id = "dark", label = "Oscuro"}, {id = "system", label = "Sistema"} }) do
-            local active = THEME.preference == choice.id
-            local option = make("TextButton", "Theme_" .. choice.id, track, { Position = UDim2.fromOffset(2 + (index - 1) * 96, 2),
-                Size = UDim2.fromOffset(96, 28), BackgroundColor3 = C.raised, BackgroundTransparency = active and 0 or 1,
-                BorderSizePixel = 0, Text = choice.label, TextSize = 13, TextColor3 = active and C.text or C.secondary,
-                FontFace = look.face(active and "semibold" or "medium"), AutoButtonColor = false, SelectionImageObject = look.ring })
-            corner(option, 6)
-            if active then stroke(option).Transparency = 0.85 end
-            -- Pasar y pulsar dan un fondo suave a las opciones no elegidas.
-            option:GetPropertyChangedSignal("GuiState"):Connect(function()
-                if active or not panel.alive then return end
-                local state = option.GuiState
-                place(option, { BackgroundTransparency = state == Enum.GuiState.Press and 0.35
-                    or (state == Enum.GuiState.Hover and UIS.MouseEnabled) and 0.6 or 1 })
-            end)
-            option.Activated:Connect(function() access(); THEME.Set(choice.id) end)
+        local choices = { {id = "light", name = "Theme_light", label = "Claro"}, {id = "dark", name = "Theme_dark", label = "Oscuro"},
+            {id = "system", name = "Theme_system", label = "Sistema"} }
+        local selector = look.segmented("Theme", settingsPage, 0, 28, 292, 32, choices)
+        for index, choice in ipairs(choices) do
+            if THEME.preference == choice.id then selector.select(index) end
+            selector.buttons[index].Activated:Connect(function() access(); THEME.Set(choice.id) end)
         end
         paragraph("ThemeHint", settingsPage, THEME.preference == "system"
             and "Sigue la hora de este dispositivo: claro de 7:00 a 19:00. Ahora " .. (THEME.name == "dark" and "oscuro." or "claro.")
@@ -1467,7 +1615,7 @@ local function mountEggFilterPanel(context)
         access()
         local card = sheet("SpeciesPicker", "Especie", 480, origin)
         local query = field("Search", card, "", "Buscar por nombre", 18, 48, CONTENT - 36, 36)
-        local list = listFrame(card, 96, 370)
+        local list = listFrame(card, 96, 370, nil, nil, true)
         local options = search.PetOptions()
         local rarities = search.modules and search.modules.rarities.Rarities or {}
         access()
@@ -1482,13 +1630,13 @@ local function mountEggFilterPanel(context)
                 if wanted == "" or string.find(string.lower(option.label), wanted, 1, true) then
                     shown += 1
                     local selected = option.id == calc.category
-                    local b = button("Pet_" .. index, list, "", 0, 0, 0, 40)
-                    b.Size = UDim2.new(1, -2, 0, 40); b.LayoutOrder = index
-                    text("Label", b, option.label, 14, 0, 0, 40, C.text, 14, selected).Size = UDim2.new(1, -150, 1, 0)
+                    local b = look.row(button("Pet_" .. index, list, "", 0, 0, 0, 40))
+                    b.Size = UDim2.new(1, 0, 0, 40); b.LayoutOrder = index
+                    text("Label", b, option.label, 36, 0, 0, 40, C.text, 14, selected and "semi").Size = UDim2.new(1, -172, 1, 0)
+                    if selected then look.icon(b, "check", UDim2.fromOffset(19, 20), C.accentText) end
                     local rarity = text("Rarity", b, tostring(option.rarity or "?"), 0, 0, 120, 40,
                         rarityColor(rarities[option.rarity], C.secondary), 11, true)
                     rarity.Position = UDim2.new(1, -134, 0, 0); rarity.TextXAlignment = Enum.TextXAlignment.Right
-                    if selected then paint(b, C.selection, C.text, C.accent) end
                     b.Activated:Connect(function()
                         access(); calc.category = option.id; calc.scale, calc.scaleWeight = nil, nil; save(); panel.OpenCalculator()
                     end)
@@ -1657,8 +1805,7 @@ local function mountEggFilterPanel(context)
             end
         end,
         after = function()
-            access(); root.BackgroundTransparency = THEME.alpha.window
-            closePopup(true); cleanupCards(); signature = nil
+            access(); closePopup(true); cleanupCards(); signature = nil
             paintTabs(); paintControls()
             if renderers[tab] then renderers[tab]() end
             refreshSoon()
@@ -1809,6 +1956,7 @@ local function mountEggFilterPanel(context)
         dragSample, dragVelocity, motion.dragTravel = nil, Vector2.zero, 0
     end
     connect(header.InputBegan, function(input) beginDrag(root, input) end)
+    connect(look.titleBar.InputBegan, function(input) beginDrag(root, input) end)
     connect(mini.button.InputBegan, function(input) beginDrag(mini.button, input) end)
     connect(UIS.InputChanged, function(input)
         if not motion.dragging then return end
@@ -1935,7 +2083,6 @@ local function mountEggFilterPanel(context)
             stateTitle.TextColor3 = (status.mode == "match" or captured) and C.green or C.text
             stateDot.BackgroundColor3 = (status.mode == "match" or captured) and C.greenDot or status.mode == "hop" and C.orangeDot
                 or status.active and C.accent or C.tertiary
-            sideMode.Text = status.active and stateTitle.Text or "Enciende AUTO para buscar " .. config.rarity .. "+."
             local details = {
                 wait = captured and "AUTO sigue activo y espera aquí el nuevo ciclo."
                     or string.format("Ninguno en %s. Se revisa al renovarse.", scope),

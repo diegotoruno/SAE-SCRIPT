@@ -1,5 +1,16 @@
 # Pruebas y validacion
 
+## 2026-10-15 - Estilo macOS anterior e icono
+
+Build, compilaciones y 226 regresiones. Potassium, sin entradas simuladas
+(solo la API del hub y lecturas): una sola GUI; el icono carga como
+`ImageLabel` desde `mistake_hub_icon.jpg` del workspace; las cinco secciones
+en claro y en oscuro con 0 textos truncados, 0 contrastes por debajo de 4.5:1 y
+0 botones o campos fuera de la ventana; barra lateral con solo semaforo,
+secciones y TikTok; boton minimizado de 56 px con la imagen completa.
+Pendiente a mano: aspecto, pasar el raton y pulsar, teclado/mando, arrastre
+desde la barra lateral y el semaforo.
+
 ## 2026-10-15 - Estilo macOS y temas
 
 Build, ocho compilaciones y 226 regresiones (3 nuevas: tokens iguales y

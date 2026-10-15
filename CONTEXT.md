@@ -1,5 +1,15 @@
 # Contexto del proyecto
 
+## Estilo macOS del primer rediseno sobre el hub actual (2026-10-15)
+
+El usuario prefirio el lenguaje visual del primer rediseno (vidrio
+translucido con sombra, barra lateral a toda la altura con semaforo, filas
+agrupadas con lineas finas, desplegables con doble chevron, segmentados,
+interruptores y hojas con X circular) y pidio conservar exactamente las
+opciones del hub de `main`. Tambien pidio: su imagen como icono del hub (en
+lugar de la M), un boton minimizado con mejor aspecto y quitar del pie de la
+barra lateral el estado de AUTO, su modo y la firma, dejando solo el TikTok.
+
 ## Mistake Hub con estilo macOS y temas (2026-10-15)
 
 El usuario pidio redisenar el menu de Mistake Hub como una aplicacion nativa de

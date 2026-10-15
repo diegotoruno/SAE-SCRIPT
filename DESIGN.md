@@ -21,20 +21,22 @@ de la tabla.
 
 | Token | Claro | Oscuro | Uso |
 | --- | --- | --- | --- |
-| `window` | `#F6F6F7` al 4 % | `#1E1E20` al 4 % | Hub, tarjeta flotante, boton M, hojas |
-| `sidebar` | `#E8E8EC` | `#28282B` | Barra lateral |
+| `window` | `#FAFAF9` al 4 % | `#1E1E20` al 4 % | Area principal, tarjeta flotante, boton M, hojas |
+| `sidebar` | `#E9EAED` al 12 % | `#28282B` al 12 % | Barra lateral de vidrio |
 | `raised` / `field` | `#FFFFFF` | `#2C2C2F` | Tarjetas, grupos, filas con interruptor, campos |
 | `control` / `controlHover` | `#FCFCFC` / `#F0F0F3` | `#3A3A3D` / `#46464A` | Botones con borde; pestana al pasar |
 | `separator` | `#3C3C43` | `#E5E5EA` | Bordes al 78 % de transparencia (40 % al pasar) |
 | `text` | `#1D1D1F` | `#F5F5F7` | Titulos, nombres, valores (7:1 o mas) |
 | `secondary` / `tertiary` | `#636368` / `#8E8E93` | `#A4A4AA` / `#7C7C82` | Etiquetas y ayuda (4.5:1); terciario solo iconos y asas |
 | `accent` | `#007AFF` | `#0A84FF` | Interruptor encendido, borde seleccionado, anillo de foco, logo |
-| `accentStrong` + `onAccent` | `#006BE0` + blanco | `#0062CC` + blanco | Acciones principales: Server Hop, Aplicar filtros, Listo, Guardar |
-| `accentText` / `selection` | `#005EC8` / `#DAE8FC` | `#64ACFF` / `#1C3A60` | Texto e icono seleccionados sobre la capsula azul suave |
+| `accentStrong` + `onAccent` | `#006EE6` + blanco | `#0062CC` + blanco | Acciones principales: Server Hop, Aplicar filtros, Listo, Guardar |
+| `accentText` / `selection` | `#0064D6` / `#DBEBFF` | `#64ACFF` / `#1C3A60` | Texto e icono seleccionados sobre la capsula azul suave |
 | `green` / `greenDot` / `successTint` | `#1A7534` / `#34C759` / `#E3F5E8` | `#4AD678` / `#30D158` / `#183422` | AUTO activo, Cumple, capturado |
 | `orange` / `orangeDot` / `orangeTint` | `#A84A00` / `#FF9500` / `#FFF2E0` | `#FFAA3C` / `#FF9F0A` / `#3A2A10` | Mejor del ciclo, cambios sin aplicar, saltos sin confirmar |
 | `red` | `#C41E28` | `#FF8A82` | Errores y Borrar |
-| `trackOff`, `knob`, `scrim` | | | Interruptor apagado, perilla blanca, velo negro |
+| `fill` | `#787880` | `#808088` | Relleno gris al pasar (90 %) y pulsar (82 %), pista de los segmentados (88 %) |
+| `yellow` / `yellowEdge` / `yellowGlyph` | `#FFBD2E` / `#DEA123` / `#995700` | iguales | Semaforo de minimizar |
+| `trackOff`, `knob`, `scrim` | | | Interruptor apagado, perilla blanca, velo negro y sombras |
 
 El tema oscuro no es una inversion: fondos grafito, superficies en tres grises
 (`raised`, `control`, `controlHover`), texto claro y azules mas luminosos. El
@@ -42,13 +44,17 @@ color de rareza viene del juego y se acerca al texto del tema hasta 4.5:1 sobre
 tarjeta, control, seleccion y coincidencia. Los nombres van en el color de
 texto; la rareza aparece en su color dentro de la linea de etiquetas.
 
-Roblox no ofrece desenfoque de fondo: el vidrio es una superficie casi opaca
-(4 %) con borde fino.
+Roblox no ofrece desenfoque de fondo: el vidrio son superficies translucidas
+(area principal al 4 %, barra lateral al 12 %) con borde fino y una sombra
+suave de tres capas negras (90, 94 y 96.5 % de transparencia, separadas 2, 6 y
+14 px). La ventana se construye con piezas que no se solapan (cuerpo, franjas y
+cuartos de circulo recortados) para que la translucidez sea uniforme hasta en
+las esquinas.
 
 ## Tema
 
 Ajustes > Apariencia tiene un control segmentado `Claro / Oscuro / Sistema`
-(292 x 32, opcion elegida en pastilla con borde fino) con su explicacion a la
+(292 x 32, pista gris y pastilla que marca la opcion elegida) con su explicacion a la
 derecha. Se guarda como `theme` en `chilli_egg_panel_ui.json`; por defecto es
 `system`.
 
@@ -72,17 +78,17 @@ Unica pieza flotante. El interruptor `Acceso rapido flotante` de la seccion
 Server Hop la muestra u oculta; la preferencia se guarda como `quick` en
 `server_hop_button_ui.json`.
 
-Tarjeta de vidrio (`window`) con borde fino y esquinas de 14 px. Sin
-degradado, brillo ni contornos duplicados del texto.
+Tarjeta de vidrio (`window`) con borde fino, esquinas de 14 px y la misma
+sombra suave del hub. Sin degradado, brillo ni contornos duplicados del texto.
 
 - Expandido 320 x 116. Fila superior de 44 px: AUTO (60 px), boton azul
-  Server Hop (flexible, Builder Sans SemiBold 18, texto blanco) y plegado
-  (32 px). Debajo, el estado en dos lineas de 11 px como maximo y, al pie, la
+  Server Hop (flexible, Builder Sans SemiBold 16, texto blanco) y plegado
+  (32 px, relleno gris suave). Debajo, el estado en dos lineas de 11 px como maximo y, al pie, la
   firma By Mistake en `accentText`.
 - Plegado 232 x 66. La misma fila con 34 px de alto (AUTO 52, plegado 28,
   texto 14) y la firma debajo. El estado se oculta.
-- AUTO muestra `AUTO / ON` en verde suave con texto y borde verdes o
-  `AUTO / OFF` neutro.
+- AUTO es la etiqueta `AUTO` con un interruptor debajo (36 x 20; plegado
+  30 x 16): pista azul y etiqueta en `accentText` si esta activo, gris si no.
 - El plegado usa un chevron geometrico: arriba para plegar, abajo para abrir.
 - Mientras hay un salto en curso el boton baja al 50 % de opacidad.
 - Asa de tamano en la esquina inferior derecha: tres trazos diagonales de
@@ -102,15 +108,25 @@ pestanas laterales, secciones con interruptores), con la paleta propia.
 
 - 760 x 560, esquinas de 14 px. Cabecera de 56 px, barra lateral de 172 px y
   paginas de 548 x 472 con margen de 20 px.
-- Cabecera: logo cuadrado de 32 px en azul con la `M` blanca, titulo
-  `Mistake Hub` (17 px) y subtitulo `Steal An Egg` (11 px); a la derecha AUTO
-  (punto + `AUTO ON/OFF`, 100 px) y minimizar (32 px, un menos). La cabecera
-  arrastra el hub. Sin linea bajo la cabecera: el cambio de tono de la barra
-  lateral y el margen de 16 px separan.
+- Estilo Finder: la barra lateral de vidrio ocupa toda la altura; la barra
+  de herramientas (56 px) va sobre el area principal con una linea fina
+  debajo. Lo alto de la barra lateral y la barra de herramientas arrastran el
+  hub.
+- Barra de herramientas: icono de 32 px (esquinas de 8), titulo `Mistake Hub`
+  (17 px) y subtitulo `Steal An Egg` (11 px); a la derecha AUTO (108 px,
+  etiqueta `AUTO` e interruptor de 44 x 24, sin borde, relleno gris al pasar).
+- Icono: la imagen `mistake_hub_icon.jpg`, que CI publica en `stable` junto
+  al script. El runtime la descarga una vez al workspace del executor y la
+  carga con `getcustomasset` (Roblox no lee archivos locales); sin esa funcion,
+  sin red o si la descarga no es un JPEG, se muestra la `M` blanca sobre azul.
+- Minimizar es el semaforo amarillo de macOS (12 px) arriba a la izquierda
+  de la barra lateral: el menos aparece al pasar el raton o con el foco, y
+  siempre en pantallas tactiles.
 - Minimizado: el hub se guarda y queda el boton `M`, independiente del hub
-  (como el boton de Chilli Hub): 56 x 56, esquinas de 14 px, logo `M` de
-  32 px centrado y un punto de 10 px en su esquina superior derecha (verde con
-  AUTO activo, gris apagado; borde del color del fondo). Tiene su propia
+  (como el boton de Chilli Hub): un icono de app de 56 x 56, esquinas de
+  14 px; la imagen llena todo el boton, con sombra suave, un brillo fino en el
+  borde y un punto de 14 px sobre su esquina superior derecha (verde con AUTO
+  activo, gris apagado; borde del color del fondo). Tiene su propia
   posicion (empieza al borde izquierdo, a media altura) y se arrastra solo.
   Sin teclado (movil, iPad) no hay Alt izquierdo: este boton es la forma de
   volver. Tocarlo abre el hub completo en su propio sitio, en la misma
@@ -118,17 +134,17 @@ pestanas laterales, secciones con interruptores), con la paleta propia.
   toque. Pasar el raton o pulsar ilumina su borde en azul. Solo se ve con
   el hub minimizado. Las tarjetas y modelos se liberan mientras esta
   minimizado.
-- Barra lateral: superficie `sidebar`, sin borde lateral; solo su esquina
-  inferior izquierda sigue la del hub. Entradas de 40 px separadas por 6, cada
+- Barra lateral: vidrio `sidebar` separado del area principal por una linea
+  fina. Bajo el semaforo, entradas de 32 px separadas por 4, cada
   una con su icono de trazo fino a la izquierda: lupa (Egg Finder), embudo
   (Filtros), calculadora (Calculadora), flechas opuestas (Server Hop) y
   deslizadores (Ajustes). Una sola capsula azul suave `ActiveTab`
   (`selection`) se desliza a la pestana activa; su texto pasa a SemiBold y,
-  como el icono, a `accentText`. El resto usa texto normal e icono
-  secundario. Pasar el puntero da un fondo `controlHover` suave y pulsar uno
+  como el icono, a `accentText`. El resto usa texto Regular e icono
+  secundario. Pasar el puntero da un relleno `fill` suave y pulsar uno
   mas firme, al instante. Filtros muestra un punto naranja con cambios sin
-  aplicar. Al pie, el estado de AUTO (verde si esta activo) con su modo
-  (11 px), la tarjeta del TikTok y la firma `By Mistake` en `accentText`.
+  aplicar. Al pie, solo la tarjeta del TikTok (sin estado de AUTO ni firma:
+  AUTO se lee en la barra de herramientas y el punto del boton minimizado).
 - Tarjeta del TikTok (marca de agua): 148 x 92 en superficie con borde,
   etiqueta `TIKTOK` (10 px Bold, secundaria), el enlace a la vista
   `tiktok.com/@mistakeontt` (11 px, texto) y `Copiar enlace` (primario
@@ -136,19 +152,26 @@ pestanas laterales, secciones con interruptores), con la paleta propia.
   portapapeles del executor (`setclipboard`; Roblox no tiene API de
   portapapeles) y dice `Copiado` en verde 1,6 s; sin portapapeles dice `Sin
   portapapeles` y el enlace sigue escrito.
-- Egg Finder: tarjeta de estado (punto, titulo de 15 px, linea explicativa y
-  reloj a la derecha), fila `Filtros` con el resumen guardado y `Editar
-  filtros`, barra `Todos N` / `Cumplen N` / `Ver:` / `Orden:` en cuatro
-  columnas de 131 y la lista virtualizada debajo. AUTO, `Todos`/`Cumplen`,
+- Egg Finder: estado sin caja (punto, titulo de 15 px, linea explicativa y
+  reloj a la derecha) con una linea fina debajo, fila `Filtros` con el resumen
+  guardado y `Editar filtros`, barra con `Todos N` / `Cumplen N` como control
+  segmentado (pastilla que se desliza) y los botones `Ver:` y `Orden:`, y la
+  lista virtualizada debajo. AUTO, `Todos`/`Cumplen`,
   `Ver:` y `Orden:` se repintan en la misma pulsacion.
-- Tarjetas de 100 px separadas por 8 px, imagen de 76 px. Filas propias para
+- Lista agrupada: un grupo blanco con filas de 100 px separadas por lineas
+  finas (sangradas tras la imagen), imagen de 76 px. El fondo de la fila solo
+  cambia para comunicar estado: verde suave si cumple, naranja suave el mejor
+  del ciclo. Filas propias para
   nombre, ingreso (20 px), escala/peso y etiquetas (rareza en su color,
   mutaciones, zona). Insignia a la derecha: `Cumple` en verde o el motivo
   corto (Rareza baja, Otra zona, Otro nombre, Sin mutacion, Ingreso bajo),
   siempre opaca. Toda la tarjeta abre el detalle; un chevron lo indica.
-- Filtros: titulo y ayuda; fila de tres columnas de 177 (Rareza minima,
-  Ingreso minimo /s, Mutacion), fila de dos de 270 (Zonas, Nombre contiene) y
-  el mensaje junto a `Aplicar filtros`. Debajo, separada por el margen y su
+- Filtros: titulo y ayuda; grupo de filas como Ajustes del Sistema (tres
+  filas de 40 separadas por lineas finas, etiqueta a la izquierda y control a
+  la derecha): Rareza minima e Ingreso minimo /s; Mutacion y Zonas; Nombre
+  contiene. Rareza, mutacion y zonas son desplegables con doble chevron.
+  Debajo, el mensaje junto a `Aplicar filtros`. Los presets son una lista
+  agrupada. Debajo, separada por el margen y su
   titulo, la seccion Presets: nombre, `Guardar actuales` y la lista
   (Cargar / Borrar).
 - Calculadora: especie y peso arriba; a la izquierda las mutaciones en dos
@@ -171,9 +194,13 @@ pestanas laterales, secciones con interruptores), con la paleta propia.
   borde fino. Toda la fila lo cambia.
 - Hojas modales (rareza, mutacion, zonas, especie, detalle, historial) sobre
   un velo que bloquea el hub; ocupan el area de paginas (548 de ancho, 480 de
-  alto como maximo). Tocar el velo o la X cierra la hoja.
+  alto como maximo), con sombra suave y una X circular gris. Tocar el velo o
+  la X cierra la hoja. Sus listas son grupos con filas separadas por lineas
+  finas: rareza, mutacion y especie marcan la opcion elegida con una marca a
+  la izquierda, como los menus de macOS; zonas usa casillas azules a la
+  izquierda.
 - Detalle: nombre, rareza y zona, veredicto, filas de 36 px etiqueta (12) /
-  valor (14 SemiBold) sin lineas entre ellas (ingreso, exacto, minimo, tamano
+  valor (14 SemiBold) dentro de un grupo con lineas finas (ingreso, exacto, minimo, tamano
   y peso, mutaciones, zona) y las acciones en una fila: `Mejores de los
   ultimos ciclos` (solo el mejor del ciclo) y `Calcular con otras
   mutaciones`.
@@ -192,8 +219,8 @@ pestanas laterales, secciones con interruptores), con la paleta propia.
 
 ## Interaccion
 
-La firma `By Mistake` vive al pie de la tarjeta de acceso rapido y de la
-barra lateral del hub; la marca de agua del TikTok, solo en la barra lateral. No hay etiqueta flotante en la pantalla (retirada el
+La firma `By Mistake` vive solo al pie de la tarjeta de acceso rapido; la
+marca de agua del TikTok, solo al pie de la barra lateral. No hay etiqueta flotante en la pantalla (retirada el
 2026-10-11) ni lanzadores flotantes del panel o de la cuenta (retirados con
 el hub, 2026-10-14).
 

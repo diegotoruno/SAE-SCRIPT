@@ -418,28 +418,30 @@ local function createFinderSupport()
     -- Los blancos casi puros (#FFFFFE, #FFFFFD) separan tokens que en oscuro difieren.
     support.THEMES = {
         light = {
-            window = {246, 246, 247}, sidebar = {232, 232, 236}, raised = {255, 255, 255}, field = {255, 255, 255},
-            control = {252, 252, 252}, controlHover = {240, 240, 243}, trackOff = {226, 226, 231},
+            window = {250, 250, 249}, sidebar = {233, 234, 237}, raised = {255, 255, 255}, field = {255, 255, 255},
+            control = {252, 252, 252}, controlHover = {240, 240, 243}, trackOff = {226, 226, 231}, fill = {120, 120, 128},
             separator = {60, 60, 67}, text = {29, 29, 31}, secondary = {99, 99, 104}, tertiary = {142, 142, 147},
-            accent = {0, 122, 255}, accentStrong = {0, 107, 224}, accentText = {0, 94, 200}, selection = {218, 232, 252},
+            accent = {0, 122, 255}, accentStrong = {0, 110, 230}, accentText = {0, 100, 214}, selection = {219, 235, 255},
             onAccent = {255, 255, 254}, knob = {255, 255, 253},
+            yellow = {255, 189, 46}, yellowEdge = {222, 161, 35}, yellowGlyph = {153, 87, 0},
             green = {26, 117, 52}, greenDot = {52, 199, 89}, successTint = {227, 245, 232},
             orange = {168, 74, 0}, orangeDot = {255, 149, 0}, orangeTint = {255, 242, 224},
             red = {196, 30, 40}, scrim = {0, 0, 0},
         },
         dark = {
             window = {30, 30, 32}, sidebar = {40, 40, 43}, raised = {44, 44, 47}, field = {44, 44, 47},
-            control = {58, 58, 61}, controlHover = {70, 70, 74}, trackOff = {72, 72, 76},
+            control = {58, 58, 61}, controlHover = {70, 70, 74}, trackOff = {72, 72, 76}, fill = {128, 128, 136},
             separator = {229, 229, 234}, text = {245, 245, 247}, secondary = {164, 164, 170}, tertiary = {124, 124, 130},
             accent = {10, 132, 255}, accentStrong = {0, 98, 204}, accentText = {100, 172, 255}, selection = {28, 58, 96},
             onAccent = {255, 255, 254}, knob = {255, 255, 253},
+            yellow = {255, 189, 46}, yellowEdge = {222, 161, 35}, yellowGlyph = {153, 87, 0},
             green = {74, 214, 120}, greenDot = {48, 209, 88}, successTint = {24, 52, 34},
             orange = {255, 170, 60}, orangeDot = {255, 159, 10}, orangeTint = {58, 42, 16},
             red = {255, 138, 130}, scrim = {0, 0, 0},
         },
     }
-    -- Transparencia de las superficies de vidrio en cada tema.
-    support.THEME_ALPHA = { light = { window = 0.04 }, dark = { window = 0.04 } }
+    -- Transparencia de los materiales de vidrio en cada tema: ventana y barra lateral.
+    support.THEME_ALPHA = { light = { window = 0.04, sidebar = 0.12 }, dark = { window = 0.04, sidebar = 0.12 } }
     function support.ThemePreference(value)
         return (value == "light" or value == "dark" or value == "system") and value or "system"
     end
@@ -1065,6 +1067,21 @@ do
             end
             return hubTheme.name
         end
+        -- Icono del hub: la imagen publicada junto al script en stable. Se guarda
+        -- una vez en el workspace del executor y se carga con getcustomasset
+        -- (Roblox no lee archivos locales). Sin esas funciones o sin red, la M.
+        local ok, icon = pcall(function()
+            local custom = getcustomasset or getsynasset
+            if type(custom) ~= "function" or type(writefile) ~= "function" then return nil end
+            local file = "mistake_hub_icon.jpg"
+            if not (type(isfile) == "function" and isfile(file)) then
+                local body = game:HttpGet("https://raw.githubusercontent.com/diegotoruno/SAE-SCRIPT/stable/" .. file)
+                if type(body) ~= "string" or #body < 1024 or string.sub(body, 1, 2) ~= "\255\216" then return nil end
+                writefile(file, body)
+            end
+            return custom(file)
+        end)
+        hubTheme.icon = ok and type(icon) == "string" and icon ~= "" and icon or nil
     end
     -- Plain text for people (the readable hunt report); failures stay silent.
     local function writeText(path, text)
@@ -1409,8 +1426,9 @@ do
         end
     end
 
-    -- Tarjeta grafito: AUTO, accion principal y plegado comparten una fila;
-    -- estado y firma tienen filas propias para que ningun texto se encime.
+    -- Tarjeta de vidrio con sombra suave: AUTO, accion principal y plegado
+    -- comparten una fila; estado y firma tienen filas propias para que ningun
+    -- texto se encime.
     local holder = Instance.new("Frame")
     holder.Name = "Holder"
     holder.AnchorPoint = Vector2.new(0.5, 0)
@@ -1419,8 +1437,7 @@ do
         collapsed and COLLAPSED_SIZE.X or EXPANDED_SIZE.X,
         collapsed and COLLAPSED_SIZE.Y or EXPANDED_SIZE.Y
     )
-    holder.BackgroundColor3 = COLORS.surface
-    holder.BackgroundTransparency = hubTheme.alpha.window
+    holder.BackgroundTransparency = 1
     holder.BorderSizePixel = 0
     holder.Active = true
     holder.Visible = quickVisible
@@ -1481,8 +1498,28 @@ do
         end
         return segments
     end
-    round(holder, 14)
-    outline(holder, COLORS.border, 0.78)
+    -- Sombra suave: capas negras muy transparentes detras de la superficie.
+    for index, layer in ipairs({ {2, 0.9}, {6, 0.94}, {14, 0.965} }) do
+        local shade = Instance.new("Frame")
+        shade.Name = "Shadow" .. index
+        shade.AnchorPoint = Vector2.new(0.5, 0.5)
+        shade.Position = UDim2.new(0.5, 0, 0.5, math.floor(layer[1] / 2))
+        shade.Size = UDim2.new(1, layer[1] * 2, 1, layer[1] * 2)
+        shade.BackgroundColor3 = COLORS.scrim
+        shade.BackgroundTransparency = layer[2]
+        shade.BorderSizePixel = 0
+        shade.Parent = holder
+        round(shade, 14 + layer[1])
+    end
+    local surface = Instance.new("Frame")
+    surface.Name = "Surface"
+    surface.Size = UDim2.fromScale(1, 1)
+    surface.BackgroundColor3 = COLORS.surface
+    surface.BackgroundTransparency = hubTheme.alpha.window
+    surface.BorderSizePixel = 0
+    surface.Parent = holder
+    round(surface, 14)
+    outline(surface, COLORS.border, 0.78)
 
     -- Movimiento de la tarjeta: un tween por propiedad que parte del valor
     -- actual, cancela el anterior y se cancela al destruir su objeto.
@@ -1533,21 +1570,21 @@ do
     button.Text = ""
     button.BackgroundColor3 = COLORS.action
     button.BorderSizePixel = 0
-    button.Parent = holder
+    button.Parent = surface
     round(button, 10)
 
-    local mainLabel = label("Label", button, 18, COLORS.actionText, true)
+    local mainLabel = label("Label", button, 16, COLORS.actionText, true)
     mainLabel.Text = "Server Hop"
     mainLabel.Position = UDim2.fromOffset(8, 0)
     mainLabel.Size = UDim2.new(1, -16, 1, 0)
 
-    local statusLabel = label("Status", holder, 11, COLORS.muted)
+    local statusLabel = label("Status", surface, 11, COLORS.muted)
     statusLabel.Position = UDim2.fromOffset(14, 62)
     statusLabel.Size = UDim2.new(1, -28, 0, 30)
     statusLabel.TextWrapped = true
 
     -- La firma tiene su propia fila en ambas versiones; no tapa AUTO ni estado.
-    local creditLabel = label("ByMistakeCredit", holder, 10, COLORS.credit, true)
+    local creditLabel = label("ByMistakeCredit", surface, 10, COLORS.credit, true)
     creditLabel.AnchorPoint = Vector2.new(0.5, 1)
     creditLabel.Position = UDim2.new(0.5, 0, 1, -6)
     creditLabel.Size = UDim2.new(1, -24, 0, 12)
@@ -1624,46 +1661,70 @@ do
     toggle.Name = "Toggle"
     toggle.AutoButtonColor = true
     toggle.AnchorPoint = Vector2.new(1, 0)
-    toggle.BackgroundColor3 = COLORS.raised
+    toggle.BackgroundColor3 = COLORS.fill
+    toggle.BackgroundTransparency = 0.9
     toggle.BorderSizePixel = 0
     toggle.Text = ""
-    toggle.Parent = holder
-    round(toggle, 10)
-    outline(toggle, COLORS.border, 0.78)
+    toggle.Parent = surface
+    round(toggle, 8)
     local toggleChevron = chevronSegments(toggle)
 
-    -- Chip AUTO: enciende/apaga el encadenado automatico. Se guarda en
-    -- server_hop_button_ui.json para que siga encendido entre saltos.
+    -- AUTO: etiqueta e interruptor; enciende/apaga el encadenado automatico. Se
+    -- guarda en server_hop_button_ui.json para que siga encendido entre saltos.
     local autoChip = Instance.new("TextButton")
     autoChip.Name = "AutoChip"
     autoChip.AutoButtonColor = false
-    autoChip.BackgroundColor3 = COLORS.raised
+    autoChip.BackgroundColor3 = COLORS.fill
+    autoChip.BackgroundTransparency = 1
     autoChip.BorderSizePixel = 0
     autoChip.Text = ""
-    autoChip.Parent = holder
-    round(autoChip, 10)
-    local autoBorder = outline(autoChip, COLORS.border, 0.78)
+    autoChip.Parent = surface
+    round(autoChip, 8)
 
-    -- Sin AutoButtonColor (cambia de color con el estado): la pulsacion se ve
-    -- al instante como un tono mas oscuro y vuelve en 120 ms al soltar.
+    -- Pasar el raton da un fondo gris suave; pulsar, uno mas firme al instante.
     connect(autoChip:GetPropertyChangedSignal("GuiState"), function()
-        if autoChip.GuiState == Enum.GuiState.Press then cardPlace(autoChip, { BackgroundTransparency = 0.3 })
-        else cardTween(autoChip, TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { BackgroundTransparency = 0 }) end
+        local state = autoChip.GuiState
+        if state == Enum.GuiState.Press then cardPlace(autoChip, { BackgroundTransparency = 0.82 })
+        else cardTween(autoChip, TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+            { BackgroundTransparency = (state == Enum.GuiState.Hover and UserInputService.MouseEnabled) and 0.9 or 1 }) end
     end)
 
-    local autoLabel = label("AutoLabel", autoChip, 11, COLORS.muted, true)
-    autoLabel.Size = UDim2.fromScale(1, 1)
-    autoLabel.Text = "AUTO\nOFF"
+    local autoLabel = label("AutoLabel", autoChip, 10, COLORS.muted, true)
+    autoLabel.Size = UDim2.new(1, 0, 0, 14)
+    autoLabel.Text = "AUTO"
     autoLabel.TextTruncate = Enum.TextTruncate.None
 
+    local autoTrack = Instance.new("Frame")
+    autoTrack.Name = "Switch"
+    autoTrack.AnchorPoint = Vector2.new(0.5, 1)
+    autoTrack.Position = UDim2.new(0.5, 0, 1, -3)
+    autoTrack.Size = UDim2.fromOffset(36, 20)
+    autoTrack.BackgroundColor3 = COLORS.trackOff
+    autoTrack.BorderSizePixel = 0
+    autoTrack.Parent = autoChip
+    round(autoTrack, 10)
+    local autoKnob = Instance.new("Frame")
+    autoKnob.Name = "Knob"
+    autoKnob.AnchorPoint = Vector2.new(0, 0.5)
+    autoKnob.Position = UDim2.new(0, 2, 0.5, 0)
+    autoKnob.Size = UDim2.new(1, -4, 1, -4)
+    autoKnob.BackgroundColor3 = COLORS.knob
+    autoKnob.BorderSizePixel = 0
+    autoKnob.Parent = autoTrack
+    round(autoKnob, 9)
+    outline(autoKnob, COLORS.border, 0.85)
+    Instance.new("UIAspectRatioConstraint", autoKnob).DominantAxis = Enum.DominantAxis.Height
+
+    -- Interruptor: pista azul encendida, gris apagada; la perilla se desliza.
     local function updateAutoChip()
         uiAccess()
-        autoLabel.Text = autoEnabled and "AUTO\nON" or "AUTO\nOFF"
-        -- Activo es un estado: verde suave con texto verde, no el azul de las acciones.
-        autoChip.BackgroundColor3 = autoEnabled and COLORS.greenTint or COLORS.raised
-        autoLabel.TextColor3 = autoEnabled and COLORS.green or COLORS.muted
-        autoBorder.Color = autoEnabled and COLORS.green or COLORS.border
-        autoBorder.Transparency = autoEnabled and 0.35 or 0.78
+        local tween = TweenInfo.new(0.16, Enum.EasingStyle.Quint, Enum.EasingDirection.Out)
+        autoLabel.TextColor3 = autoEnabled and COLORS.credit or COLORS.muted
+        local track = { BackgroundColor3 = autoEnabled and COLORS.accent or COLORS.trackOff }
+        local knob = { AnchorPoint = Vector2.new(autoEnabled and 1 or 0, 0.5),
+            Position = autoEnabled and UDim2.new(1, -2, 0.5, 0) or UDim2.new(0, 2, 0.5, 0) }
+        if reducedMotion then cardPlace(autoTrack, track); cardPlace(autoKnob, knob)
+        else cardTween(autoTrack, tween, track); cardTween(autoKnob, tween, knob) end
         if hopView.setAuto then hopView.setAuto(autoEnabled) end
         if hopView.syncHub then hopView.syncHub(autoEnabled) end
     end
@@ -1691,8 +1752,10 @@ do
         place(button, { Position = UDim2.fromOffset(pad + chip + 6, pad),
             Size = UDim2.new(1, -(2 * pad + chip + side + 12), 0, row) })
         place(toggle, { Position = UDim2.new(1, -pad, 0, pad), Size = UDim2.fromOffset(side, row) })
-        mainLabel.TextSize = value and 14 or 18
-        autoLabel.TextSize = value and 10 or 11
+        mainLabel.TextSize = value and 14 or 16
+        autoLabel.TextSize = value and 9 or 10
+        autoLabel.Size = UDim2.new(1, 0, 0, value and 12 or 14)
+        autoTrack.Size = value and UDim2.fromOffset(30, 16) or UDim2.fromOffset(36, 20)
         -- Desplegado muestra "plegar" (chevron arriba); plegado, "desplegar".
         toggleChevron[1].Rotation = value and 45 or -45
         toggleChevron[2].Rotation = value and -45 or 45
@@ -1824,7 +1887,7 @@ do
     grip.BackgroundTransparency = 1
     grip.Text = ""
     grip.ZIndex = 3
-    grip.Parent = holder
+    grip.Parent = surface
     local gripTraces = {}
     for index, trace in ipairs(GRIP_TRACES) do
         local line = Instance.new("Frame")

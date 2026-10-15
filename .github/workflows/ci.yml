@@ -77,10 +77,10 @@ jobs:
             git worktree add --detach publish-dir HEAD
             git -C publish-dir switch --orphan stable
           fi
-          cp dist/chilli_hopper.luau dist/loader.luau dist/chilli_loader.luau dist/version.json dist/SHA256SUMS publish-dir/
+          cp dist/chilli_hopper.luau dist/loader.luau dist/chilli_loader.luau dist/version.json dist/SHA256SUMS dist/mistake_hub_icon.jpg publish-dir/
           git -C publish-dir config user.name 'github-actions[bot]'
           git -C publish-dir config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git -C publish-dir add chilli_hopper.luau loader.luau chilli_loader.luau version.json SHA256SUMS
+          git -C publish-dir add chilli_hopper.luau loader.luau chilli_loader.luau version.json SHA256SUMS mistake_hub_icon.jpg
           if ! git -C publish-dir diff --cached --quiet; then
             git -C publish-dir commit -m "Publish ${release_tag} from ${SOURCE_SHA}"
           fi

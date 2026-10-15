@@ -1,5 +1,14 @@
 # Decisiones de producto e implementacion
 
+## Icono del hub publicado en stable (2026-10-15)
+
+Roblox no carga imagenes locales: `mistake_hub_icon.jpg` se publica en
+`stable` (build lo copia a `dist` y a `SHA256SUMS`; CI lo sube) y el runtime lo
+guarda una vez en el workspace del executor y lo carga con `getcustomasset`.
+Sin esa funcion, sin red o si no llega un JPEG, el hub usa la M. Minimizar pasa
+al semaforo amarillo de la barra lateral; AUTO del hub y de la tarjeta flotante
+es un interruptor (dejan de mostrar el texto `AUTO ON/OFF`).
+
 ## Temas por token y Sistema por hora local (2026-10-15)
 
 Los colores del hub y de la tarjeta flotante salen de `support.THEMES` (claro
