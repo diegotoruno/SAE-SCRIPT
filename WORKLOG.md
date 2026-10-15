@@ -1,5 +1,12 @@
 # Estado del trabajo
 
+## 2026-10-15 - Estilo macOS y temas Claro / Oscuro / Sistema
+
+Rama codex/hub-macos-temas sobre main 7fb7a44 (reemplaza el intento
+codex/rediseno-macos, basado en un main viejo y sin publicar). Mismas opciones
+que el hub de main; cambia solo la presentacion y se agrega Ajustes >
+Apariencia. Ver DESIGN, ARCHITECTURE y TESTING.
+
 ## 2026-10-14 - Expansion del hub y TikTok
 
 Rama codex/alt-keeps-button (PR #45). Abrir el hub vuelve a verse: se expande

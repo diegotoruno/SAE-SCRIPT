@@ -412,6 +412,72 @@ local function createFinderSupport()
         local lead = velocity + omega * offset
         return target + (offset + lead * dt) * decay, (velocity - omega * lead * dt) * decay
     end
+    -- Temas de Mistake Hub: los mismos tokens en claro y oscuro (RGB 0-255).
+    -- Cambiar de tema reemplaza cada color por el del mismo token, asi que dos
+    -- tokens que comparten valor en un tema lo comparten tambien en el otro.
+    -- Los blancos casi puros (#FFFFFE, #FFFFFD) separan tokens que en oscuro difieren.
+    support.THEMES = {
+        light = {
+            window = {246, 246, 247}, sidebar = {232, 232, 236}, raised = {255, 255, 255}, field = {255, 255, 255},
+            control = {252, 252, 252}, controlHover = {240, 240, 243}, trackOff = {226, 226, 231},
+            separator = {60, 60, 67}, text = {29, 29, 31}, secondary = {99, 99, 104}, tertiary = {142, 142, 147},
+            accent = {0, 122, 255}, accentStrong = {0, 107, 224}, accentText = {0, 94, 200}, selection = {218, 232, 252},
+            onAccent = {255, 255, 254}, knob = {255, 255, 253},
+            green = {26, 117, 52}, greenDot = {52, 199, 89}, successTint = {227, 245, 232},
+            orange = {168, 74, 0}, orangeDot = {255, 149, 0}, orangeTint = {255, 242, 224},
+            red = {196, 30, 40}, scrim = {0, 0, 0},
+        },
+        dark = {
+            window = {30, 30, 32}, sidebar = {40, 40, 43}, raised = {44, 44, 47}, field = {44, 44, 47},
+            control = {58, 58, 61}, controlHover = {70, 70, 74}, trackOff = {72, 72, 76},
+            separator = {229, 229, 234}, text = {245, 245, 247}, secondary = {164, 164, 170}, tertiary = {124, 124, 130},
+            accent = {10, 132, 255}, accentStrong = {0, 98, 204}, accentText = {100, 172, 255}, selection = {28, 58, 96},
+            onAccent = {255, 255, 254}, knob = {255, 255, 253},
+            green = {74, 214, 120}, greenDot = {48, 209, 88}, successTint = {24, 52, 34},
+            orange = {255, 170, 60}, orangeDot = {255, 159, 10}, orangeTint = {58, 42, 16},
+            red = {255, 138, 130}, scrim = {0, 0, 0},
+        },
+    }
+    -- Transparencia de las superficies de vidrio en cada tema.
+    support.THEME_ALPHA = { light = { window = 0.04 }, dark = { window = 0.04 } }
+    function support.ThemePreference(value)
+        return (value == "light" or value == "dark" or value == "system") and value or "system"
+    end
+    -- Roblox no expone la apariencia del sistema operativo: "Sistema" sigue la
+    -- hora local del dispositivo, como el modo automatico de macOS.
+    function support.ResolveTheme(preference, hour)
+        preference = support.ThemePreference(preference)
+        if preference ~= "system" then return preference end
+        hour = tonumber(hour) or 12
+        return (hour >= 7 and hour < 19) and "light" or "dark"
+    end
+    local function themeKey(rgb) return rgb[1] * 65536 + rgb[2] * 256 + rgb[3] end
+    -- Valor de cada color de un tema al pasar al otro; falla si es ambiguo.
+    function support.ThemeRemap(from, to)
+        local source, target, map = support.THEMES[from], support.THEMES[to], {}
+        for token, rgb in pairs(source) do
+            local key, wanted = themeKey(rgb), target[token]
+            assert(wanted, "Falta el token " .. token .. " en " .. to)
+            if map[key] then
+                assert(themeKey(map[key]) == themeKey(wanted), "Color ambiguo entre temas: " .. token)
+            end
+            map[key] = wanted
+        end
+        return map, themeKey
+    end
+    -- Contraste WCAG entre dos colores RGB 0-255.
+    function support.ThemeContrast(a, b)
+        local function luminance(rgb)
+            local total = 0
+            for index, weight in ipairs({0.2126, 0.7152, 0.0722}) do
+                local value = rgb[index] / 255
+                total += weight * (value <= 0.04045 and value / 12.92 or ((value + 0.055) / 1.055) ^ 2.4)
+            end
+            return total
+        end
+        local x, y = luminance(a), luminance(b)
+        return (math.max(x, y) + 0.05) / (math.min(x, y) + 0.05)
+    end
     -- A fresh one-player reserve is already the minimum eligible occupancy.
     -- Larger groups still require a new OccupancyAsc proof before a hop.
     function support.BalancedReserve(servers, now, current, visited, limit)
@@ -888,20 +954,14 @@ do
     local API_429_COOLDOWN_SECONDS = 30   -- castigo tras un HTTP 429
     local AUTO_POLL_SECONDS = 0.5
 
-    -- Misma paleta grafito/champan del Egg Finder; el rojo queda solo en la accion.
-    local COLORS = {
-        surface = Color3.fromRGB(20, 24, 30),
-        raised = Color3.fromRGB(30, 36, 44),
-        border = Color3.fromRGB(56, 65, 77),
-        action = Color3.fromRGB(192, 57, 66),
-        actionBorder = Color3.fromRGB(232, 120, 126),
-        text = Color3.fromRGB(239, 243, 247),
-        muted = Color3.fromRGB(170, 183, 197),
-        gold = Color3.fromRGB(224, 197, 149),
-        green = Color3.fromRGB(147, 215, 191),
-        onGreen = Color3.fromRGB(15, 35, 29),
-        amber = Color3.fromRGB(242, 190, 122),
-    }
+    -- La tarjeta flotante usa los tokens del tema de Mistake Hub (hubTheme):
+    -- se leen al usarlos, asi siempre son los del tema activo.
+    local hubTheme
+    local COLOR_TOKENS = { surface = "window", raised = "control", border = "separator", action = "accentStrong",
+        actionText = "onAccent", text = "text", muted = "secondary", credit = "accentText", accent = "accent",
+        green = "green", greenTint = "successTint", amber = "orange", tertiary = "tertiary" }
+    local COLORS = setmetatable({}, { __index = function(_, name) return hubTheme.colors[COLOR_TOKENS[name] or name] end })
+    local UI_FONT = "rbxasset://fonts/families/BuilderSans.json"
 
     -- ---------------------------------------------------------------- utilidades
     local session
@@ -939,6 +999,72 @@ do
         local ok = store.Write(path, value)
         if not ok then warn("[EggFinder] No se pudo guardar " .. path) end
         return ok
+    end
+    -- Tema de Mistake Hub: Claro, Oscuro o Sistema (hora local del dispositivo,
+    -- porque Roblox no expone la apariencia del sistema). Se resuelve antes de
+    -- crear la interfaz para que no haya destello del tema equivocado; los
+    -- colores viven en hubTheme.colors y se actualizan en su sitio.
+    hubTheme = { listeners = {}, roots = {} }
+    do
+        local function palette(name)
+            local colors = {}
+            for token, rgb in pairs(support.THEMES[name]) do colors[token] = Color3.fromRGB(rgb[1], rgb[2], rgb[3]) end
+            return colors
+        end
+        function hubTheme.Hour()
+            local ok, now = pcall(os.date, "*t")
+            return ok and type(now) == "table" and now.hour or nil
+        end
+        hubTheme.preference = support.ThemePreference(readJson("chilli_egg_panel_ui.json", {}).theme)
+        hubTheme.name = support.ResolveTheme(hubTheme.preference, hubTheme.Hour())
+        hubTheme.colors = palette(hubTheme.name)
+        hubTheme.alpha = table.clone(support.THEME_ALPHA[hubTheme.name])
+        -- Cada color de la interfaz pasa al mismo token del tema nuevo. Las
+        -- imagenes no se tocan: su color blanco es el de la imagen original.
+        function hubTheme.Apply(name)
+            if name == hubTheme.name or not support.THEMES[name] then return false end
+            local map, key = support.ThemeRemap(hubTheme.name, name)
+            local function swap(object, property)
+                local color = object[property]
+                local rgb = map[key({math.round(color.R * 255), math.round(color.G * 255), math.round(color.B * 255)})]
+                if rgb then object[property] = Color3.fromRGB(rgb[1], rgb[2], rgb[3]) end
+            end
+            uiAccess()
+            for _, listener in ipairs(hubTheme.listeners) do if listener.before then pcall(listener.before) end end
+            uiAccess()
+            for _, root in ipairs(hubTheme.roots) do
+                if root.Parent ~= nil or root.Name == "FocusRing" then
+                    for _, object in ipairs({root, unpack(root:GetDescendants())}) do
+                        if object:IsA("UIStroke") then swap(object, "Color")
+                        elseif object:IsA("GuiObject") then
+                            swap(object, "BackgroundColor3")
+                            if object:IsA("TextLabel") or object:IsA("TextButton") or object:IsA("TextBox") then swap(object, "TextColor3") end
+                            if object:IsA("TextBox") then swap(object, "PlaceholderColor3") end
+                            if object:IsA("ScrollingFrame") then swap(object, "ScrollBarImageColor3") end
+                        end
+                    end
+                end
+            end
+            for token, color in pairs(palette(name)) do hubTheme.colors[token] = color end
+            hubTheme.name = name
+            for property, value in pairs(support.THEME_ALPHA[name]) do hubTheme.alpha[property] = value end
+            for _, listener in ipairs(hubTheme.listeners) do
+                if listener.after then
+                    local ok, err = pcall(listener.after)
+                    if not ok then warn("[MistakeHub] Tema: " .. tostring(err)) end
+                end
+            end
+            return true
+        end
+        -- Claro, Oscuro o Sistema; se guarda con las preferencias del hub.
+        function hubTheme.Set(preference)
+            hubTheme.preference = support.ThemePreference(preference)
+            hubTheme.Apply(support.ResolveTheme(hubTheme.preference, hubTheme.Hour()))
+            for _, listener in ipairs(hubTheme.listeners) do
+                if listener.preference then pcall(listener.preference) end
+            end
+            return hubTheme.name
+        end
     end
     -- Plain text for people (the readable hunt report); failures stay silent.
     local function writeText(path, text)
@@ -1253,6 +1379,17 @@ do
         if session.alertSound then session.alertSound:Destroy() end
         if screenGui.Parent then screenGui:Destroy() end
     end
+    -- Con Sistema, el tema sigue la hora local: se revisa cada 30 s y el bucle
+    -- termina con la sesion.
+    table.insert(hubTheme.roots, screenGui)
+    task.spawn(function()
+        while session.alive do
+            task.wait(30)
+            if session.alive and hubTheme.preference == "system" then
+                uiAccess(); hubTheme.Apply(support.ResolveTheme("system", hubTheme.Hour()))
+            end
+        end
+    end)
 
     -- Estado de la ventana: si esta plegada y donde la dejaste. Se recuerda
     -- tambien entre saltos, porque vive en un archivo, no en memoria.
@@ -1283,6 +1420,7 @@ do
         collapsed and COLLAPSED_SIZE.Y or EXPANDED_SIZE.Y
     )
     holder.BackgroundColor3 = COLORS.surface
+    holder.BackgroundTransparency = hubTheme.alpha.window
     holder.BorderSizePixel = 0
     holder.Active = true
     holder.Visible = quickVisible
@@ -1318,7 +1456,7 @@ do
         local item = Instance.new("TextLabel")
         item.Name = name
         item.BackgroundTransparency = 1
-        item.Font = bold and Enum.Font.GothamBold or Enum.Font.GothamMedium
+        item.FontFace = Font.new(UI_FONT, bold and Enum.FontWeight.SemiBold or Enum.FontWeight.Regular)
         item.Text = ""
         item.TextSize = size
         item.TextColor3 = color
@@ -1344,7 +1482,7 @@ do
         return segments
     end
     round(holder, 14)
-    outline(holder, COLORS.border)
+    outline(holder, COLORS.border, 0.78)
 
     -- Movimiento de la tarjeta: un tween por propiedad que parte del valor
     -- actual, cancela el anterior y se cancela al destruir su objeto.
@@ -1397,9 +1535,8 @@ do
     button.BorderSizePixel = 0
     button.Parent = holder
     round(button, 10)
-    outline(button, COLORS.actionBorder, 0.55)
 
-    local mainLabel = label("Label", button, 18, COLORS.text, true)
+    local mainLabel = label("Label", button, 18, COLORS.actionText, true)
     mainLabel.Text = "Server Hop"
     mainLabel.Position = UDim2.fromOffset(8, 0)
     mainLabel.Size = UDim2.new(1, -16, 1, 0)
@@ -1410,7 +1547,7 @@ do
     statusLabel.TextWrapped = true
 
     -- La firma tiene su propia fila en ambas versiones; no tapa AUTO ni estado.
-    local creditLabel = label("ByMistakeCredit", holder, 10, COLORS.gold)
+    local creditLabel = label("ByMistakeCredit", holder, 10, COLORS.credit, true)
     creditLabel.AnchorPoint = Vector2.new(0.5, 1)
     creditLabel.Position = UDim2.new(0.5, 0, 1, -6)
     creditLabel.Size = UDim2.new(1, -24, 0, 12)
@@ -1492,7 +1629,7 @@ do
     toggle.Text = ""
     toggle.Parent = holder
     round(toggle, 10)
-    outline(toggle, COLORS.border, 0.3)
+    outline(toggle, COLORS.border, 0.78)
     local toggleChevron = chevronSegments(toggle)
 
     -- Chip AUTO: enciende/apaga el encadenado automatico. Se guarda en
@@ -1505,7 +1642,7 @@ do
     autoChip.Text = ""
     autoChip.Parent = holder
     round(autoChip, 10)
-    local autoBorder = outline(autoChip, COLORS.border, 0.3)
+    local autoBorder = outline(autoChip, COLORS.border, 0.78)
 
     -- Sin AutoButtonColor (cambia de color con el estado): la pulsacion se ve
     -- al instante como un tono mas oscuro y vuelve en 120 ms al soltar.
@@ -1522,9 +1659,11 @@ do
     local function updateAutoChip()
         uiAccess()
         autoLabel.Text = autoEnabled and "AUTO\nON" or "AUTO\nOFF"
-        autoChip.BackgroundColor3 = autoEnabled and COLORS.green or COLORS.raised
-        autoLabel.TextColor3 = autoEnabled and COLORS.onGreen or COLORS.muted
+        -- Activo es un estado: verde suave con texto verde, no el azul de las acciones.
+        autoChip.BackgroundColor3 = autoEnabled and COLORS.greenTint or COLORS.raised
+        autoLabel.TextColor3 = autoEnabled and COLORS.green or COLORS.muted
         autoBorder.Color = autoEnabled and COLORS.green or COLORS.border
+        autoBorder.Transparency = autoEnabled and 0.35 or 0.78
         if hopView.setAuto then hopView.setAuto(autoEnabled) end
         if hopView.syncHub then hopView.syncHub(autoEnabled) end
     end
@@ -1694,7 +1833,7 @@ do
         line.Position = UDim2.new(1, -trace[1] / 2, 1, -trace[1] / 2)
         line.Size = UDim2.fromOffset(trace[2], 1.5)
         line.Rotation = -45
-        line.BackgroundColor3 = COLORS.muted
+        line.BackgroundColor3 = COLORS.tertiary
         line.BackgroundTransparency = 0.4
         line.BorderSizePixel = 0
         line.ZIndex = 3
@@ -1709,7 +1848,7 @@ do
         local tween = TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
         for _, line in ipairs(gripTraces) do
             TweenService:Create(line, tween, {
-                BackgroundColor3 = active and COLORS.gold or COLORS.muted,
+                BackgroundColor3 = active and COLORS.accent or COLORS.tertiary,
                 BackgroundTransparency = active and 0 or 0.4,
             }):Play()
         end
@@ -1941,7 +2080,7 @@ do
     -- sola ventana. La tarjeta Server Hop es el unico acceso flotante.
     local filterPanel = mountEggFilterPanel({ search = eggSearch,
         api = hopperEnvironment.ChilliEggSearch, session = session, screenGui = screenGui,
-        readJson = readJson, writeJson = writeJson,
+        readJson = readJson, writeJson = writeJson, theme = hubTheme,
         scaling = { Drag = support.DragScale, Panel = support.PanelScale,
             Rubberband = support.Rubberband, Spring = support.SpringStep } })
     session.DisposePanel = filterPanel.Destroy
@@ -1962,13 +2101,12 @@ do
         uiAccess()
         ui.heading(hopPage, "Server Hop", "Cambia de servidor al momento o deja que AUTO salte hasta encontrar tu huevo.", 0)
         local card = ui.make("Frame", "HopStatus", hopPage, { Position = UDim2.fromOffset(0, 56), Size = UDim2.fromOffset(width, 68),
-            BackgroundColor3 = C.card, BorderSizePixel = 0 })
-        ui.corner(card, 10); ui.stroke(card).Transparency = 0.45
-        ui.text("Caption", card, "Estado", 16, 12, width - 220, 14, C.muted, 11, "semi")
+            BackgroundColor3 = C.raised, BorderSizePixel = 0 })
+        ui.corner(card, 10); ui.stroke(card).Transparency = 0.8
+        ui.text("Caption", card, "Estado", 16, 12, width - 220, 14, C.secondary, 11, "semi")
         hopView.status = ui.paragraph("Status", card, statusLabel.Text, 16, 28, width - 220, 30, statusLabel.TextColor3, 12)
         hopView.button = ui.button("ServerHop", card, mainLabel.Text, width - 188, 12, 172, 44)
-        hopView.button.BackgroundColor3 = COLORS.action; hopView.button.Border.Color = COLORS.actionBorder
-        hopView.button.Font = Enum.Font.GothamBold; hopView.button.TextSize = 15
+        ui.primary(hopView.button); hopView.button.TextSize = 15
         hopView.setAuto = ui.toggleRow(hopPage, "AutoSearch", "Búsqueda automática (AUTO)",
             "Salta de servidor hasta encontrar un huevo que cumpla tus filtros.", 136, autoEnabled, function()
                 setAuto(not autoEnabled)
@@ -1979,6 +2117,15 @@ do
             end)
     end
     hopperEnvironment.ChilliEggSearch.QuickHop = function() return quickVisible end
+    -- Tema del hub: "light", "dark" o "system" (hora local del dispositivo).
+    hopperEnvironment.ChilliEggSearch.Theme = function()
+        return { preference = hubTheme.preference, active = hubTheme.name }
+    end
+    hopperEnvironment.ChilliEggSearch.SetTheme = function(value)
+        assert(session.alive, "Esta sesion ya termino")
+        assert(value == "light" or value == "dark" or value == "system", "Usa light, dark o system")
+        uiAccess(); return hubTheme.Set(value)
+    end
     hopperEnvironment.ChilliEggSearch.SetQuickHop = function(value)
         assert(session.alive, "Esta sesion ya termino")
         assert(type(value) == "boolean", "Usa true o false")
@@ -1990,19 +2137,19 @@ do
     do
         local C, width, column = ui.colors, ui.content, ui.column
         uiAccess()
-        ui.text("AccountTitle", hopPage, "Cuenta y Best Ping", 0, 272, width - 180, 20, C.white, 15, true)
-        local badge = ui.text("AccountState", hopPage, "", width - 170, 272, 170, 20, C.muted, 12, true)
+        ui.text("AccountTitle", hopPage, "Cuenta y Best Ping", 0, 272, width - 180, 20, C.text, 15, true)
+        local badge = ui.text("AccountState", hopPage, "", width - 170, 272, 170, 20, C.secondary, 12, true)
         badge.TextXAlignment = Enum.TextXAlignment.Right
         ui.paragraph("Privacy", hopPage, "Con tu cookie, este dispositivo pide a Roblox los servidores con mejor ping. "
-            .. "El autor del script no la recibe.", 0, 294, width, 28, C.muted, 11)
+            .. "El autor del script no la recibe.", 0, 294, width, 28, C.secondary, 11)
         local input = ui.make("TextBox", "CookieInput", hopPage, { Position = UDim2.fromOffset(0, 326), Size = UDim2.fromOffset(width, 40),
-            BackgroundColor3 = C.input, BorderSizePixel = 0, Text = "", PlaceholderText = "", ClearTextOnFocus = false,
-            MultiLine = false, TextTransparency = 1, TextSize = 16, Font = Enum.Font.GothamMedium })
-        ui.corner(input, 8); ui.stroke(input)
-        local mask = ui.text("MaskedValue", input, "Toca aquí y pega la cookie completa", 14, 0, width - 28, 40, C.muted, 13)
+            BackgroundColor3 = C.field, BorderSizePixel = 0, Text = "", PlaceholderText = "", ClearTextOnFocus = false,
+            MultiLine = false, TextTransparency = 1, TextSize = 16, FontFace = ui.face("medium"), SelectionImageObject = ui.focusRing })
+        ui.corner(input, 8); ui.stroke(input); ui.halo(input)
+        local mask = ui.text("MaskedValue", input, "Toca aquí y pega la cookie completa", 14, 0, width - 28, 40, C.secondary, 13)
         ui.paragraph("StorageHelp", hopPage, "Guardar permite continuar entre saltos. Se guarda solo aquí, sin cifrado; "
-            .. "otros scripts del executor podrían leerla.", 0, 372, width, 28, C.muted, 11)
-        local message = ui.paragraph("ConnectionMessage", hopPage, "", 0, 404, width, 28, C.muted, 11)
+            .. "otros scripts del executor podrían leerla.", 0, 372, width, 28, C.secondary, 11)
+        local message = ui.paragraph("ConnectionMessage", hopPage, "", 0, 404, width, 28, C.secondary, 11)
         local save = ui.button("SaveAndAuto", hopPage, "Guardar y usar AUTO", 0, 436, column, 36); ui.primary(save)
         local once = ui.button("SessionOnly", hopPage, "Solo esta sesión", column + 8, 436, column, 36)
         local forget = ui.button("ForgetCookie", hopPage, "Borrar cookie", 2 * (column + 8), 436, column, 36)
@@ -2024,7 +2171,7 @@ do
             badge.Text = connecting and "Comprobando..."
                 or state.configured and (state.remembered and "Cuenta guardada" or "Solo esta sesión")
                 or "Sin cuenta"
-            badge.TextColor3 = connecting and C.gold or state.configured and C.green or C.muted
+            badge.TextColor3 = connecting and C.orange or state.configured and C.green or C.secondary
         end
         -- The form counts as open while the hub shows the Server Hop section.
         local function formOpen()

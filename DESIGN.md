@@ -2,36 +2,69 @@
 
 Mistake Hub y el acceso rapido Server Hop son herramientas de consulta dentro de Roblox.
 Su prioridad es leer el estado de la busqueda y los ingresos sin competir con
-el mapa del juego. El estilo es sobrio: superficies grafito planas, un solo
-acento champan para acciones, colores semanticos para estados y ningun texto
-sobre otro. Cada texto tiene su propia caja y se corta con puntos suspensivos
-en lugar de desbordarse.
+el mapa del juego. El lenguaje visual sigue a macOS (Finder y Ajustes del
+Sistema): barra lateral con iconos y capsula de seleccion, superficies de
+vidrio, un solo acento azul para seleccion y acciones, colores semanticos solo
+para estados y ningun texto sobre otro. Hay tema Claro, Oscuro y Sistema. Cada
+texto tiene su propia caja y se corta con puntos suspensivos en lugar de
+desbordarse. Las opciones, textos y acciones son las de la version anterior del
+hub; el rediseno solo cambia la presentacion y agrega el selector de tema.
 
 ## Superficies y color
 
-Los tokens de `egg_filter_panel.luau` (`C`) y de `hopper_runtime.luau`
-(`COLORS`) son la fuente ejecutable del estilo y comparten valores.
+`support.THEMES` en `hopper_runtime.luau` es la unica fuente de color: los
+mismos tokens en claro y oscuro (RGB). El runtime los convierte en
+`hubTheme.colors`; el hub los usa como `C` y la tarjeta flotante como
+`COLORS` (alias que leen el token en el momento). CI comprueba que ambos temas
+tienen los mismos tokens, que el cambio de tema es inequivoco y los contrastes
+de la tabla.
 
-| Rol | Color | Uso |
-| --- | --- | --- |
-| Fondo | `#14181E` | Panel, tarjeta del boton, hojas modales y lanzador |
-| Superficie | `#1E242C` | Controles, tarjeta de estado y tarjetas de spawns |
-| Entrada | `#10141A` | Campos de nombre e ingreso minimo |
-| Borde | `#38414D` | Separadores y limites discretos |
-| Texto | `#EFF3F7` | Titulos, nombres e ingresos |
-| Secundario | `#AAB7C5` | Etiquetas, metadatos y ayuda |
-| Acento | `#E0C595` | Aplicar filtros, Listo, guardar preset, ingreso minimo, firma |
-| Exito | `#93D7BF` | AUTO activo, coincidencias y seleccion |
-| Informacion | `#AECEE5` | Reloj del ciclo y busqueda activa |
-| Error | `#F0989F` | Ingreso invalido, zona vacia, fallo al guardar, Borrar |
-| Accion Server Hop | `#C03942` | Unico rojo: boton principal del salto |
-| Aviso del boton | `#F2BE7A` | Saltos sin confirmar y reintentos |
-| Velo | `#06080B` al 35 % | Fondo detras de las hojas modales |
+| Token | Claro | Oscuro | Uso |
+| --- | --- | --- | --- |
+| `window` | `#F6F6F7` al 4 % | `#1E1E20` al 4 % | Hub, tarjeta flotante, boton M, hojas |
+| `sidebar` | `#E8E8EC` | `#28282B` | Barra lateral |
+| `raised` / `field` | `#FFFFFF` | `#2C2C2F` | Tarjetas, grupos, filas con interruptor, campos |
+| `control` / `controlHover` | `#FCFCFC` / `#F0F0F3` | `#3A3A3D` / `#46464A` | Botones con borde; pestana al pasar |
+| `separator` | `#3C3C43` | `#E5E5EA` | Bordes al 78 % de transparencia (40 % al pasar) |
+| `text` | `#1D1D1F` | `#F5F5F7` | Titulos, nombres, valores (7:1 o mas) |
+| `secondary` / `tertiary` | `#636368` / `#8E8E93` | `#A4A4AA` / `#7C7C82` | Etiquetas y ayuda (4.5:1); terciario solo iconos y asas |
+| `accent` | `#007AFF` | `#0A84FF` | Interruptor encendido, borde seleccionado, anillo de foco, logo |
+| `accentStrong` + `onAccent` | `#006BE0` + blanco | `#0062CC` + blanco | Acciones principales: Server Hop, Aplicar filtros, Listo, Guardar |
+| `accentText` / `selection` | `#005EC8` / `#DAE8FC` | `#64ACFF` / `#1C3A60` | Texto e icono seleccionados sobre la capsula azul suave |
+| `green` / `greenDot` / `successTint` | `#1A7534` / `#34C759` / `#E3F5E8` | `#4AD678` / `#30D158` / `#183422` | AUTO activo, Cumple, capturado |
+| `orange` / `orangeDot` / `orangeTint` | `#A84A00` / `#FF9500` / `#FFF2E0` | `#FFAA3C` / `#FF9F0A` / `#3A2A10` | Mejor del ciclo, cambios sin aplicar, saltos sin confirmar |
+| `red` | `#C41E28` | `#FF8A82` | Errores y Borrar |
+| `trackOff`, `knob`, `scrim` | | | Interruptor apagado, perilla blanca, velo negro |
 
-El color de rareza viene del juego. Se aclara lo necesario para alcanzar
-contraste 4.5:1 sobre las superficies de tarjeta, seleccion y coincidencia.
-Los nombres son blancos; la rareza aparece en su color dentro de la linea de
-etiquetas. No aplicar verde de coincidencia a todos los ingresos.
+El tema oscuro no es una inversion: fondos grafito, superficies en tres grises
+(`raised`, `control`, `controlHover`), texto claro y azules mas luminosos. El
+color de rareza viene del juego y se acerca al texto del tema hasta 4.5:1 sobre
+tarjeta, control, seleccion y coincidencia. Los nombres van en el color de
+texto; la rareza aparece en su color dentro de la linea de etiquetas.
+
+Roblox no ofrece desenfoque de fondo: el vidrio es una superficie casi opaca
+(4 %) con borde fino.
+
+## Tema
+
+Ajustes > Apariencia tiene un control segmentado `Claro / Oscuro / Sistema`
+(292 x 32, opcion elegida en pastilla con borde fino) con su explicacion a la
+derecha. Se guarda como `theme` en `chilli_egg_panel_ui.json`; por defecto es
+`system`.
+
+- El runtime lee la preferencia antes de crear cualquier interfaz: la tarjeta
+  flotante, el hub y el boton M nacen ya con el tema correcto, sin destello.
+- Roblox no expone la apariencia del sistema operativo (no hay propiedad de
+  tema en `UserGameSettings` ni en `GuiService`). `Sistema` sigue la hora local
+  del dispositivo, como el modo automatico de macOS: claro de 7:00 a 19:00 y
+  oscuro el resto. Se revisa cada 30 s y cambia sola; el bucle termina con la
+  sesion.
+- Cambiar de tema reemplaza en su sitio cada color de la interfaz por el del
+  mismo token (fondos, textos, bordes, marcadores de posicion y barras de
+  desplazamiento; las imagenes no). Despues se repintan los estados, se cierra
+  la hoja abierta y se reconstruyen las tarjetas y la seccion visible, que
+  mezclan colores calculados (rareza).
+- API: `finder.Theme()` y `finder.SetTheme("light" | "dark" | "system")`.
 
 ## Acceso rapido Server Hop
 
@@ -39,19 +72,21 @@ Unica pieza flotante. El interruptor `Acceso rapido flotante` de la seccion
 Server Hop la muestra u oculta; la preferencia se guarda como `quick` en
 `server_hop_button_ui.json`.
 
-Tarjeta grafito con borde de 1 px y esquinas de 14 px. Sin degradado, brillo
-ni contornos duplicados del texto.
+Tarjeta de vidrio (`window`) con borde fino y esquinas de 14 px. Sin
+degradado, brillo ni contornos duplicados del texto.
 
-- Expandido 320 x 116. Fila superior de 44 px: AUTO (60 px), boton rojo
-  Server Hop (flexible, GothamBold 18) y plegado (32 px). Debajo, el estado
-  en dos lineas de 11 px como maximo y, al pie, la firma By Mistake en champan.
+- Expandido 320 x 116. Fila superior de 44 px: AUTO (60 px), boton azul
+  Server Hop (flexible, Builder Sans SemiBold 18, texto blanco) y plegado
+  (32 px). Debajo, el estado en dos lineas de 11 px como maximo y, al pie, la
+  firma By Mistake en `accentText`.
 - Plegado 232 x 66. La misma fila con 34 px de alto (AUTO 52, plegado 28,
   texto 14) y la firma debajo. El estado se oculta.
-- AUTO muestra `AUTO / ON` en verde con texto oscuro o `AUTO / OFF` neutro.
+- AUTO muestra `AUTO / ON` en verde suave con texto y borde verdes o
+  `AUTO / OFF` neutro.
 - El plegado usa un chevron geometrico: arriba para plegar, abajo para abrir.
-- Mientras hay un salto en curso el boton rojo baja al 50 % de opacidad.
+- Mientras hay un salto en curso el boton baja al 50 % de opacidad.
 - Asa de tamano en la esquina inferior derecha: tres trazos diagonales de
-  1.5 px dentro del borde redondeado, gris al 60 % y champan al pasar o
+  1.5 px dentro del borde redondeado, terciario al 60 % y azul al pasar o
   arrastrar (120 ms, Quad Out). Escala la tarjeta entera (UIScale) entre
   0.75 y 1.75, sin pasar del ancho/alto de la pantalla, y fija el borde
   izquierdo. Las medidas de arriba son a escala 1.
@@ -67,7 +102,7 @@ pestanas laterales, secciones con interruptores), con la paleta propia.
 
 - 760 x 560, esquinas de 14 px. Cabecera de 56 px, barra lateral de 172 px y
   paginas de 548 x 472 con margen de 20 px.
-- Cabecera: logo cuadrado de 32 px en champan con la `M`, titulo
+- Cabecera: logo cuadrado de 32 px en azul con la `M` blanca, titulo
   `Mistake Hub` (17 px) y subtitulo `Steal An Egg` (11 px); a la derecha AUTO
   (punto + `AUTO ON/OFF`, 100 px) y minimizar (32 px, un menos). La cabecera
   arrastra el hub. Sin linea bajo la cabecera: el cambio de tono de la barra
@@ -80,23 +115,24 @@ pestanas laterales, secciones con interruptores), con la paleta propia.
   Sin teclado (movil, iPad) no hay Alt izquierdo: este boton es la forma de
   volver. Tocarlo abre el hub completo en su propio sitio, en la misma
   seccion, no desde el boton; un recorrido de mas de 10 px es arrastre, no
-  toque. Pasar el raton o pulsar ilumina su borde en champan. Solo se ve con
+  toque. Pasar el raton o pulsar ilumina su borde en azul. Solo se ve con
   el hub minimizado. Las tarjetas y modelos se liberan mientras esta
   minimizado.
-- Barra lateral: superficie `Entrada` (#10141A), mas pesada que el contenido,
-  sin borde lateral; solo su esquina inferior izquierda sigue la del hub.
-  Entradas de 40 px separadas por 6 (Egg Finder, Filtros, Calculadora, Server
-  Hop, Ajustes), 13 px SemiBold. Una sola seleccion `ActiveTab` (fondo de
-  superficie con la barra champan de 3 x 20) se desliza a la pestana activa;
-  su texto pasa a blanco y el resto queda secundario. Pasar el puntero da
-  fondo al 40 % y pulsar al 70 %, al instante. Filtros muestra un punto
-  champan con cambios sin aplicar. Al pie, el estado de AUTO (verde si esta
-  activo) con su modo (11 px), la tarjeta del TikTok y la firma `By
-  Mistake` en champan.
+- Barra lateral: superficie `sidebar`, sin borde lateral; solo su esquina
+  inferior izquierda sigue la del hub. Entradas de 40 px separadas por 6, cada
+  una con su icono de trazo fino a la izquierda: lupa (Egg Finder), embudo
+  (Filtros), calculadora (Calculadora), flechas opuestas (Server Hop) y
+  deslizadores (Ajustes). Una sola capsula azul suave `ActiveTab`
+  (`selection`) se desliza a la pestana activa; su texto pasa a SemiBold y,
+  como el icono, a `accentText`. El resto usa texto normal e icono
+  secundario. Pasar el puntero da un fondo `controlHover` suave y pulsar uno
+  mas firme, al instante. Filtros muestra un punto naranja con cambios sin
+  aplicar. Al pie, el estado de AUTO (verde si esta activo) con su modo
+  (11 px), la tarjeta del TikTok y la firma `By Mistake` en `accentText`.
 - Tarjeta del TikTok (marca de agua): 148 x 92 en superficie con borde,
   etiqueta `TIKTOK` (10 px Bold, secundaria), el enlace a la vista
-  `tiktok.com/@mistakeontt` (11 px, blanco) y `Copiar enlace` (primario
-  champan, 32 px). El boton copia `https://www.tiktok.com/@mistakeontt` con el
+  `tiktok.com/@mistakeontt` (11 px, texto) y `Copiar enlace` (primario
+  azul, 32 px). El boton copia `https://www.tiktok.com/@mistakeontt` con el
   portapapeles del executor (`setclipboard`; Roblox no tiene API de
   portapapeles) y dice `Copiado` en verde 1,6 s; sin portapapeles dice `Sin
   portapapeles` y el enlace sigue escrito.
@@ -118,19 +154,21 @@ pestanas laterales, secciones con interruptores), con la paleta propia.
 - Calculadora: especie y peso arriba; a la izquierda las mutaciones en dos
   columnas con su bono (medido una vez por especie); a la derecha la tarjeta
   de resultado (ingreso en
-  champan de 24 px, exacto, por minuto/hora/dia, multiplicador, tamano, sin
+  `accentText` de 24 px, exacto, por minuto/hora/dia, multiplicador, tamano, sin
   mutaciones y una nota).
 - Server Hop: tarjeta `Estado` con el mismo texto que la tarjeta flotante y
-  el boton rojo `Server Hop` (172 x 44) a la derecha; interruptores AUTO y
+  el boton azul `Server Hop` (172 x 44) a la derecha; interruptores AUTO y
   `Acceso rapido flotante`; seccion Cuenta y Best Ping con estado a la
   derecha del titulo, campo oculto, ayudas y tres botones (Guardar y usar
-  AUTO en champan, Solo esta sesion, Borrar cookie en rojo suave).
-- Ajustes: interruptores Notificacion y Sonido (cambian en su sitio, sin
-  reconstruir la pagina), `Probar alerta`, y la seccion Interfaz con los
-  atajos (etiqueta 12, valor 13) y `Restablecer tamano y posicion`.
+  AUTO en azul, Solo esta sesion, Borrar cookie en rojo).
+- Ajustes: seccion Apariencia (selector de tema), Alertas con los
+  interruptores Notificacion y Sonido (cambian en su sitio, sin reconstruir
+  la pagina) y `Probar alerta`, y la seccion Interfaz con los atajos
+  (etiqueta 12, valor 13). `Restablecer tamano y posicion` es la accion de
+  esa seccion: va en su encabezado, alineada a la derecha.
 - Interruptor: fila de 52 px con titulo y detalle; pista de 44 x 24 a la
-  derecha, verde con perilla oscura si esta activo, entrada con perilla gris
-  si no. Toda la fila lo cambia.
+  derecha, azul si esta activo y `trackOff` si no, con perilla blanca de
+  borde fino. Toda la fila lo cambia.
 - Hojas modales (rareza, mutacion, zonas, especie, detalle, historial) sobre
   un velo que bloquea el hub; ocupan el area de paginas (548 de ancho, 480 de
   alto como maximo). Tocar el velo o la X cierra la hoja.
@@ -141,7 +179,7 @@ pestanas laterales, secciones con interruptores), con la paleta propia.
   mutaciones`.
 - Historial de mejores (`Mejores de los ultimos ciclos`): abierto desde el
   detalle muestra `Detalle` con un chevron a la izquierda de la X, que
-  vuelve al detalle. Hasta 6 filas de 58 px (este ciclo con borde champan,
+  vuelve al detalle. Hasta 6 filas de 58 px (este ciclo con borde naranja,
   luego los 5 ultimos ciclos terminados). Cada fila: antiguedad, nombre,
   rareza en su color, zona y mutaciones; a la derecha el ingreso, en verde si
   llega al minimo guardado, con "llega al minimo" o "bajo el minimo". Al pie,
@@ -159,17 +197,27 @@ barra lateral del hub; la marca de agua del TikTok, solo en la barra lateral. No
 2026-10-11) ni lanzadores flotantes del panel o de la cuenta (retirados con
 el hub, 2026-10-14).
 
-AUTO apagado es neutro; AUTO encendido usa verde suave y texto oscuro.
-Las acciones principales usan champan con texto oscuro. No confundir apagado
-con error. Chevrones, minimizar, cerrar y marcas de seleccion usan geometria
-nativa de Roblox.
+AUTO apagado es neutro; AUTO encendido usa verde suave con texto verde.
+Las acciones principales usan azul con texto blanco. No confundir apagado
+con error. Iconos, chevrones, minimizar, cerrar y marcas de seleccion usan
+geometria nativa de Roblox.
+
+Estados de los controles con borde: reposo (borde al 78 %), pasar y foco
+(40 %), pulsado (al instante, con el oscurecido de `AutoButtonColor`) y
+deshabilitado (formulario de cuenta mientras comprueba). Las selecciones usan
+la capsula azul suave (`selection`) con texto `accentText` y borde azul; las
+casillas de zonas son azules con marca blanca. Teclado y mando muestran un
+anillo azul de 3 px (`SelectionImageObject`) en botones, pestanas, campos y el
+boton M; los campos ademas pasan su borde a azul mientras se escribe.
 
 El foco por seleccion de teclado es inmediato. La limpieza de sesion sigue
 retirando panel, conexiones, resortes y bucles.
 
 ## Tipografia
 
-Gotham en tres pesos (Bold, SemiBold via `FontFace`, Medium). Roblox no tiene
+Builder Sans (`rbxasset://fonts/families/BuilderSans.json`), la fuente de
+sistema de Roblox, de la misma familia que SF Pro e Inter (Roblox no permite
+cargar SF Pro). Pesos Bold, SemiBold y Medium via `FontFace`. Roblox no tiene
 espaciado entre letras: los rotulos van en tipo oracion, no en mayusculas.
 
 | Rol | Tamano | Peso |

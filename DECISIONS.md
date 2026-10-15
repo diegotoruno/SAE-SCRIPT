@@ -1,5 +1,19 @@
 # Decisiones de producto e implementacion
 
+## Temas por token y Sistema por hora local (2026-10-15)
+
+Los colores del hub y de la tarjeta flotante salen de `support.THEMES` (claro
+y oscuro con los mismos tokens). Cambiar de tema reemplaza en su sitio cada
+color por el del mismo token en lugar de reconstruir el hub: no se pierden la
+seccion, el formulario de cuenta, los filtros sin aplicar ni la posicion. CI
+exige que la correspondencia entre temas sea inequivoca (por eso hay blancos
+casi puros distintos para `onAccent` y `knob`) y los contrastes AA. Roblox no
+tiene propiedad de tema del sistema (`UserGameSettings` y `GuiService`
+inspeccionados en Potassium): `Sistema` sigue la hora local, claro de 7:00 a
+19:00, como el modo automatico de macOS. Server Hop pasa de rojo a azul
+(accion principal, no destructiva). No hay desenfoque de fondo en Roblox: el
+vidrio es una superficie al 4 % de transparencia.
+
 ## Mistake Hub: una ventana y un solo acceso flotante (2026-10-14)
 
 Pedido del usuario: todas las opciones en un hub, sin botones flotantes,

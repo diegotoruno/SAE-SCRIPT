@@ -4,7 +4,7 @@
 
 `mountEggFilterPanel` crea `MistakeHub` (760 x 560) en el ScreenGui
 `ServerHopButton`: `Header` (logo, titulo, `Subtitle`, `ToggleSearch` AUTO,
-`Minimize`), `Sidebar` (`ActiveTab` con `Indicator`, `Tab_<id>` con
+`Minimize`), `Sidebar` (`ActiveTab`, `Tab_<id>` con `Icon`, `Label` y
 `Pending`, `AutoState`, `AutoMode`, `ByMistakeCredit`), `Pages` con `Page_finder`,
 `Page_filters`, `Page_calc`, `Page_hop` y `Page_settings`, y `ResizeGrip`.
 Las hojas modales son hijas de `MistakeHub` y ocupan el area de paginas
@@ -17,7 +17,23 @@ y usa los mismos calculos para la tarjeta `Holder`. `panel.SyncAuto(active)`
 repinta AUTO cuando cambia desde el runtime. La funcion del hub esta cerca del
 limite de 200 locales de Luau (el compilador del executor lo aplica; el
 `luau-compile` de CI no lo detecto): el estado nuevo va en tablas o bloques
-`do`.
+`do`. El estilo macOS (fuente, iconos, anillo de foco, halo de campos) vive
+en la tabla `look`.
+
+## Temas (2026-10-15)
+
+`support.THEMES` (seccion testeable de `hopper_runtime.luau`) define los
+tokens en RGB para `light` y `dark`; `support.ResolveTheme(preferencia,
+hora)` resuelve `system` por la hora local y `support.ThemeRemap` da el color
+equivalente de cada token en el otro tema. El runtime crea `hubTheme` antes de
+cualquier interfaz (lee `theme` de `chilli_egg_panel_ui.json`), pasa
+`hubTheme` al hub como `context.theme` y usa `COLORS` como alias de sus
+tokens. `hubTheme.Apply(nombre)` recorre `hubTheme.roots` (el ScreenGui y
+`FocusRing`) y cambia `BackgroundColor3`, `TextColor3`, `PlaceholderColor3`,
+`ScrollBarImageColor3` y `UIStroke.Color` por el mismo token; los oyentes
+(`before`, `after`, `preference`) cancelan tweens de color, repintan estados,
+reconstruyen tarjetas y la seccion visible y guardan. Un bucle de 30 s aplica
+`system` mientras la sesion vive. `Destroy` retira el oyente y el anillo.
 
 `panel.Select(id)` muestra una seccion, cierra la hoja, libera los modelos al
 salir de Egg Finder, despliega el hub si estaba plegado, guarda `tab` y
@@ -363,7 +379,7 @@ El atajo LeftAlt del panel usa UserInputService.InputBegan y las mismas funcione
 
 ## Estilo del panel
 
-El estilo del Egg Finder se documenta en `DESIGN.md`: paleta grafito/champan, Gotham, tarjetas de 116px y separacion de 8px. Canvas, posiciones y ventana virtual comparten esas constantes. La respuesta de borde dura 120ms y los tweens se cancelan al destruir el control; seleccion de teclado y datos se actualizan inmediatamente. Se conservan presets, alertas, Alt, detalle de ingreso exacto y reintentos de recursos visuales. El callback de mutaciones restaura identidad despues de LabelOf antes de acceder a CoreGui.
+El estilo del Egg Finder se documenta en `DESIGN.md`: tokens claro/oscuro, Builder Sans, tarjetas de 100px y separacion de 8px. Canvas, posiciones y ventana virtual comparten esas constantes. La respuesta de borde dura 120ms y los tweens se cancelan al destruir el control; seleccion de teclado y datos se actualizan inmediatamente. Se conservan presets, alertas, Alt, detalle de ingreso exacto y reintentos de recursos visuales. El callback de mutaciones restaura identidad despues de LabelOf antes de acceder a CoreGui.
 
 ## CI/CD
 

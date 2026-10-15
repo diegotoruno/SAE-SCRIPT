@@ -1,5 +1,37 @@
 # Pruebas y validacion
 
+## 2026-10-15 - Estilo macOS y temas
+
+Build, ocho compilaciones y 226 regresiones (3 nuevas: tokens iguales y
+correspondencia inequivoca entre temas; contraste AA de texto y estados sobre
+cada superficie en ambos temas; preferencia por defecto `system` y limites de
+la hora local).
+
+Inventario frente a `origin/main`: mismos literales de texto en ambos
+archivos salvo los del selector de tema; solo se retiran `Indicator` (barra
+champan, reemplazada por la capsula) y la fuente Gotham. Mismas conexiones de
+eventos salvo las del selector (un `Activated` y un `GuiState` mas) y el halo
+de foco de los campos, unificado en un helper.
+
+Potassium, sesion real, sin entradas simuladas ni teleports; solo la API del
+hub (`Select`, `SetTheme`, `GetStatus`) y lectura de propiedades:
+
+- Roblox no expone tema del sistema: `Theme`, `PreferredTheme`, `DarkMode`,
+  `UITheme` y `AppTheme` no existen en `UserGameSettings` ni en `GuiService`.
+- Un solo ScreenGui `ServerHopButton` tras montar y tras recargar.
+- Las cinco secciones y la tarjeta flotante, en claro y en oscuro: 0 textos
+  truncados, 0 textos por debajo de 4.5:1 (sin contar la `M` del logo, texto
+  grande), 0 botones o campos fuera de su pagina, cabecera, barra lateral u
+  hoja, y 0 solapes entre controles. La primera pasada encontro `Borrar
+  cookie` (4.4:1) y el selector de tema (3.7:1) en oscuro; se corrigieron.
+- Persistencia: con Claro guardado (`theme` en `chilli_egg_panel_ui.json`), al
+  recargar el hub nace en claro (`#F6F6F7`) sin pasar por otro tema.
+- Se restauraron la preferencia (Sistema) y la seccion del usuario.
+
+Pendiente a mano: aspecto general, pasar el raton y pulsar, foco con teclado
+o mando, Alt izquierdo, boton M minimizado, hojas modales, formulario de cuenta
+y el cambio automatico de Sistema a las 7:00 y a las 19:00.
+
 ## 2026-10-14 - Expansion del hub y marca de agua del TikTok
 
 El usuario noto que se perdio la animacion de abrir (subir 12 px apenas se

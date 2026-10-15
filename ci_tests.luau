@@ -2693,5 +2693,41 @@ test("calculator lists every species by name with its rarity", function()
     assert(#options == 2 and options[1].label == "Common Alpha" and options[2].label == "Divine Alpha")
     assert(options[2].rarity == "Divine" and options[2].rank == 10 and options[1].rank == 1)
 end)
+test("hub themes share every token and switch without ambiguity", function()
+    for token in pairs(support.THEMES.light) do assert(support.THEMES.dark[token], "dark lacks " .. token) end
+    for token in pairs(support.THEMES.dark) do assert(support.THEMES.light[token], "light lacks " .. token) end
+    local toDark, key = support.ThemeRemap("light", "dark")
+    local toLight = support.ThemeRemap("dark", "light")
+    for token, rgb in pairs(support.THEMES.light) do
+        assert(key(toLight[key(toDark[key(rgb)])]) == key(rgb), "round trip changes " .. token)
+    end
+end)
+test("hub themes keep text and states legible on every surface", function()
+    for name, palette in pairs(support.THEMES) do
+        local function legible(fore, back, minimum)
+            local ratio = support.ThemeContrast(palette[fore], palette[back])
+            assert(ratio >= minimum, string.format("%s: %s on %s is %.2f:1", name, fore, back, ratio))
+        end
+        for _, surface in ipairs({"window", "sidebar", "raised", "control", "controlHover", "selection"}) do
+            legible("text", surface, 7)
+            if surface ~= "controlHover" then legible("secondary", surface, 4.5) end
+        end
+        for _, state in ipairs({"green", "orange", "red", "accentText"}) do
+            legible(state, "raised", 4.5); legible(state, "window", 4.5); legible(state, "control", 4.5)
+        end
+        legible("accentText", "selection", 4.5); legible("green", "successTint", 4.5)
+        legible("orange", "orangeTint", 4.5); legible("onAccent", "accentStrong", 4.5)
+        legible("text", "successTint", 7); legible("text", "orangeTint", 7)
+        legible("tertiary", "raised", 2.5)
+    end
+end)
+test("theme preference defaults to the system and follows the local hour", function()
+    assert(support.ThemePreference(nil) == "system" and support.ThemePreference("blue") == "system")
+    assert(support.ThemePreference("dark") == "dark" and support.ThemePreference("light") == "light")
+    assert(support.ResolveTheme("dark", 12) == "dark" and support.ResolveTheme("light", 23) == "light")
+    assert(support.ResolveTheme("system", 7) == "light" and support.ResolveTheme("system", 18) == "light")
+    assert(support.ResolveTheme("system", 19) == "dark" and support.ResolveTheme("system", 6) == "dark")
+    assert(support.ResolveTheme(nil, nil) == "light", "without a clock the system choice stays light")
+end)
 
 print(string.format("%d regression tests passed", passed))

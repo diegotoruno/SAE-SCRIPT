@@ -1,5 +1,19 @@
 # Contexto del proyecto
 
+## Mistake Hub con estilo macOS y temas (2026-10-15)
+
+El usuario pidio redisenar el menu de Mistake Hub como una aplicacion nativa de
+macOS (Finder y Ajustes del Sistema: barra lateral clara, acento azul,
+SF Symbols, foco de teclado) y despues un modo oscuro completo con selector
+Claro / Oscuro / Sistema, guardado y sin destello al cargar. Un primer intento
+partio de un `main` local desactualizado (sin el hub, la calculadora ni el
+boton M) y perdio opciones; el usuario confirmo que `main` actual tiene todas
+las opciones correctas y pidio exactamente las mismas, dentro y fuera de los
+menus: solo cambia la UI. Se rehizo sobre `main` 7fb7a44: mismas secciones,
+textos, acciones y piezas flotantes (acceso rapido y boton M); el selector de
+tema va en Ajustes > Apariencia. Roblox no expone la apariencia del sistema,
+asi que Sistema sigue la hora local del dispositivo.
+
 ## Mistake Hub (2026-10-14)
 
 Con la calculadora, el usuario pidio un hub llamado "Mistake Hub" que reuna
