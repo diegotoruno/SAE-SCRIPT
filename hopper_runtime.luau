@@ -2183,7 +2183,7 @@ do
         ui.heading(hopPage, "Server Hop", "Cambia de servidor al momento o deja que AUTO salte hasta encontrar tu huevo.", 0)
         local card = ui.make("Frame", "HopStatus", hopPage, { Position = UDim2.fromOffset(0, 56), Size = UDim2.fromOffset(width, 68),
             BackgroundColor3 = C.raised, BorderSizePixel = 0 })
-        ui.corner(card, 10); ui.stroke(card).Transparency = 0.8
+        ui.corner(card, 10); ui.stroke(card); ui.ink(card, 10)
         ui.text("Caption", card, "Estado", 16, 12, width - 220, 14, C.secondary, 11, "semi")
         hopView.status = ui.paragraph("Status", card, ink.statusText or "", 16, 28, width - 220, 30, ink.status or COLORS.muted, 12)
         hopView.button = ui.button("ServerHop", card, mainLabel.Text, width - 188, 12, 172, 44)
@@ -2218,7 +2218,7 @@ do
     do
         local C, width, column = ui.colors, ui.content, ui.column
         uiAccess()
-        ui.text("AccountTitle", hopPage, "Cuenta y Best Ping", 0, 272, width - 180, 20, C.text, 15, true)
+        ui.text("AccountTitle", hopPage, "Cuenta y Best Ping", 0, 272, width - 180, 20, C.text, 19, true).FontFace = ui.manga
         local badge = ui.text("AccountState", hopPage, "", width - 170, 272, 170, 20, C.secondary, 12, true)
         badge.TextXAlignment = Enum.TextXAlignment.Right
         ui.paragraph("Privacy", hopPage, "Con tu cookie, este dispositivo pide a Roblox los servidores con mejor ping. "

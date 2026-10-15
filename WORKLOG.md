@@ -1,5 +1,14 @@
 # Estado del trabajo
 
+## 2026-10-15 - Variante anime del hub (rama codex/hub-anime)
+
+Sobre el estilo macOS y con los mismos colores y opciones: titulos con
+Bangers, vineta de los ojos tenue en la cabecera con lineas de velocidad,
+trama de puntos en la barra lateral y bordes de tinta con sombra desplazada en
+la ventana y las tarjetas. Funciona en Claro y Oscuro. Build y 227 regresiones
+OK; cargada en Potassium y auditada solo con lecturas. Pendiente de
+comparacion por el usuario.
+
 ## 2026-10-15 - Tarjeta Server Hop minima
 
 Una fila con AUTO y el contador sobre la vineta de los ojos de fondo; sin

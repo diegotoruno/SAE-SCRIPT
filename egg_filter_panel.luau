@@ -170,6 +170,46 @@ local function mountEggFilterPanel(context)
             return make("Frame", name, parent, { Position = UDim2.fromOffset(x, y), Size = UDim2.fromOffset(width, height),
                 BackgroundColor3 = C.separator, BackgroundTransparency = 0.86, BorderSizePixel = 0 })
         end
+        -- Toque anime, sutil y con los colores del tema: titulos con Bangers (la
+        -- fuente de la tarjeta flotante), bordes de tinta con sombra plana
+        -- desplazada, trama de puntos y lineas de velocidad. Solo aspecto.
+        look.manga = look.face("bold")
+        pcall(function() look.manga = Font.fromEnum(Enum.Font.Bangers) end)
+        look.INK_EDGE = 0.72
+        -- Borde de tinta y sombra desplazada. La sombra es hermana del objeto
+        -- para quedar detras y sigue su posicion, tamano y visibilidad; no usar
+        -- dentro de un UIListLayout.
+        function look.ink(object, radius)
+            local edge = object:FindFirstChild("Border")
+            if edge then edge.Color = C.text; edge.Transparency = look.INK_EDGE; object:SetAttribute("InkEdge", look.INK_EDGE) end
+            local shade = make("Frame", object.Name .. "Ink", object.Parent, { BackgroundColor3 = C.text,
+                BackgroundTransparency = 0.9, BorderSizePixel = 0, ZIndex = object.ZIndex - 1 })
+            corner(shade, radius or 10)
+            local function follow()
+                if not panel.alive then return end
+                access()
+                shade.AnchorPoint = object.AnchorPoint; shade.Position = object.Position + UDim2.fromOffset(4, 4)
+                shade.Size = object.Size; shade.Visible = object.Visible
+            end
+            for _, property in ipairs({"Position", "Size", "Visible", "AnchorPoint"}) do
+                object:GetPropertyChangedSignal(property):Connect(follow)
+            end
+            follow()
+            return shade
+        end
+        -- Trama de manga: los puntos crecen hacia abajo y hacia la izquierda.
+        function look.halftone(parent, x, y, columns, rows, gap)
+            for row = 1, rows do
+                for column = 1, columns do
+                    local size = math.floor(4.5 * (row / rows) * (1 - (column - 1) / columns) + 0.5)
+                    if size >= 1 then
+                        corner(make("Frame", "Tone", parent, { AnchorPoint = Vector2.new(0.5, 0.5),
+                            Position = UDim2.fromOffset(x + (column - 1) * gap, y + (row - 1) * gap), Size = UDim2.fromOffset(size, size),
+                            BackgroundColor3 = C.text, BackgroundTransparency = 0.88, BorderSizePixel = 0 }), size)
+                    end
+                end
+            end
+        end
     end
     -- Movimiento: solo feedback y contexto, nunca decoracion. Duraciones cortas;
     -- Quint Out para lo que se desplaza o cambia de tamano, Quad Out para color
@@ -269,8 +309,10 @@ local function mountEggFilterPanel(context)
             if not panel.alive or not session.alive then return end
             local state = object.GuiState
             local lit = selected or state == Enum.GuiState.Press or (state == Enum.GuiState.Hover and UIS.MouseEnabled)
-            if instant or state == Enum.GuiState.Press then place(border, { Transparency = lit and 0.4 or 0.78 })
-            else animate(border, MOTION.color, { Transparency = lit and 0.4 or 0.78 }) end
+            -- Con borde de tinta, el reposo es el de la tinta.
+            local rest = object:GetAttribute("InkEdge") or 0.78
+            if instant or state == Enum.GuiState.Press then place(border, { Transparency = lit and 0.4 or rest })
+            else animate(border, MOTION.color, { Transparency = lit and 0.4 or rest }) end
         end
         border.Transparency = 0.78
         object.SelectionImageObject = look.ring
@@ -431,7 +473,10 @@ local function mountEggFilterPanel(context)
         glass.Position = UDim2.fromOffset(SIDEBAR, 0); glass.Size = UDim2.fromOffset(HUB_WIDTH - SIDEBAR, HUB_HEIGHT)
         look.hairline(root, "SidebarDivider", SIDEBAR, 0, 1, HUB_HEIGHT)
         local outline = make("Frame", "Outline", root, { Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, BorderSizePixel = 0, ZIndex = 2 })
-        corner(outline, 14); stroke(outline)
+        corner(outline, 14); stroke(outline, C.text, 1.5).Transparency = look.INK_EDGE
+        -- Vineta de manga: sombra plana de tinta desplazada bajo la ventana.
+        corner(make("Frame", "InkShadow", root, { Position = UDim2.fromOffset(6, 6), Size = UDim2.fromScale(1, 1),
+            BackgroundColor3 = C.text, BackgroundTransparency = 0.88, BorderSizePixel = 0, ZIndex = -1 }), 14)
         -- Las hojas modales se recortan a la ventana mientras entran y salen.
         look.overlay = make("Frame", "Overlay", root, { Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1,
             BorderSizePixel = 0, ClipsDescendants = true, ZIndex = 50 })
@@ -457,8 +502,28 @@ local function mountEggFilterPanel(context)
     local header = make("Frame", "Header", root, { Position = UDim2.fromOffset(SIDEBAR, 0), Size = UDim2.fromOffset(HUB_WIDTH - SIDEBAR, HEADER),
         BackgroundTransparency = 1, BorderSizePixel = 0, Active = true })
     look.logo(header, PAD, 12)
-    text("Title", header, "Mistake Hub", PAD + 42, 10, 160, 22, C.text, 17, true)
+    text("Title", header, "Mistake Hub", PAD + 42, 8, 160, 24, C.text, 22, true).FontFace = look.manga
     text("Subtitle", header, "Steal An Egg", PAD + 42, 31, 160, 14, C.secondary, 11)
+    -- La vineta de los ojos entre la marca y AUTO, tenue y fundida por los
+    -- lados, con lineas de velocidad que corren hacia ella. No responde al puntero.
+    do
+        if THEME.banner then
+            look.eyes = make("ImageLabel", "Eyes", header, { Position = UDim2.fromOffset(236, 8), Size = UDim2.fromOffset(220, 40),
+                BackgroundTransparency = 1, BorderSizePixel = 0, Image = THEME.banner, ScaleType = Enum.ScaleType.Crop })
+            make("UIGradient", "Fade", look.eyes, { Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 1),
+                NumberSequenceKeypoint.new(0.25, 0), NumberSequenceKeypoint.new(0.75, 0), NumberSequenceKeypoint.new(1, 1) }) })
+            -- Papel blanco y tinta negra: en oscuro se atenua mas para no ser un recuadro claro.
+            function look.eyesTone() if look.eyes then look.eyes.ImageTransparency = THEME.name == "dark" and 0.8 or 0.45 end end
+            look.eyesTone()
+        end
+        for _, spec in ipairs({ {14, 30}, {20, 46}, {27, 22}, {34, 40}, {41, 28} }) do
+            for side = 0, 1 do
+                local speed = make("Frame", "SpeedLine", header, { Position = UDim2.fromOffset(side == 0 and 262 - spec[2] or 430, spec[1]),
+                    Size = UDim2.fromOffset(spec[2], 1), BackgroundColor3 = C.text, BackgroundTransparency = 0.82, BorderSizePixel = 0 })
+                make("UIGradient", "Fade", speed, { Rotation = side == 0 and 0 or 180, Transparency = NumberSequence.new(1, 0) })
+            end
+        end
+    end
     look.hairline(header, "HeaderDivider", 0, HEADER - 1, HUB_WIDTH - SIDEBAR, 1)
     -- Minimizado, el hub se guarda y queda el boton M, independiente: tiene su
     -- propia posicion y se arrastra solo. Sin teclado (movil, iPad) no hay Alt
@@ -564,6 +629,8 @@ local function mountEggFilterPanel(context)
         corner(dot, 4)
         tabButtons[item.id] = { button = b, label = label, icon = glyph, dot = dot, y = y, text = item.label }
     end
+    -- Trama de manga en el hueco entre las secciones y el TikTok.
+    look.halftone(sidebar, 16, HUB_HEIGHT - 196, 15, 8, 10)
     -- Marca de agua: el TikTok del autor, con el enlace a la vista y un boton
     -- que dice lo que hizo. Copia con el portapapeles del executor (Roblox no
     -- lo expone); sin el, el enlace sigue escrito en la tarjeta.
@@ -571,8 +638,8 @@ local function mountEggFilterPanel(context)
         local LINK = "https://www.tiktok.com/@mistakeontt"
         local card = make("Frame", "TikTok", sidebar, { Position = UDim2.fromOffset(12, HUB_HEIGHT - 104),
             Size = UDim2.fromOffset(SIDEBAR - 24, 92), BackgroundColor3 = C.raised, BorderSizePixel = 0 })
-        corner(card, 10); stroke(card)
-        text("Label", card, "TIKTOK", 10, 10, SIDEBAR - 44, 12, C.secondary, 10, true)
+        corner(card, 10); stroke(card); look.ink(card, 10)
+        text("Label", card, "TIKTOK", 10, 9, SIDEBAR - 44, 14, C.secondary, 13, true).FontFace = look.manga
         text("Link", card, "tiktok.com/@mistakeontt", 10, 24, SIDEBAR - 44, 16, C.text, 11)
         local copyLink = button("CopyLink", card, "Copiar enlace", 10, 50, SIDEBAR - 44, 32)
         primary(copyLink)
@@ -600,7 +667,7 @@ local function mountEggFilterPanel(context)
             BackgroundTransparency = 1, BorderSizePixel = 0, Visible = false })
     end
     local function heading(parent, title, detail, y)
-        text("Heading", parent, title, 0, y, CONTENT, 20, C.text, 15, true)
+        text("Heading", parent, title, 0, y, CONTENT, 20, C.text, 19, true).FontFace = look.manga
         if detail then return paragraph("HeadingDetail", parent, detail, 0, y + 22, CONTENT, 28, C.secondary, 11) end
     end
     -- Lista desplazable; agrupada es un grupo blanco con filas separadas por
@@ -609,7 +676,7 @@ local function mountEggFilterPanel(context)
         local list = make("ScrollingFrame", "Options", parent, { Position = UDim2.fromOffset(x or 14, y), Size = UDim2.fromOffset(width or CONTENT - 28, height),
             CanvasSize = UDim2.new(), AutomaticCanvasSize = Enum.AutomaticSize.Y, BackgroundColor3 = C.raised,
             BackgroundTransparency = grouped and 0 or 1, ScrollBarThickness = 4, ScrollBarImageColor3 = C.tertiary, BorderSizePixel = 0 })
-        if grouped then corner(list, 10); stroke(list) end
+        if grouped then corner(list, 10); stroke(list); look.ink(list, 10) end
         local inset = grouped and 4 or 2
         make("UIPadding", "Padding", list, { PaddingTop = UDim.new(0, inset), PaddingLeft = UDim.new(0, inset), PaddingRight = UDim.new(0, 10), PaddingBottom = UDim.new(0, inset) })
         make("UIListLayout", "Layout", list, { Padding = UDim.new(0, grouped and 0 or 6), SortOrder = Enum.SortOrder.LayoutOrder })
@@ -627,7 +694,7 @@ local function mountEggFilterPanel(context)
     local function toggleRow(parent, name, title, detail, y, value, onToggle)
         local row = make("TextButton", name, parent, { Position = UDim2.fromOffset(0, y), Size = UDim2.fromOffset(CONTENT, 52),
             BackgroundColor3 = C.raised, BorderSizePixel = 0, Text = "", AutoButtonColor = true })
-        corner(row, 10); stroke(row); interaction(row)
+        corner(row, 10); stroke(row); interaction(row); look.ink(row, 10)
         text("Title", row, title, 14, 9, CONTENT - 96, 18, C.text, 14, true)
         text("Detail", row, detail, 14, 28, CONTENT - 96, 14, C.secondary, 11)
         local set = look.switch(row, UDim2.new(1, -14, 0.5, 0), Vector2.new(1, 0.5))
@@ -699,7 +766,7 @@ local function mountEggFilterPanel(context)
         BorderSizePixel = 0, ScrollBarThickness = 4, ScrollBarImageColor3 = C.tertiary,
         CanvasSize = UDim2.new(), AutomaticCanvasSize = Enum.AutomaticSize.None, ScrollingDirection = Enum.ScrollingDirection.Y,
     })
-    corner(scroll, 10); stroke(scroll)
+    corner(scroll, 10); stroke(scroll); look.ink(scroll, 10)
     make("UIPadding", "Padding", scroll, { PaddingTop = UDim.new(0, 4), PaddingLeft = UDim.new(0, 4), PaddingRight = UDim.new(0, 10), PaddingBottom = UDim.new(0, 4) })
 
     -- Filtros: cada control con su etiqueta encima; abajo los presets.
@@ -710,7 +777,7 @@ local function mountEggFilterPanel(context)
     -- Grupo de filas como en Ajustes del Sistema: etiqueta a la izquierda y
     -- control a la derecha, separados por lineas finas.
     look.group = make("Frame", "Group", filters, { Size = UDim2.fromOffset(CONTENT, 120), BackgroundColor3 = C.raised, BorderSizePixel = 0 })
-    corner(look.group, 10); stroke(look.group)
+    corner(look.group, 10); stroke(look.group); look.ink(look.group, 10)
     look.hairline(look.group, "RowDivider1", 12, 40, CONTENT - 24, 1); look.hairline(look.group, "RowDivider2", 12, 80, CONTENT - 24, 1)
     look.hairline(look.group, "ColumnDivider", half, 8, 1, 64)
     for _, cell in ipairs({ {"RarityLabel", "Rareza mínima", 0, 0}, {"IncomeLabel", "Ingreso mínimo /s", half, 0},
@@ -1678,7 +1745,7 @@ local function mountEggFilterPanel(context)
             SortOrder = Enum.SortOrder.LayoutOrder })
         local result = make("Frame", "Result", calcPage, { Position = UDim2.fromOffset(CONTENT - resultWidth, 128),
             Size = UDim2.fromOffset(resultWidth, PAGE_H - 128), BackgroundColor3 = C.raised, BorderSizePixel = 0 })
-        corner(result, 10); stroke(result).Transparency = 0.8
+        corner(result, 10); stroke(result); look.ink(result, 10)
         local inner = resultWidth - 28
         text("IncomeCaption", result, "Ingreso por segundo", 14, 12, inner, 14, C.secondary, 11)
         local income = text("Income", result, "--", 14, 28, inner, 32, C.accentText, 24, true)
@@ -1791,7 +1858,8 @@ local function mountEggFilterPanel(context)
     function panel.SyncAuto(active) if panel.alive then paintControls(active) end end
     panel.ui = { colors = C, content = CONTENT, pageHeight = PAGE_H, column = third, make = make, corner = corner,
         stroke = stroke, text = text, paragraph = paragraph, button = button, field = field, primary = primary,
-        paint = paint, heading = heading, toggleRow = toggleRow, face = look.face, halo = look.halo, focusRing = look.ring }
+        paint = paint, heading = heading, toggleRow = toggleRow, face = look.face, halo = look.halo, focusRing = look.ring,
+        ink = look.ink, manga = look.manga }
     -- Cambio de tema: los colores ya cambiaron de token en su sitio; aqui se
     -- repinta lo que depende del estado y se reconstruye lo que mezcla colores
     -- calculados (rareza en las tarjetas, hojas abiertas, pagina actual).
@@ -1806,6 +1874,7 @@ local function mountEggFilterPanel(context)
         end,
         after = function()
             access(); closePopup(true); cleanupCards(); signature = nil
+            if look.eyesTone then look.eyesTone() end
             paintTabs(); paintControls()
             if renderers[tab] then renderers[tab]() end
             refreshSoon()

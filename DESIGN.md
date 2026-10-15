@@ -230,6 +230,22 @@ pestanas laterales, secciones con interruptores), con la paleta propia.
   hojas modales la cubren. Seccion, plegado, tamano (`scale`), posicion y
   preferencias se guardan en `chilli_egg_panel_ui.json`.
 
+## Toque anime
+
+Sutil y siempre con los tokens del tema activo, asi que sigue a Claro y Oscuro
+sin colores propios. Solo cambia el aspecto: no anade controles.
+
+- Titulos (marca de la cabecera, encabezados de seccion, TIKTOK) en Bangers,
+  la fuente de la tarjeta flotante; los textos de las opciones no cambian.
+- Cabecera: la vineta de los ojos entre la marca y AUTO, 220 x 40, fundida por
+  los lados (transparencia 0.45 en claro, 0.8 en oscuro), con lineas de
+  velocidad de 1 px que corren hacia ella.
+- Barra lateral: trama de puntos en el hueco sobre el TikTok, mas densa abajo
+  a la izquierda.
+- Bordes de tinta: la ventana y las tarjetas usan el color del texto en el
+  borde (0.72) y una sombra plana desplazada (6 px la ventana, 4 px las
+  tarjetas). Sin la imagen, todo lo demas se mantiene.
+
 ## Interaccion
 
 Sin firma `By Mistake` visible (retirada de la tarjeta de acceso rapido el
