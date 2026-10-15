@@ -61,21 +61,25 @@ ni contornos duplicados del texto.
 
 ## Mistake Hub
 
-Una sola ventana reune todas las opciones; la unica pieza flotante es el
-acceso rapido de Server Hop. Estructura inspirada en Chilli Hub (cabecera,
+Una sola ventana reune todas las opciones; las unicas piezas flotantes son el
+acceso rapido de Server Hop y el propio hub minimizado (boton `M`). Estructura inspirada en Chilli Hub (cabecera,
 pestanas laterales, secciones con interruptores), con la paleta propia.
 
 - 760 x 560, esquinas de 14 px. Cabecera de 56 px, barra lateral de 172 px y
   paginas de 548 x 472 con margen de 20 px.
 - Cabecera: logo cuadrado de 32 px en champan con la `M`, titulo
   `Mistake Hub` (17 px) y subtitulo `Steal An Egg` (11 px); a la derecha AUTO
-  (punto + `AUTO ON/OFF`, 100 px) y plegar (32 px: menos para plegar, mas
-  para desplegar; el trazo vertical gira 90 grados entre ambos). La cabecera
+  (punto + `AUTO ON/OFF`, 100 px) y minimizar (32 px, un menos). La cabecera
   arrastra el hub. Sin linea bajo la cabecera: el cambio de tono de la barra
   lateral y el margen de 16 px separan.
-- Plegado: solo la cabecera, 340 x 56, con marca, AUTO y desplegar; el
-  subtitulo muestra la seccion en la que se quedo (`Filtros`). Las tarjetas y
-  modelos se liberan mientras esta plegado.
+- Minimizado: el hub se encoge hasta un boton de 56 x 56, esquinas de 14 px,
+  con el logo `M` centrado y un punto de 10 px en su esquina superior derecha
+  (verde con AUTO activo, gris apagado; borde del color del fondo). Sin
+  teclado (movil, iPad) no hay Alt izquierdo: este boton es la forma de
+  volver. Tocarlo abre el hub en la misma seccion; arrastrarlo lo mueve (un
+  recorrido de mas de 10 px es arrastre, no toque). Pasar el raton o pulsar
+  ilumina su borde en champan. Las tarjetas y modelos se liberan mientras
+  esta minimizado.
 - Barra lateral: superficie `Entrada` (#10141A), mas pesada que el contenido,
   sin borde lateral; solo su esquina inferior izquierda sigue la del hub.
   Entradas de 40 px separadas por 6 (Egg Finder, Filtros, Calculadora, Server
@@ -186,7 +190,7 @@ donde esta.
 | Perilla y color del interruptor, en el mismo frame | 160 ms | Quint Out |
 | Pagina nueva: sube 8 px | 180 ms | Quint Out |
 | `ActiveTab` hasta la pestana activa | 200 ms | Quint Out |
-| Plegar / desplegar el hub y su posicion en pantalla | 240 ms | Quint Out |
+| Minimizar / abrir el hub, el logo y su posicion en pantalla | 240 ms | Quint Out |
 | Hoja: entra desde su origen, escala 0.9 a 1, velo hasta 35 % | 220 ms | Quint Out |
 | Hoja: sale por el mismo camino | 160 ms | Quint In |
 | Tarjeta flotante: plegar / desplegar | 220 ms | Quint Out |
@@ -201,9 +205,14 @@ donde esta.
   el detalle, de su tarjeta; el historial abierto desde el detalle entra por
   la derecha y `Detalle` vuelve por la izquierda. Sin origen, la hoja sube
   12 px. La hoja que sale ya no bloquea el hub (`Interactable`).
-- Plegar encoge hacia la cabecera con la esquina superior izquierda fija; la
-  barra lateral y las paginas se ocultan al terminar y se muestran al empezar
-  a desplegar. La tarjeta flotante muestra su estado solo cuando termina de
+- Minimizar encoge el hub hacia su logo con la esquina superior izquierda
+  fija; titulo, AUTO y minimizar se van al empezar, el logo se centra (16 a
+  12 px) en el mismo tween y la barra lateral y las paginas se ocultan al
+  terminar. Abrir es el camino inverso y, si el hub entero no cabe donde
+  estaba el boton, se desliza hasta caber en el mismo tiempo.
+- Alt izquierdo sigue el mismo camino: con el hub abierto lo encoge hasta el
+  boton y lo oculta al terminar; oculto o minimizado, lo muestra como boton y
+  lo expande igual que al tocarlo. Otro Alt a mitad de camino lo invierte. La tarjeta flotante muestra su estado solo cuando termina de
   abrirse.
 - Arrastre del hub y de la tarjeta flotante: 1:1 desde el punto de agarre.
   Pasado el margen de 8 px resiste cada vez mas (constante 0.55); al soltar
@@ -212,7 +221,7 @@ donde esta.
   hay impulso. El resorte corre en `RenderStepped` solo mientras vuelve.
 - `GuiService.ReducedMotionEnabled`: sin desplazamientos ni escalas; las
   hojas aparecen en su sitio con un fundido de 120 ms del velo, los colores
-  del interruptor funden en 120 ms y plegar y volver al borde son inmediatos.
+  del interruptor funden en 120 ms y minimizar y volver al borde son inmediatos.
 - `GuiService.PreferredTransparency` lleva la transparencia del velo de 35 %
   hasta 10 %.
 

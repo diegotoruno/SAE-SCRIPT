@@ -23,9 +23,12 @@ limite de 200 locales de Luau (el compilador del executor lo aplica; el
 salir de Egg Finder, despliega el hub si estaba plegado, guarda `tab` y
 ejecuta el renderer de la seccion: Filtros reconstruye los presets, Ajustes
 sus interruptores y Calculadora la pagina completa; el runtime registra el de
-Server Hop con `panel.OnSelect`. `panel.SetMinimized` deja solo la cabecera
-(340 x 56); `Open` despliega y muestra, `Close` oculta (Alt izquierdo alterna
-mostrar/ocultar sin cambiar el plegado). Las tarjetas solo se construyen con
+Server Hop con `panel.OnSelect`. `panel.SetMinimized` encoge el hub a un
+boton de 56 x 56 con el logo: `Restore` (TextButton que lo cubre, toque abre,
+arrastre mueve) y `Header.AutoBadge` (punto de AUTO que pinta
+`paintControls`); `Open` despliega y muestra, `Close` oculta. Alt izquierdo
+encoge el hub abierto hasta el boton y lo oculta (guarda `open=false`,
+`minimized=true`); oculto o minimizado, llama a `Open`, que lo expande. Las tarjetas solo se construyen con
 `finderVisible()` (abierto, desplegado y en Egg Finder). Se guardan `open`,
 `minimized` y `tab` en `chilli_egg_panel_ui.json`; `open=false` solo se
 respeta con `UserInputService.KeyboardEnabled` y si el archivo ya tiene `tab`.
