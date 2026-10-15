@@ -1430,9 +1430,9 @@ do
     local autoEnabled = (uiState.auto == true)
     -- Acceso rapido: la tarjeta flotante se puede ocultar desde el hub.
     local quickVisible = (uiState.quick ~= false)
-    -- Con la vineta de los ojos, la tarjeta abierta crece para mostrarla arriba.
-    local EXPANDED_SIZE = hubTheme.banner and Vector2.new(320, 196) or Vector2.new(320, 116)
-    local COLLAPSED_SIZE = Vector2.new(232, 66)
+    -- La franja de los ojos va arriba en ambos tamanos y suma su alto.
+    local EXPANDED_SIZE = hubTheme.banner and Vector2.new(320, 156) or Vector2.new(320, 116)
+    local COLLAPSED_SIZE = hubTheme.banner and Vector2.new(232, 96) or Vector2.new(232, 66)
     local savedPosition = UDim2.new(0.5, 0, 0, 26)
     if type(uiState.pos) == "table" then
         local pos = uiState.pos
@@ -1596,20 +1596,20 @@ do
         end
     end
 
-    -- Vineta de los ojos arriba de la tarjeta abierta, con borde de tinta. Se
-    -- oculta al plegar, como el estado.
+    -- Franja de los ojos (vineta de manga de unos 9:1) arriba de la tarjeta,
+    -- abierta o plegada, con borde de tinta.
     if hubTheme.banner then
         ink.banner = Instance.new("ImageLabel")
         ink.banner.Name = "Banner"
         ink.banner.Position = UDim2.fromOffset(10, 10)
-        ink.banner.Size = UDim2.new(1, -20, 0, 75)
+        ink.banner.Size = UDim2.new(1, -20, 0, 32)
         ink.banner.BackgroundColor3 = ink.paper
         ink.banner.BorderSizePixel = 0
         ink.banner.Image = hubTheme.banner
         ink.banner.ScaleType = Enum.ScaleType.Crop
         ink.banner.Parent = surface
         round(ink.banner, 3)
-        outline(ink.banner, ink.ink).Thickness = 2.5
+        outline(ink.banner, ink.ink).Thickness = 2
     end
 
     -- Boton de accion: vineta azul a violeta con borde de tinta y rotulo de onomatopeya.
@@ -1660,7 +1660,7 @@ do
 
     -- Recuadro de narracion: el estado va en una caja con borde fino de tinta.
     local statusLabel = label("Status", surface, 11, ink.soft, true)
-    statusLabel.Position = UDim2.fromOffset(12, hubTheme.banner and 147 or 62)
+    statusLabel.Position = UDim2.fromOffset(12, hubTheme.banner and 102 or 62)
     statusLabel.Size = UDim2.new(1, -24, 0, 30)
     statusLabel.TextWrapped = true
     statusLabel.TextXAlignment = Enum.TextXAlignment.Left
@@ -1858,11 +1858,16 @@ do
         end
 
         -- El estado solo se ve con la tarjeta ya abierta: nunca sobresale.
-        -- Abierta con vineta, la fila de controles baja debajo de ella.
-        local top = (value or not ink.banner) and pad or 95
-        if value then statusLabel.Visible = false; if ink.banner then ink.banner.Visible = false end end
+        -- Con la franja de los ojos, la fila de controles va debajo de ella.
+        local top = pad
+        if ink.banner then
+            local strip = value and 24 or 32
+            place(ink.banner, { Position = UDim2.fromOffset(pad, pad), Size = UDim2.new(1, -2 * pad, 0, strip) })
+            top = pad + strip + (value and 6 or 8)
+        end
+        if value then statusLabel.Visible = false end
         place(holder, { Size = UDim2.fromOffset(size.X, size.Y) }, function()
-            if not collapsed then statusLabel.Visible = true; if ink.banner then ink.banner.Visible = true end end
+            if not collapsed then statusLabel.Visible = true end
         end)
         place(autoChip, { Position = UDim2.fromOffset(pad, top), Size = UDim2.fromOffset(chip, row) })
         place(button, { Position = UDim2.fromOffset(pad + chip + 6, top),
