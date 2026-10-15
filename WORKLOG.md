@@ -1,5 +1,12 @@
 # Estado del trabajo
 
+## 2026-10-14 - Calculadora de ingreso
+
+Rama codex/calculadora-mascotas sobre main d06dfa5. Boton Calculadora en la
+cabecera del panel y "Calcular con otras mutaciones" en el detalle de un
+huevo. Detector: `PetOptions`, `ParseWeight`, `FormatWeight`, `IncomeAt`,
+`WeightAt`, `CalculateIncome`, `CalculateAtScale`. Ver CONTEXT y TESTING.
+
 ## 2026-10-14 - Destino fallido al volver al origen
 
 Rama codex/marcar-destino-reconexion. Al volver al origen se marca el destino

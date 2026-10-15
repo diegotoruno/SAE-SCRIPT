@@ -96,6 +96,8 @@ El minimo acepta `500k`, `25m`, `7b`, `7.5b`, `1t` o `1q`, tambien en mayusculas
 
 Cada tarjeta indica **Cumple** o el motivo corto por el que queda fuera. Tocarla abre el **detalle**, que explica el motivo completo y muestra el ingreso exacto, sin redondear. **Opciones** permite guardar, cargar y borrar presets, activar notificaciones o sonido y probar la alerta. Un preset cargado queda pendiente de **Aplicar filtros**; no inicia ni detiene AUTO. La lista crea solo tarjetas cercanas a la vista y reutiliza sus instancias.
 
+**Calculadora** (en la cabecera) calcula cuánto da una mascota: eliges la especie, escribes el peso en kg (sirve la etiqueta del juego, p. ej. `44,904Kg`) y tocas las mutaciones; muestra el ingreso por segundo, minuto, hora y día, el multiplicador total y el tamaño. Usa las fórmulas del juego: las mutaciones se suman (Golden + Rainbow = x5). No incluye el pase x2 ni boosts temporales. En el detalle de un huevo, **Calcular con otras mutaciones** la abre con su especie, peso y mutaciones. Es solo informativa: no cambia filtros ni AUTO.
+
 Si un teleport queda sin confirmar, AUTO sigue revisando el mapa pero no envia otro salto. **Server Hop** permite reintentarlo manualmente. Los modulos que fallen al cargar se reintentan y los modelos ausentes usan imagen. Los archivos guardados conservan una copia `.bak` para recuperacion.
 
 ## API

@@ -311,6 +311,122 @@ local function createMapEggSearch(readJson, writeJson, writeText)
         end
         error("Rareza no disponible en el catalogo del juego: " .. value)
     end
+    -- Calculadora: ingreso de una mascota con el peso y las mutaciones elegidos,
+    -- con las mismas funciones del juego que el detector. Las mutaciones se
+    -- suman (Golden + Rainbow = x5) y una repetida contaria dos veces.
+    function search.PetOptions(directory, rarities)
+        if directory == nil then
+            local modules = search.modules
+            if not modules then return {} end
+            directory, rarities = modules.assets.Directory, modules.rarities.Rarities
+        end
+        local options = {}
+        for id, catalog in pairs(directory) do
+            if type(id) == "string" and type(catalog) == "table" then
+                local rarity = rarityId(catalog.Rarity)
+                local info = rarities and rarities[rarity]
+                table.insert(options, { id = id, label = tostring(catalog.DisplayName or id), rarity = rarity,
+                    rank = type(info) == "table" and finite(info.Rank) and info.Rank or 0 })
+            end
+        end
+        table.sort(options, function(a, b)
+            if a.label ~= b.label then return a.label < b.label end
+            return a.id < b.id
+        end)
+        return options
+    end
+    -- Peso en kg como lo muestra el juego ("44,904Kg"), decimal ("8,4" u "8.4")
+    -- o con sufijo ("1.5m"). La coma solo es de miles en grupos de tres cifras.
+    local function thousands(value)
+        local whole = string.match(value, "^([%d,]+)%.?%d*$")
+        if not whole or not string.find(whole, ",") then return false end
+        local groups = string.split(whole, ",")
+        if #groups[1] < 1 or #groups[1] > 3 then return false end
+        for index = 2, #groups do if #groups[index] ~= 3 then return false end end
+        return true
+    end
+    function search.ParseWeight(value)
+        if type(value) == "number" then
+            return finite(value) and value > 0 and value or nil
+        end
+        if type(value) ~= "string" then return nil end
+        local normalized = string.lower(value):gsub("%s+", ""):gsub("kg$", "")
+        if thousands(normalized) then
+            normalized = normalized:gsub(",", "")
+        elseif not string.find(normalized, "%.") then
+            local count
+            normalized, count = normalized:gsub(",", ".")
+            if count > 1 then return nil end
+        end
+        local weight = tonumber(normalized)
+        if weight == nil and string.find(normalized, "^[%d%.]+%a$") then weight = search.ParseMinimum(normalized) end
+        if type(weight) ~= "number" or not finite(weight) or weight <= 0 then return nil end
+        return weight
+    end
+    function search.FormatWeight(value)
+        if not finite(value) then return "?" end
+        local text = value >= 100 and string.format("%.0f", value)
+            or (string.format("%.2f", value):gsub("0+$", ""):gsub("%.$", ""))
+        local whole, decimals = string.match(text, "^(%d+)(.*)$")
+        if not whole then return text end
+        whole = whole:reverse():gsub("(%d%d%d)", "%1,"):reverse():gsub("^,", "")
+        return whole .. decimals
+    end
+    local function uniqueMutations(mutations)
+        local list, seen = {}, {}
+        for _, id in ipairs(mutations or {}) do
+            assert(type(id) == "string" and id ~= "", "Mutación inválida")
+            if not seen[id] then seen[id] = true; table.insert(list, id) end
+        end
+        return list
+    end
+    local function calculatorModules(modules)
+        modules = modules or search.modules
+        assert(modules, "Cargando los datos del juego")
+        return modules
+    end
+    function search.IncomeAt(category, scale, mutations, modules)
+        modules = calculatorModules(modules)
+        assert(modules.assets.Directory[category], "Especie desconocida")
+        assert(finite(scale) and scale > 0, "Tamaño inválido")
+        -- Same fields ToAssetItemData gives a field egg; that function rejects
+        -- an egg without its full saved schema, so the item is built directly.
+        local item = { Category = category, Scale = scale, Mutations = uniqueMutations(mutations) }
+        local income = modules.earnings.MutationOnlyRatePerSecond(item)
+        assert(finite(income) and income >= 0, "El juego no devolvió un ingreso válido")
+        return income
+    end
+    function search.WeightAt(category, scale, modules)
+        modules = calculatorModules(modules)
+        local weight = modules.records.WeightKgForScale(category, scale)
+        assert(finite(weight) and weight >= 0, "El juego no devolvió un peso válido")
+        return weight
+    end
+    function search.CalculateIncome(category, weight, mutations, modules)
+        modules = calculatorModules(modules)
+        assert(modules.assets.Directory[category], "Especie desconocida")
+        weight = search.ParseWeight(weight)
+        assert(weight, "Peso inválido; escribe los kg, por ejemplo 44,904 o 8.4")
+        local cap = tonumber(modules.records.ScaleHardCap) or 150
+        local maximum = search.WeightAt(category, cap, modules)
+        assert(weight <= maximum * (1 + 1e-9), "Supera el peso máximo de la especie: "
+            .. search.FormatWeight(maximum) .. " kg")
+        -- El peso crece con la escala; se busca la escala que da ese peso.
+        local low, high = 0, cap
+        for _ = 1, 80 do
+            local middle = (low + high) / 2
+            if search.WeightAt(category, middle, modules) < weight then low = middle else high = middle end
+        end
+        return search.CalculateAtScale(category, (low + high) / 2, mutations, modules)
+    end
+    -- Exact scale of a known egg; its weight label is rounded.
+    function search.CalculateAtScale(category, scale, mutations, modules)
+        local list = uniqueMutations(mutations)
+        local base = search.IncomeAt(category, scale, {}, modules)
+        local income = #list > 0 and search.IncomeAt(category, scale, list, modules) or base
+        return { category = category, weight = search.WeightAt(category, scale, modules), scale = scale, mutations = list,
+            income = income, base = base, multiplier = base > 0 and income / base or nil }
+    end
     local function normalize(config)
         assert(type(config) == "table", "Los filtros deben ser una tabla")
         local minimum = search.ParseMinimum(config.minIncome == nil and 7000000000 or config.minIncome)

@@ -1,5 +1,17 @@
 # Contexto del proyecto
 
+## Calculadora de ingreso (2026-10-14)
+
+El usuario pidio una calculadora en el Egg Finder, tomando como ejemplo
+eggipedia.com/calculator: cuanto da una mascota segun su peso y las
+mutaciones que se le apliquen. Medido en el juego: las mutaciones se suman
+(Golden + Rainbow = x5, Golden + Rainbow + Silver + Nitro = x6.95), una
+repetida cuenta dos veces y el peso es `peso base x escala^3` en las 227
+especies. La calculadora usa `AssetEarnings.MutationOnlyRatePerSecond` y
+`EggRecords.WeightKgForScale` del juego, igual que el detector; no copia
+tablas de la web. Solo informativa: no cambia filtros, Cumplen, hop ni match.
+Sin el pase x2 ni boosts temporales (no verificados en el juego).
+
 ## Destino fallido al volver al origen (2026-10-14)
 
 El usuario pidio evitar repetir servidores. Tras la noche cada servidor tiene

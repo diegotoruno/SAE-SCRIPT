@@ -1,5 +1,20 @@
 # Pruebas y validacion
 
+## 2026-10-14 - Calculadora de ingreso
+
+Build, ocho compilaciones y 221 regresiones (cuatro nuevas: peso con la
+etiqueta del juego, coma decimal y sufijos; escala por peso y mutaciones
+sumadas sin repetir; especie desconocida y peso sobre el maximo; lista de
+especies). Potassium, cliente real: panel candidato montado en una GUI de
+prueba aparte con su propio detector y archivos en memoria, abriendo la hoja
+con `panel.OpenCalculator` (sin entradas simuladas ni conexiones disparadas,
+sin teleports). Beluga Whale Rainbow del mapa (escala 2.0786) da
+11517724/s, igual que el detector; con peso 44,904Kg y Golden + Rainbow da
+x5.00. Peso invalido, peso sobre el maximo (30,375,000,000 kg en Cerberus) y
+sin especie muestran su mensaje. Todos los elementos dentro de la hoja, que
+termina en 650 de 700; la GUI de prueba se destruyo. Pendiente a mano: tocar
+mutaciones, buscar especie y escribir el peso en PC e iPad.
+
 ## 2026-10-14 - Destino fallido al volver al origen
 
 Build, compilaciones y 217 regresiones (una nueva: reconexion al origen
