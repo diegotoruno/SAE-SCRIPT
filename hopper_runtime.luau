@@ -1237,6 +1237,8 @@ do
     local uiState = readJson(UI_FILE, {})
     local collapsed = (uiState.collapsed == true)
     local autoEnabled = (uiState.auto == true)
+    -- Acceso rapido: la tarjeta flotante se puede ocultar desde el hub.
+    local quickVisible = (uiState.quick ~= false)
     local EXPANDED_SIZE = Vector2.new(320, 116)
     local COLLAPSED_SIZE = Vector2.new(232, 66)
     local savedPosition = UDim2.new(0.5, 0, 0, 26)
@@ -1261,6 +1263,7 @@ do
     holder.BackgroundColor3 = COLORS.surface
     holder.BorderSizePixel = 0
     holder.Active = true
+    holder.Visible = quickVisible
     holder.Parent = screenGui
 
     -- Tamano elegido con el asa: escala toda la tarjeta, plegada o no.
@@ -1351,10 +1354,13 @@ do
     creditLabel.Active = false
     creditLabel.Selectable = false
 
+    -- La seccion Server Hop del hub repite el texto, el estado y AUTO de la tarjeta.
+    local hopView = {}
     local function setLabel(text)
         if not session.alive then return end
         uiAccess()
         mainLabel.Text = text
+        if hopView.button then hopView.button.Text = text end
     end
 
     local function setStatus(text, color)
@@ -1362,6 +1368,7 @@ do
         uiAccess()
         statusLabel.Text = text
         statusLabel.TextColor3 = color or COLORS.muted
+        if hopView.status then hopView.status.Text = text; hopView.status.TextColor3 = color or COLORS.muted end
     end
 
     local busy = false
@@ -1373,9 +1380,11 @@ do
         if not session.alive then return end
         uiAccess()
         busy = value
-        TweenService:Create(button, TweenInfo.new(0.15), {
-            BackgroundTransparency = value and 0.5 or 0,
-        }):Play()
+        for _, target in ipairs({button, hopView.button}) do
+            TweenService:Create(target, TweenInfo.new(0.15), {
+                BackgroundTransparency = value and 0.5 or 0,
+            }):Play()
+        end
     end
 
     -- ------------------------------------------------- estado de la ventana
@@ -1394,6 +1403,7 @@ do
         local state = readJson(UI_FILE, {})
         state.collapsed = collapsed
         state.auto = autoEnabled
+        state.quick = quickVisible
         state.scale = holderScale.Scale
         state.pos = {
             sx = holder.Position.X.Scale,
@@ -1444,6 +1454,7 @@ do
         autoChip.BackgroundColor3 = autoEnabled and COLORS.green or COLORS.raised
         autoLabel.TextColor3 = autoEnabled and COLORS.onGreen or COLORS.muted
         autoBorder.Color = autoEnabled and COLORS.green or COLORS.border
+        if hopView.setAuto then hopView.setAuto(autoEnabled) end
     end
 
     local function applyCollapsed(value, instant)
@@ -1805,108 +1816,118 @@ do
         end,
     }
 
+    -- Mistake Hub: Egg Finder, filtros, calculadora, Server Hop y ajustes en una
+    -- sola ventana. La tarjeta Server Hop es el unico acceso flotante.
+    local filterPanel = mountEggFilterPanel({ search = eggSearch,
+        api = hopperEnvironment.ChilliEggSearch, session = session, screenGui = screenGui,
+        readJson = readJson, writeJson = writeJson,
+        scaling = { Drag = support.DragScale, Panel = support.PanelScale } })
+    session.DisposePanel = filterPanel.Destroy
+    local ui = filterPanel.ui
+    local hopPage = filterPanel.Page("hop")
+
+    -- Seccion Server Hop: el mismo salto y AUTO que la tarjeta flotante y el
+    -- interruptor que la muestra u oculta.
+    local function setQuickVisible(value)
+        quickVisible = value == true
+        uiAccess(); holder.Visible = quickVisible
+        if hopView.setQuick then hopView.setQuick(quickVisible) end
+        saveUi()
+    end
+    do
+        local C, width = ui.colors, ui.content
+        uiAccess()
+        ui.heading(hopPage, "Server Hop", "Cambia de servidor al momento o deja que AUTO salte hasta encontrar tu huevo.", 0)
+        local card = ui.make("Frame", "HopStatus", hopPage, { Position = UDim2.fromOffset(0, 56), Size = UDim2.fromOffset(width, 68),
+            BackgroundColor3 = C.card, BorderSizePixel = 0 })
+        ui.corner(card, 10); ui.stroke(card).Transparency = 0.45
+        ui.text("Caption", card, "ESTADO", 16, 12, width - 220, 14, C.muted, 10, true)
+        hopView.status = ui.paragraph("Status", card, statusLabel.Text, 16, 28, width - 220, 30, statusLabel.TextColor3, 12)
+        hopView.button = ui.button("ServerHop", card, mainLabel.Text, width - 188, 12, 172, 44)
+        hopView.button.BackgroundColor3 = COLORS.action; hopView.button.Border.Color = COLORS.actionBorder
+        hopView.button.Font = Enum.Font.GothamBold; hopView.button.TextSize = 15
+        hopView.setAuto = ui.toggleRow(hopPage, "AutoSearch", "Búsqueda automática (AUTO)",
+            "Salta de servidor hasta encontrar un huevo que cumpla tus filtros.", 136, autoEnabled, function()
+                setAuto(not autoEnabled)
+            end)
+        hopView.setQuick = ui.toggleRow(hopPage, "QuickAccess", "Acceso rápido flotante",
+            "Muestra la tarjeta Server Hop sobre el juego, fuera del hub.", 196, quickVisible, function()
+                setQuickVisible(not quickVisible)
+            end)
+        ui.make("Frame", "AccountDivider", hopPage, { Position = UDim2.fromOffset(0, 260), Size = UDim2.fromOffset(width, 1),
+            BackgroundColor3 = C.border, BackgroundTransparency = 0.3, BorderSizePixel = 0 })
+    end
+    hopperEnvironment.ChilliEggSearch.QuickHop = function() return quickVisible end
+    hopperEnvironment.ChilliEggSearch.SetQuickHop = function(value)
+        assert(session.alive, "Esta sesion ya termino")
+        assert(type(value) == "boolean", "Usa true o false")
+        setQuickVisible(value); return quickVisible
+    end
+
     -- Account entry stays in a local closure; never expose it in GetStatus,
     -- logs, Chilli configuration, teleport state, or companion requests.
     do
-        local surface = Color3.fromRGB(20, 24, 30)
-        local fieldColor = Color3.fromRGB(30, 36, 44)
-        local foreground = Color3.fromRGB(239, 243, 247)
-        local secondary = Color3.fromRGB(170, 183, 197)
-        local accent = Color3.fromRGB(224, 197, 149)
-        local function rounded(object)
-            local corner = Instance.new("UICorner"); corner.CornerRadius = UDim.new(0, 12); corner.Parent = object
-        end
-        local function text(parentObject, name, content, y, height, size, color)
-            local item = Instance.new("TextLabel")
-            item.Name = name; item.BackgroundTransparency = 1; item.Text = content
-            item.Position = UDim2.fromOffset(20, y); item.Size = UDim2.new(1, -40, 0, height)
-            item.Font = Enum.Font.GothamMedium; item.TextSize = size; item.TextColor3 = color or foreground
-            item.TextXAlignment = Enum.TextXAlignment.Left; item.TextYAlignment = Enum.TextYAlignment.Top
-            item.TextWrapped = true; item.Parent = parentObject
-            return item
-        end
-        local function action(parentObject, name, content, y, color)
-            local item = Instance.new("TextButton")
-            item.Name = name; item.Text = content; item.Position = UDim2.fromOffset(20, y)
-            item.Size = UDim2.new(1, -40, 0, 44); item.BackgroundColor3 = color or fieldColor
-            item.BorderSizePixel = 0; item.Font = Enum.Font.GothamBold; item.TextSize = 14
-            item.TextColor3 = color and surface or foreground; item.Parent = parentObject; rounded(item)
-            return item
-        end
-        local function outlined(object)
-            local stroke = Instance.new("UIStroke"); stroke.Color = COLORS.border
-            stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border; stroke.Parent = object
-        end
-        local entry = action(screenGui, "ServerAccount", "Cuenta y Best Ping", 0)
-        entry.AnchorPoint = Vector2.new(0, 1); entry.BackgroundColor3 = surface; entry.TextSize = 12
-        entry.Position = UDim2.new(0, 18, 1, -18); entry.Size = UDim2.fromOffset(184, 36); entry.ZIndex = 90
-        outlined(entry)
-        local panel = Instance.new("Frame")
-        panel.Name = "ServerAccountPanel"; panel.AnchorPoint = Vector2.new(0.5, 0.5)
-        panel.Position = UDim2.fromScale(0.5, 0.5); panel.Size = UDim2.fromOffset(440, 462)
-        panel.BackgroundColor3 = surface; panel.BorderSizePixel = 0; panel.Visible = false
-        panel.ZIndex = 30; panel.Parent = screenGui; rounded(panel); outlined(panel)
-        local scale = Instance.new("UIScale"); scale.Parent = panel
-        text(panel, "Title", "Tu cuenta para Best Ping", 20, 30, 22)
-        text(panel, "Privacy", "Este dispositivo consulta Roblox. El autor del script no recibe tu cookie.", 58, 40, 13, secondary)
-        text(panel, "CookieLabel", ".ROBLOSECURITY", 112, 20, 13)
-        local input = Instance.new("TextBox")
-        input.Name = "CookieInput"; input.Position = UDim2.fromOffset(20, 138)
-        input.Size = UDim2.new(1, -40, 0, 48); input.BackgroundColor3 = fieldColor
-        input.BorderSizePixel = 0; input.Text = ""; input.PlaceholderText = ""
-        input.ClearTextOnFocus = false; input.MultiLine = false; input.TextTransparency = 1
-        input.TextSize = 16; input.Font = Enum.Font.GothamMedium; input.Parent = panel; rounded(input)
-        local mask = text(input, "MaskedValue", "Toca aqui y pega la cookie completa", 14, 24, 13, secondary)
-        mask.Position = UDim2.fromOffset(14, 14); mask.Size = UDim2.new(1, -28, 0, 24)
-        text(panel, "StorageHelp", "Guardar permite continuar entre saltos. Se guarda solo aqui, sin cifrado; otros scripts del executor podrian leerla.", 198, 54, 13, secondary)
-        local message = text(panel, "ConnectionMessage", "", 258, 40, 13, secondary)
-        local save = action(panel, "SaveAndAuto", "Guardar y usar AUTO", 304, accent)
-        local once = action(panel, "SessionOnly", "Solo esta sesion", 356)
-        local forget = action(panel, "ForgetCookie", "Borrar cookie y desconectar", 408)
-        local close = Instance.new("TextButton")
-        close.Name = "Close"; close.Text = "Cerrar"; close.Font = Enum.Font.GothamMedium
-        close.TextSize = 12; close.TextColor3 = secondary; close.BackgroundTransparency = 1
-        close.Size = UDim2.fromOffset(64, 44); close.Position = UDim2.new(1, -74, 0, 5); close.Parent = panel
+        local C, width, column = ui.colors, ui.content, ui.column
+        uiAccess()
+        ui.text("AccountTitle", hopPage, "Cuenta y Best Ping", 0, 272, width - 180, 20, C.white, 15, true)
+        local badge = ui.text("AccountState", hopPage, "", width - 170, 272, 170, 20, C.muted, 12, true)
+        badge.TextXAlignment = Enum.TextXAlignment.Right
+        ui.paragraph("Privacy", hopPage, "Con tu cookie, este dispositivo pide a Roblox los servidores con mejor ping. "
+            .. "El autor del script no la recibe.", 0, 294, width, 28, C.muted, 11)
+        local input = ui.make("TextBox", "CookieInput", hopPage, { Position = UDim2.fromOffset(0, 326), Size = UDim2.fromOffset(width, 40),
+            BackgroundColor3 = C.input, BorderSizePixel = 0, Text = "", PlaceholderText = "", ClearTextOnFocus = false,
+            MultiLine = false, TextTransparency = 1, TextSize = 16, Font = Enum.Font.GothamMedium })
+        ui.corner(input, 8); ui.stroke(input)
+        local mask = ui.text("MaskedValue", input, "Toca aquí y pega la cookie completa", 14, 0, width - 28, 40, C.muted, 13)
+        ui.paragraph("StorageHelp", hopPage, "Guardar permite continuar entre saltos. Se guarda solo aquí, sin cifrado; "
+            .. "otros scripts del executor podrían leerla.", 0, 372, width, 28, C.muted, 11)
+        local message = ui.paragraph("ConnectionMessage", hopPage, "", 0, 404, width, 28, C.muted, 11)
+        local save = ui.button("SaveAndAuto", hopPage, "Guardar y usar AUTO", 0, 436, column, 36); ui.primary(save)
+        local once = ui.button("SessionOnly", hopPage, "Solo esta sesión", column + 8, 436, column, 36)
+        local forget = ui.button("ForgetCookie", hopPage, "Borrar cookie", 2 * (column + 8), 436, column, 36)
+        forget.TextColor3 = C.red
         local draft, updating, connecting = nil, false, false
         local function savedMessage(state)
-            return state.remembered and "Cookie guardada en este dispositivo. Puedes cerrar esta ventana."
-                or "Cookie activa solo en esta sesion; no se guardo."
+            return state.remembered and "Cookie guardada en este dispositivo. AUTO puede usar Best Ping entre saltos."
+                or "Cookie activa solo en esta sesión; no se guardó."
+        end
+        local function idleMessage()
+            local state = deviceCookie.Status()
+            return connecting and support.DeviceWaitMessage(deviceTransport.State())
+                or state.configured and savedMessage(state)
+                or "Pega tu cookie para conectar tu propia cuenta."
         end
         local function updateEntry()
             uiAccess()
             local state = deviceCookie.Status()
-            entry.Text = connecting and "Cuenta: comprobando"
-                or state.configured and (state.remembered and "Cuenta: guardada" or "Cuenta: solo esta sesión")
-                or "Cuenta y Best Ping"
+            badge.Text = connecting and "Comprobando..."
+                or state.configured and (state.remembered and "Cuenta guardada" or "Solo esta sesión")
+                or "Sin cuenta"
+            badge.TextColor3 = connecting and C.gold or state.configured and C.green or C.muted
         end
-        local function fit()
-            uiAccess()
-            local camera = workspace.CurrentCamera
-            local viewport = camera and camera.ViewportSize or Vector2.new(800, 600)
-            scale.Scale = math.min(1, (viewport.X - 32) / 440, (viewport.Y - 40) / 462)
+        -- The form counts as open while the hub shows the Server Hop section.
+        local function formOpen()
+            local state = filterPanel.GetStatus()
+            return state.open and not state.minimized and state.tab == "hop"
         end
         local function show()
             if not session.alive then return end
-            uiAccess(); fit(); panel.Visible = true; entry.Visible = false
-            local state = deviceCookie.Status()
-            message.Text = connecting and support.DeviceWaitMessage(deviceTransport.State())
-                or state.configured and savedMessage(state)
-                or "Pega tu cookie para conectar tu propia cuenta."
+            uiAccess(); filterPanel.Open(); filterPanel.Select("hop")
+            uiAccess(); message.Text = idleMessage()
         end
         local function hide()
-            uiAccess(); input:ReleaseFocus(); panel.Visible = false; entry.Visible = true; input.Text = ""; draft = nil
-            mask.Text = "Toca aqui y pega la cookie completa"
+            uiAccess(); input:ReleaseFocus(); input.Text = ""; draft = nil
+            mask.Text = "Toca aquí y pega la cookie completa"
         end
-        connect(entry.Activated, show)
-        connect(close.Activated, hide)
+        filterPanel.OnSelect("hop", function()
+            if not connecting then uiAccess(); message.Text = idleMessage() end
+        end)
         connect(input:GetPropertyChangedSignal("Text"), function()
             if updating or input.Text == "" then return end
             draft = support.NormalizeCookie(input.Text)
             updating = true; input.Text = ""; updating = false
             mask.Text = draft and "Cookie recibida (oculta)" or "Pega solo la cookie completa"
         end)
-        local camera = workspace.CurrentCamera
-        if camera then connect(camera:GetPropertyChangedSignal("ViewportSize"), fit) end
         local function activate(persist)
             if connecting then return end
             if not draft then message.Text = "Pega la cookie completa antes de conectar."; return end
@@ -1914,8 +1935,8 @@ do
             local candidate = draft; draft = nil
             input:ReleaseFocus(); mask.Text = "Cookie recibida (oculta)"
             connecting = true; session.accountConnecting = true; save.Active = false; once.Active = false
-            save.Text = "Comprobando con Roblox..."; once.Text = "Espera la comprobacion..."; updateEntry()
-            setAuto(false); uiAccess(); message.Text = "Comprobando la conexion con Roblox..."
+            save.Text = "Comprobando..."; once.Text = "Espera..."; updateEntry()
+            setAuto(false); uiAccess(); message.Text = "Comprobando la conexión con Roblox..."
             task.spawn(function()
                 local generation = credentialGeneration
                 local page, reason, status
@@ -1929,7 +1950,7 @@ do
                 if not session.alive or generation ~= credentialGeneration then candidate = nil; return end
                 local ok = false
                 if page then
-                    uiAccess(); message.Text = persist and "Guardando y verificando el archivo local..." or "Activando solo en esta sesion..."
+                    uiAccess(); message.Text = persist and "Guardando y verificando el archivo local..." or "Activando solo en esta sesión..."
                     ok, reason = deviceCookie.Set(candidate, persist)
                     if ok then
                         connectionConfig = {mode = "BestLatency", transport = "DeviceCookie"}
@@ -1940,21 +1961,21 @@ do
                 -- Retain a failed attempt only while the form stays open,
                 -- so an interval or cooldown never requires another paste.
                 uiAccess()
-                if not ok and panel.Visible then draft = draft or candidate end
+                if not ok and formOpen() then draft = draft or candidate end
                 candidate = nil; connecting = false; session.accountConnecting = false
                 uiAccess(); save.Active = true; once.Active = true
-                save.Text = "Guardar y usar AUTO"; once.Text = "Solo esta sesion"; updateEntry()
+                save.Text = "Guardar y usar AUTO"; once.Text = "Solo esta sesión"; updateEntry()
                 if ok then
                     credentialGeneration += 1; deviceFatal = nil; serverOrder = "BestLatency"
                     writeJson(POOL_FILE, {servers = {}}); resetDeviceNative(page, true)
                     -- Confirm verified storage before starting AUTO, which may
                     -- change the map status or begin a later hop independently.
-                    draft = nil; input.Text = ""; mask.Text = "Toca aqui para cambiar la cookie"
+                    draft = nil; input.Text = ""; mask.Text = "Toca aquí para cambiar la cookie"
                     message.Text = savedMessage(deviceCookie.Status())
                     nativeStatus = {state = "connected"}; setAuto(true)
                 else
                     message.Text = reason or "No se pudo conectar. Pega la cookie y reintenta."
-                    mask.Text = draft and "Cookie recibida (oculta); puedes reintentar" or "Toca aqui y pega la cookie completa"
+                    mask.Text = draft and "Cookie recibida (oculta); puedes reintentar" or "Toca aquí y pega la cookie completa"
                 end
             end)
         end
@@ -1968,9 +1989,9 @@ do
             -- it must not silently resume legacy or the owner's PC bridge.
             connectionConfig = {mode = "BestLatency", transport = "DeviceCookie"}
             serverOrder = "BestLatency"; writeJson(CONNECTION_FILE, connectionConfig)
-            uiAccess(); input.Text = ""; mask.Text = "Toca aqui y pega la cookie completa"
+            uiAccess(); input.Text = ""; mask.Text = "Toca aquí y pega la cookie completa"
             save.Active = true; once.Active = true
-            save.Text = "Guardar y usar AUTO"; once.Text = "Solo esta sesion"; updateEntry()
+            save.Text = "Guardar y usar AUTO"; once.Text = "Solo esta sesión"; updateEntry()
             message.Text = removed and "Cookie borrada. AUTO apagado." or "AUTO apagado. No se pudo borrar el archivo local; revisa el executor."
         end)
         hopperEnvironment.ChilliEggSearch.OpenServerAccount = show
@@ -1978,21 +1999,15 @@ do
         hopperEnvironment.ChilliEggSearch.ServerAccountStatus = function()
             uiAccess()
             local state = deviceCookie.Status()
-            return {open = panel.Visible, launcherVisible = entry.Visible, configured = state.configured, remembered = state.remembered,
+            return {open = formOpen(), launcherVisible = false, configured = state.configured, remembered = state.remembered,
                 connecting = connecting, message = message.Text}
         end
         session.DisposeAccount = function() draft = nil; session.accountConnecting = false end
-        fit(); updateEntry()
+        updateEntry(); message.Text = idleMessage()
         if connectionConfig.transport ~= "LocalBridge" and not deviceCookie.Status().configured
             and connectionConfig.mode ~= "BestLatency" then show()
         elseif connectionConfig.transport == "DeviceCookie" and not deviceCookie.Status().configured then show() end
     end
-
-    local filterPanel = mountEggFilterPanel({ search = eggSearch,
-        api = hopperEnvironment.ChilliEggSearch, session = session, screenGui = screenGui,
-        readJson = readJson, writeJson = writeJson,
-        scaling = { Drag = support.DragScale, Panel = support.PanelScale } })
-    session.DisposePanel = filterPanel.Destroy
 
     -- ---------------------------------------------------------------- el salto
     local function pickCandidates(continuing, wanted)
@@ -2457,8 +2472,9 @@ do
         setAuto(not autoEnabled)
     end)
 
-    connect(button.MouseButton1Click, function()
-        if draggedRecently() or busy then
+    -- La tarjeta flotante y la seccion Server Hop del hub lanzan el mismo salto.
+    local function startManualHop()
+        if busy then
             return
         end
 
@@ -2474,7 +2490,12 @@ do
                 notify("Server Hop", "Error iniciando el salto: " .. tostring(err), 8)
             end
         end)
+    end
+    connect(button.MouseButton1Click, function()
+        if draggedRecently() then return end
+        startManualHop()
     end)
+    connect(hopView.button.Activated, startManualHop)
 
     -- -------------------------------------------------- informe al llegar
     local function reportArrival()

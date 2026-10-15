@@ -1,5 +1,14 @@
 # Estado del trabajo
 
+## 2026-10-14 - Mistake Hub
+
+Rama codex/mistake-hub sobre codex/calculadora-mascotas (PR #42). El panel
+pasa a ser Mistake Hub: cabecera, barra lateral y secciones Egg Finder,
+Filtros (con presets), Calculadora, Server Hop (con la cuenta de Best Ping) y
+Ajustes. Unico flotante: la tarjeta Server Hop, con el interruptor "Acceso
+rapido flotante". Sin cambios en detector, AUTO, ciclo ni teleports. Ver
+CONTEXT, DESIGN y TESTING.
+
 ## 2026-10-14 - Calculadora de ingreso
 
 Rama codex/calculadora-mascotas sobre main d06dfa5. Boton Calculadora en la

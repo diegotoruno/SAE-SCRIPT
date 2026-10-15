@@ -1,6 +1,6 @@
-# Estilo del Egg Finder
+# Estilo de Mistake Hub
 
-El panel y el boton Server Hop son herramientas de consulta dentro de Roblox.
+Mistake Hub y el acceso rapido Server Hop son herramientas de consulta dentro de Roblox.
 Su prioridad es leer el estado de la busqueda y los ingresos sin competir con
 el mapa del juego. El estilo es sobrio: superficies grafito planas, un solo
 acento champan para acciones, colores semanticos para estados y ningun texto
@@ -33,7 +33,11 @@ contraste 4.5:1 sobre las superficies de tarjeta, seleccion y coincidencia.
 Los nombres son blancos; la rareza aparece en su color dentro de la linea de
 etiquetas. No aplicar verde de coincidencia a todos los ingresos.
 
-## Boton Server Hop
+## Acceso rapido Server Hop
+
+Unica pieza flotante. El interruptor `Acceso rapido flotante` de la seccion
+Server Hop la muestra u oculta; la preferencia se guarda como `quick` en
+`server_hop_button_ui.json`.
 
 Tarjeta grafito con borde de 1 px y esquinas de 14 px. Sin degradado, brillo
 ni contornos duplicados del texto.
@@ -55,49 +59,77 @@ ni contornos duplicados del texto.
   ("Salto sin confirmar. Pulsa Server Hop para reintentar."). No usan glifos
   como ✓ o ✗ que algunas fuentes no tienen.
 
-## Panel
+## Mistake Hub
 
-- 540 x 700, esquinas de 14 px, margen de 22 px y contenido de 496 px.
-- Cabecera: titulo de 22 px y subtitulo de 11 px; a la derecha Opciones,
-  AUTO (punto + `AUTO ON/OFF`) y minimizar.
-- Tarjeta de estado: punto de color, titulo de 15 px, una linea explicativa
-  y reloj a la derecha con su propia etiqueta (Renovacion en / Huevos /
-  Ciclo).
-- Seccion Filtros con resumen de los filtros guardados y boton
-  Ocultar/Mostrar. Cada control tiene su etiqueta encima:
-  - Fila 1, tres columnas de 160: Rareza minima, Ingreso minimo /s, Mutacion.
-  - Fila 2, dos columnas de 244: Zonas (Todas, nombre de la zona o "N zonas")
-    y Nombre contiene.
-  - Fila 3: mensaje de dos lineas (guardado, pendiente, aplicado o error) y
-    Aplicar filtros.
-- Barra de lista: `Todos N` y `Cumplen N` como segmento, `Ver:` y `Orden:`.
+Una sola ventana reune todas las opciones; la unica pieza flotante es el
+acceso rapido de Server Hop. Estructura inspirada en Chilli Hub (cabecera,
+pestanas laterales, secciones con interruptores), con la paleta propia.
+
+- 760 x 560, esquinas de 14 px. Cabecera de 56 px, barra lateral de 172 px y
+  paginas de 548 x 472 con margen de 20 px.
+- Cabecera: logo cuadrado de 32 px en champan con la `M`, titulo
+  `Mistake Hub` (17 px) y subtitulo `Steal An Egg` (11 px); a la derecha AUTO
+  (punto + `AUTO ON/OFF`, 100 px) y plegar (32 px: menos para plegar, mas
+  para desplegar). La cabecera arrastra el hub.
+- Plegado: solo la cabecera, 340 x 56, con marca, AUTO y desplegar. Las
+  tarjetas y modelos se liberan mientras esta plegado.
+- Barra lateral: entradas de 40 px separadas por 6 (Egg Finder, Filtros,
+  Calculadora, Server Hop, Ajustes). La activa tiene fondo de superficie,
+  texto blanco y una barra champan de 3 x 20 a la izquierda; las demas,
+  texto secundario sin fondo. Filtros muestra un punto champan con cambios
+  sin aplicar. Al pie, el estado de AUTO (verde si esta activo) con su modo y
+  la firma `By Mistake` en champan.
+- Egg Finder: tarjeta de estado (punto, titulo de 15 px, linea explicativa y
+  reloj a la derecha), fila `Filtros` con el resumen guardado y `Editar
+  filtros`, barra `Todos N` / `Cumplen N` / `Ver:` / `Orden:` en cuatro
+  columnas de 131 y la lista virtualizada debajo.
 - Tarjetas de 100 px separadas por 8 px, imagen de 76 px. Filas propias para
   nombre, ingreso (20 px), escala/peso y etiquetas (rareza en su color,
   mutaciones, zona). Insignia a la derecha: `Cumple` en verde o el motivo
   corto (Rareza baja, Otra zona, Otro nombre, Sin mutacion, Ingreso bajo).
   Toda la tarjeta abre el detalle; un chevron lo indica.
-- Hojas modales (rareza, mutacion, zonas, detalle y opciones) sobre un velo
-  que bloquea el panel; tocar el velo o la X cierra la hoja.
-- Detalle: nombre, rareza y zona, veredicto, y filas etiqueta/valor para
-  ingreso, ingreso exacto, minimo guardado, tamano y peso, mutaciones y zona.
-  El mejor huevo del ciclo agrega el boton "Ver mejores de los ultimos ciclos".
+- Filtros: titulo y ayuda; fila de tres columnas de 177 (Rareza minima,
+  Ingreso minimo /s, Mutacion), fila de dos de 270 (Zonas, Nombre contiene) y
+  el mensaje junto a `Aplicar filtros`. Debajo, separada por una linea, la
+  seccion Presets: nombre, `Guardar actuales` y la lista (Cargar / Borrar).
+- Calculadora: especie y peso arriba; a la izquierda las mutaciones en dos
+  columnas con su bono; a la derecha la tarjeta de resultado (ingreso en
+  champan de 24 px, exacto, por minuto/hora/dia, multiplicador, tamano, sin
+  mutaciones y una nota).
+- Server Hop: tarjeta `ESTADO` con el mismo texto que la tarjeta flotante y
+  el boton rojo `Server Hop` (172 x 44) a la derecha; interruptores AUTO y
+  `Acceso rapido flotante`; seccion Cuenta y Best Ping con estado a la
+  derecha del titulo, campo oculto, ayudas y tres botones (Guardar y usar
+  AUTO en champan, Solo esta sesion, Borrar cookie en rojo suave).
+- Ajustes: interruptores Notificacion y Sonido, `Probar alerta`, y la
+  seccion Interfaz con los atajos y `Restablecer tamano y posicion`.
+- Interruptor: fila de 52 px con titulo y detalle; pista de 44 x 24 a la
+  derecha, verde con perilla oscura si esta activo, entrada con perilla gris
+  si no. Toda la fila lo cambia.
+- Hojas modales (rareza, mutacion, zonas, especie, detalle, historial) sobre
+  un velo que bloquea el hub; ocupan el area de paginas (548 de ancho, 480 de
+  alto como maximo). Tocar el velo o la X cierra la hoja.
+- Detalle: nombre, rareza y zona, veredicto, filas de 36 px etiqueta/valor
+  (ingreso, exacto, minimo, tamano y peso, mutaciones, zona) y las acciones
+  en una fila: `Mejores de los ultimos ciclos` (solo el mejor del ciclo) y
+  `Calcular con otras mutaciones`.
 - Historial de mejores: hasta 6 filas de 58 px (este ciclo con borde champan,
   luego los 5 ultimos ciclos terminados). Cada fila: antiguedad, nombre,
   rareza en su color, zona y mutaciones; a la derecha el ingreso, en verde si
   llega al minimo guardado, con "llega al minimo" o "bajo el minimo". Al pie,
   el minimo guardado. Solo informativo.
-- Opciones: secciones Presets, Alertas y Servidores con estados explicitos
-  ("Notificacion: activada").
-- La misma asa de tres trazos del boton Server Hop, en la esquina inferior
-  derecha, escala el panel entre 0.6 y 1.5 con la esquina superior izquierda
+- La misma asa de tres trazos del acceso rapido, en la esquina inferior
+  derecha, escala el hub entre 0.6 y 1.5 con la esquina superior izquierda
   fija. La pantalla manda: si no cabe, se reduce aunque baje de 0.6. Las
-  hojas modales la cubren. El tamano elegido (`scale`), la posicion y las
+  hojas modales la cubren. Seccion, plegado, tamano (`scale`), posicion y
   preferencias se guardan en `chilli_egg_panel_ui.json`.
 
 ## Interaccion
 
-La firma `By Mistake` vive solo al pie de la tarjeta del boton Server Hop.
-No hay etiqueta flotante en la pantalla (retirada el 2026-10-11).
+La firma `By Mistake` vive al pie de la tarjeta de acceso rapido y de la
+barra lateral del hub. No hay etiqueta flotante en la pantalla (retirada el
+2026-10-11) ni lanzadores flotantes del panel o de la cuenta (retirados con
+el hub, 2026-10-14).
 
 AUTO apagado es neutro; AUTO encendido usa verde suave y texto oscuro.
 Las acciones principales usan champan con texto oscuro. No confundir apagado

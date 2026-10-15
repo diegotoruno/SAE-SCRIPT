@@ -1,5 +1,30 @@
 # Pruebas y validacion
 
+## 2026-10-14 - Mistake Hub
+
+Build, ocho compilaciones, 221 regresiones Luau y diez Python (la UI no tiene
+regresiones offline). Potassium, cliente real, sin entradas simuladas ni
+conexiones disparadas y sin teleports; solo llamadas directas a la API:
+
+- Hub candidato montado en una GUI de prueba aparte con su propio detector y
+  archivos en memoria: 760 x 560 y 65 huevos del mapa (7 tarjetas). En cada
+  seccion, las hojas de zonas e historial y la cabecera plegada (340 x 56):
+  ningun elemento fuera de la ventana, ningun texto que no quepa
+  (`TextFits`) ni hermanos superpuestos. La calculadora, abierta con
+  `OpenCalculator` desde un Spirit Hare Silver+Silver del mapa, da
+  26885614/s, igual que el detector. La GUI de prueba se destruyo.
+- Bundle candidato ejecutado sobre la sesion real con AUTO activo (Eternal+,
+  15b, 3 zonas, cookie guardada): una sola GUI, un hub, sin lanzadores
+  `OpenEggFilters` ni `ServerAccount`; arriba solo `Holder` y `MistakeHub`.
+  La seccion Server Hop sin problemas de geometria, con el mismo estado y
+  texto del boton que la tarjeta, AUTO y acceso rapido activos y "Cuenta
+  guardada". `SetQuickHop(false/true)` oculta y muestra la tarjeta, mueve la
+  perilla y guarda `quick`, sin tocar AUTO. Con teclado, el hub oculto se
+  mantuvo oculto al reejecutar; `OpenPanel` lo mostro con AUTO ON, "AUTO
+  activo / Esperando Eternal+", el resumen de filtros y Todos 65 / Cumplen 0.
+- Pendiente a mano: pulsar pestanas, interruptores, plegar, arrastrar y
+  redimensionar en PC e iPad; comprobar en iPad que el hub vuelve a verse.
+
 ## 2026-10-14 - Calculadora de ingreso
 
 Build, ocho compilaciones y 221 regresiones (cuatro nuevas: peso con la
